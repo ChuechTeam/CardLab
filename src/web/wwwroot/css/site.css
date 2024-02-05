@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&display=swap');
+
+:root {
+    --card-color: #000000;
+    --card-inner-margin: 1px 3%;
+}
+
+html {
+    font-size: 1.2em;
+    font-family: system-ui;
+}
+
+.game-card {
+    display: block;
+
+    font-family: "Chakra Petch", sans-serif;
+}
+
+.game-card-fields {
+    display: grid;
+    grid-template-rows: 16.7px 60px 1.5fr auto;
+    grid-template-columns: 1fr;
+
+    padding: 1.25px;
+
+    font-size: 6px;
+
+    /* why is this so hard??? */
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.game-card > .-bg {
+    width: 100%;
+    max-width: 512px;
+}
+
+.game-card-fields > .-header {
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+
+    border-bottom: 1px solid var(--card-color);
+}
+
+.game-card-fields > .-header > .-name {
+    flex: 1;
+    padding: 0 4%;
+    text-align: center;
+    font-size: 1.3em;
+}
+
+.game-card-fields > .-header > .-cost {
+    width: 23%;
+    text-align: center;
+    color: white;
+    font-size: 2.25em;
+}
+
+.game-card-fields > .-image {
+    grid-row: 2;
+
+    margin: var(--card-inner-margin);
+    margin-top: 2px;
+    border: 1px solid var(--card-color);
+}
+
+.game-card-fields > .-image > canvas  {
+    width: 100%;
+    height: 100%;
+}
+
+
+.game-card-fields > .-desc {
+    grid-row: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+
+    margin: var(--card-inner-margin);
+    font-size: 0.8em;
+}
+
+.game-card-fields > .-attribs {
+    grid-row: 4;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    
+    margin: var(--card-inner-margin);
+    padding-bottom: 4px;
+}
+
+.game-card-fields > .-attribs > * {
+    font-size: 2.25em;
+    color: white;
+    
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    width: 23px;
+    height: 16px;
+    
+    position: relative;
+}
+
+.game-card-fields > .-attribs > * > .-shape {
+    position: absolute;
+    
+    top: 0;
+    left: 0;
+    
+    z-index: -2;
+}
+
+.game-card-fields > .-attribs > .-attack > .-shape {
+    transform: scaleX(-1);
+}

@@ -1,0 +1,34 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Accueil";
+}
+
+<h1>CardLab</h1>
+<p>Salut tout le monde !</p>
+<p>Envie de faire tout plein de cartes ?</p>
+@if (!Model.IsInGame)
+{
+    <form method="post" asp-page-handler="create">
+        <button>Créer une salle</button>
+    </form>
+    
+    <form method="post" asp-page-handler="join">
+        @if (!string.IsNullOrEmpty(Model.JoinErrMsg))
+        {
+            <p style="color: darkred;">@Model.JoinErrMsg</p>
+        }
+        <p>Code : </p>
+        <input type="text" asp-for="JoinCode"/>
+        <p>Votre nom : </p>
+        <input type="text" asp-for="PlayerName"/>
+        <p><button>Rejoindre</button></p>
+    </form>
+}
+else
+{
+    <button onclick="window.location = '@Url.Page("Game/Index")'">Reprendre la partie</button>
+    <form method="post" asp-page-handler="quit">
+        <button>Quitter la partie</button>
+    </form>
+}

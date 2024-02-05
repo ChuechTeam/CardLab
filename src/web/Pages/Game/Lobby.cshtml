@@ -1,0 +1,39 @@
+﻿@page
+@model CardLab.Pages.Game.Lobby
+
+<script>window.clGamePage = "lobby";</script>
+
+@if (!Model.Fragment)
+{
+    <h1>Bienvenue dans la partie</h1>
+    <p>Phase = @Model.Phase</p>
+    <p>Code = @Model.Code</p>
+    <p>Host = @Model.IsTheHost</p>
+}
+
+<div id="lobby-players">
+    <p>Joueurs : @Model.Players.Length</p>
+    <ul>
+        @foreach(var player in Model.Players)
+        {
+        <li>@player</li>
+        }
+    </ul>
+</div>
+
+@if (Model.IsTheHost && !Model.Fragment)
+{
+    <form method="post" asp-page-handler="start">
+        <button>Commencer !</button>
+    </form>
+    
+    <form method="post" asp-page-handler="terminate">
+        <button>Annuler la partie</button>
+    </form>
+}
+else if (!Model.Fragment)
+{
+    <form method="post" asp-page-handler="quit">
+        <button>Quitter la partie</button>
+    </form>
+}

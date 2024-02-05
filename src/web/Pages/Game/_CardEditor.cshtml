@@ -1,0 +1,42 @@
+﻿@model CardLab.Game.Card
+
+<div class="card-editor">
+    <div class="game-card">
+        <svg class="-bg" viewBox="0 0 104.85 144.56">
+            <use href="#card-svg-bg"/>
+            <foreignObject height="100%" width="100%">
+                <div xmlns="http://www.w3.org/1999/xhtml" class="game-card-fields">
+                    <div class="-header">
+                        <div class="-name">Carte sympa</div>
+                        <div class="-cost">8</div>
+                    </div>
+                    <div class="-image">
+                        <canvas class="-draw-canvas" height="300" width="500"></canvas>
+                    </div>
+                    <div class="-desc">
+                        <div>Lorem ipsum dolor sit amet, consectetur adipiscing elit.  Nulla nec purus feugiat, molestie ipsum et, consequat nibh. Etiam non elit dui. Nullam vel eros sit amet arcu vestibulum accumsan in in leo.</div>
+                    </div>
+                    <div class="-attribs">
+                        <div class="-attack">
+                            <svg class="-shape" viewBox="0 0 23 16.36">
+                                <use href="#card-svg-attr"/>
+                            </svg>
+                            <div class="-val">5</div>
+                        </div>
+                        <div class="-health">
+                            <svg class="-shape" viewBox="0 0 23 16.36">
+                                <use href="#card-svg-attr"/>
+                            </svg>
+                            <div class="-val">5</div>
+                        </div>
+                    </div>
+                </div>
+            </foreignObject>
+        </svg>
+    </div>
+    <p>Nom : <br/> <input type="text" class="-name-input" value="@Model.Name"/></p>
+    <p>Description : <br/> <textarea class="-desc-input" value="@Model.Description"></textarea> </p>
+    <p>Attaque : <br/> <input class="-attack-input" type="number" value="@Model.Attack"/></p>
+    <p>Vie : <br/> <input class="-health-input" type="number" value="@Model.Health"/></p>
+    <p>Coût : <br/> <input class="-cost-input" type="number" value="@Model.Cost"/></p>
+</div>
