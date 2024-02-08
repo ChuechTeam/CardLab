@@ -1,41 +1,28 @@
 ﻿using System.Collections.Immutable;
+using System.Diagnostics;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CardLab.Game;
 
-public sealed class Player
+public sealed class GameSession
 {
-    // The id of the player in the current session.
-    public required int Id { get; init; }
-
-    public required string Name { get; init; }
-
-    public required UserToken LoginToken { get; init; }
-
-    public Card[] Cards { get; init; } = [];
-}
-
-public enum GamePhase
-{
-    WaitingForPlayers,
-    CreatingCards,
-    PostCreate,
-    Ended,
-    Terminated
-}
-
-public sealed class GameSession(int id, string code)
-{
-    // The id of the session.
-    public int Id { get; } = id;
+    // The id of the session. Only unique during the server's lifetime.
+    public int Id { get; }
 
     // The invitation code. Should be unique per session.
-    public string Code { get; } = code;
+    public string Code { get; }
+
+    // A unique identifier used to refer to the session after it has ended, in databases or file systems.
+    public Guid PermanentId { get; } = Guid.NewGuid();
 
     public UserToken HostToken { get; } = UserToken.Generate();
+    public UserSocket HostSocket { get; } = new();
 
-    public int CardsPerPlayer { get; private set; } = 2;
+    // TODO: Make this mutable?
+    public int CardsPerPlayer { get; } = 2;
 
-    public GamePhase Phase { get; private set; } = GamePhase.WaitingForPlayers;
+    public GamePhase Phase { get; private set; }
+    public GamePhaseName PhaseName => Phase.Name;
 
     // We use an immutable dictionaries here so we don't need to lock the session every time we want
     // to check if the player is authenticated.
@@ -49,115 +36,120 @@ public sealed class GameSession(int id, string code)
 
     private int _idCounter = 1;
 
-    private ReaderWriterLockSlim _lock = new();
+    public GameSession(int id, string code)
+    {
+        Id = id;
+        Code = code;
+        
+        Phase = new WaitingForPlayersPhase(this);
+    }
+    
+    // The lock is public as other components like Player and GamePhase can use it.
+    public object Lock { get; } = new();
 
-    // Locking is a VERY BAD SOLUTION right now for concurrency... but it works fine for small
+    // Although... locking is still a VERY BAD SOLUTION right now for concurrency... but it works fine for small
     // amounts of players in a session.
     // This is just a temporary solution right now, the better way to do this would be to
     // use a command queue (in-memory, of course).
-
-    // Create a new read-only transaction, which should be used when reading mutable data.
-    public SessionTransaction CreateReadTransaction()
+    
+    public Result<Player> AddPlayer(string name)
     {
-        var transact = new SessionTransaction(this, false);
-        _lock.EnterReadLock();
-        return transact;
-    }
-
-    public SessionTransaction CreateReadWriteTransaction()
-    {
-        var transact = new SessionTransaction(this, true);
-        _lock.EnterWriteLock();
-        return transact;
-    }
-
-    // The methods now! Methods assume you're inside a read or read-write transaction, depending
-    // on the method.
-
-    // Requires a read-write transaction.
-    public Player AddPlayer(string name)
-    {
-        if (Phase != GamePhase.WaitingForPlayers)
+        lock (Lock)
         {
-            throw new InvalidOperationException("Cannot add players after the game has started");
-        }
-
-        int id = _idCounter;
-        _idCounter++;
-
-        var player = new Player
-        {
-            Id = id, 
-            Name = name, 
-            LoginToken = UserToken.Generate(), 
-            Cards = Enumerable.Range(0, CardsPerPlayer).Select(_ => new Card()).ToArray()
-        };
-        Players = Players.Add(id, player);
-        PlayersByToken = PlayersByToken.Add(player.LoginToken, player);
-        return player;
-    }
-
-    // Requires a read-write transaction.
-    // Returns false if the player has not been found.
-    public bool PlayerQuit(int id)
-    {
-        if (Players.TryGetValue(id, out var player))
-        {
-            if (Phase == GamePhase.WaitingForPlayers)
+            if (Phase.Name != GamePhaseName.WaitingForPlayers)
             {
-                // Remove the player
-                Players = Players.Remove(id);
-                PlayersByToken = PlayersByToken.Remove(player.LoginToken);
+                return Result.Fail<Player>("La partie a déjà commencé");
+            }
+
+            int id = _idCounter;
+            _idCounter++;
+
+            var player = new Player(this, CardsPerPlayer)
+            {
+                Id = id,
+                Name = name,
+                LoginToken = UserToken.Generate()
+            };
+            Players = Players.Add(id, player);
+            PlayersByToken = PlayersByToken.Add(player.LoginToken, player);
+
+            return Result.Success(player);
+        }
+    }
+
+    public Result<Unit> PlayerQuit(int id)
+    {
+        lock (Lock)
+        {
+            if (Players.TryGetValue(id, out var player))
+            {
+                if (Phase.Name == GamePhaseName.WaitingForPlayers)
+                {
+                    // Remove the player
+                    Players = Players.Remove(id);
+                    PlayersByToken = PlayersByToken.Remove(player.LoginToken);
+                }
+                else
+                {
+                    // Mark them as left?
+                }
             }
             else
             {
-                // Mark them as left?
+                return Result.Fail("Joueur non trouvé");
             }
-        }
-        else
-        {
-            return false;
-        }
 
-        return true;
+            return Result.Success();
+        }
     }
 
-    // Requires a read-write transaction.
-    public bool StartGame()
+    public void SwitchPhase(GamePhaseName newPhase)
     {
-        if (Phase != GamePhase.WaitingForPlayers)
+        lock (Lock)
         {
-            return false;
+            if (Phase.Name == newPhase)
+            {
+                throw new InvalidOperationException("Attempted to switch to the same phase.");
+            }
+            
+            Phase.OnEnd();
+            Phase = newPhase switch
+            {
+                GamePhaseName.CreatingCards => new CreatingCardsPhase(this),
+                GamePhaseName.PostCreate => new PostCreatePhase(this),
+                GamePhaseName.Ended => new EndedPhase(this),
+                GamePhaseName.Terminated => new TerminatedPhase(this),
+                _ => throw new ArgumentOutOfRangeException(nameof(newPhase))
+            };
+            Phase.OnStart();
         }
-
-        if (Players.Count < 1)
+    }
+    
+    public Result<Unit> StartGame()
+    {
+        lock (Lock)
         {
-            return false;
+            if (Phase.Name != GamePhaseName.WaitingForPlayers)
+            {
+                return Result.Fail("La partie a déjà commencé");
+            }
+
+            if (Players.Count < 1)
+            {
+                return Result.Fail("Il n'y a pas assez de joueurs");
+            }
+
+            SwitchPhase(GamePhaseName.CreatingCards);
+
+            return Result.Success();
         }
-
-        Phase = GamePhase.CreatingCards;
-
-        return true;
     }
 
-    // Requires a read-write transaction.
     public void TerminateGame()
     {
-        Phase = GamePhase.Terminated;
-    }
-
-    public readonly struct SessionTransaction(GameSession session, bool rw) : IDisposable
-    {
-        public void Dispose()
+        lock (Lock)
         {
-            if (rw)
-            {
-                session._lock.ExitWriteLock();
-            }
-            else
-            {
-                session._lock.ExitReadLock();
-            }
+            SwitchPhase(GamePhaseName.Terminated);
         }
     }
 }

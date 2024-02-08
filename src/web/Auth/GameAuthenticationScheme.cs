@@ -14,18 +14,22 @@ public class GameAuthenticationOptions : AuthenticationSchemeOptions
 
 public sealed class GameUserPrincipal : ClaimsPrincipal
 {
-    public GameUserPrincipal(GameSession session, int? playerId)
+    public GameUserPrincipal(GameSession session, Player? player)
     {
         GameSession = session;
         GameId = session.Id;
-        PlayerId = playerId;
+        Player = player;
+        PlayerId = player?.Id;
         var id = new ClaimsIdentity(null, "Game");
-        id.AddClaim(new Claim("Name", $"{GameId};{playerId}"));
+        id.AddClaim(new Claim("Name", $"{GameId};{player?.Id ?? -1}"));
         AddIdentity(id);
     }
 
     public int GameId { get; }
+    public Player? Player { get; }
     public int? PlayerId { get; }
+
+    public UserSocket Socket => Player?.Socket ?? GameSession.HostSocket;
 
     public GameSession GameSession { get; }
 
@@ -73,19 +77,18 @@ public class GameAuthenticationHandler : AuthenticationHandler<GameAuthenticatio
             return FailAndReset("Game not found");
         }
 
-        if (session.Phase == GamePhase.Terminated)
+        if (session.PhaseName == GamePhaseName.Terminated)
         {
             Response.Headers.Append("CL-Game-Terminated", "true");
             return FailAndReset("Game has been terminated.");
         }
-
-        // This map can be accessed without using a read-only transaction.
+        
         Player? player = session.PlayersByToken.GetValueOrDefault(token);
 
         if (player != null || session.HostToken == token)
         {
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(
-                new GameUserPrincipal(session, player?.Id), "Game"
+                new GameUserPrincipal(session, player), "Game"
             )));
         }
         else

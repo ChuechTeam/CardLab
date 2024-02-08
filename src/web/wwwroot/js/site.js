@@ -5,6 +5,7 @@ const lobbyUrl = new URL("/game/lobby", baseUrl);
 
 const cardLab = {
     gameContainer: null,
+    socket: null,
     refreshInterval: 2000,
 
     cardEditors: [],
@@ -39,8 +40,28 @@ const cardLab = {
         for (const n of nodes) {
             this.cardEditors.push(new CardEditor(n));
         }
+    },
+    
+    startSocket() {
+        const domainRoot = window.location.host;
+        this.socket = new WebSocket(`ws://${domainRoot}/api/game/ws`);
+        
+        // Add all the event listeners for debugging
+        this.socket.addEventListener("open", () => console.log("Socket opened"));
+        this.socket.addEventListener("close", () => console.log("Socket closed"));
+        this.socket.addEventListener("error", () => console.log("Socket error"));
+        this.socket.addEventListener("message", (e) => console.log("Socket message", e.data));
+    },
+    
+    askTheServerToPingMePlease() {
+        fetch(new URL("api/game/ping-me", baseUrl), { method: 'POST' })
+            .then((_) => console.log("i should be pinged now"))
+            .catch((e) => console.error("Failed to ping server", e));
     }
 }
+
+// Handy for debugging
+window.cardLab = cardLab
 
 class CardEditor {
     constructor(node) {

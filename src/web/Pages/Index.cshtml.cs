@@ -58,37 +58,38 @@ public class IndexModel : PageModel
             return Page();
         }
 
-        int playerId;
-        using (session.CreateReadWriteTransaction())
+        if (session.PhaseName != GamePhaseName.WaitingForPlayers)
         {
-            if (session.Phase != GamePhase.WaitingForPlayers)
-            {
-                JoinErrMsg = "La partie a déjà commencé.";
-                return Page();
-            }
-
-            var player = session.AddPlayer(PlayerName);
-            playerId = player.Id;
+            JoinErrMsg = "La partie a déjà commencé.";
+            return Page();
         }
-        
-        await HttpContext.SignInAsync("Game", new GameUserPrincipal(session, playerId));
-        return RedirectToPage("/Game/Lobby");
+
+        var result = session.AddPlayer(PlayerName);
+
+        if (result.SucceededWith(out var player))
+        {
+            await HttpContext.SignInAsync("Game", new GameUserPrincipal(session, player));
+            return RedirectToPage("/Game/Index");
+        }
+        else
+        {
+            JoinErrMsg = result.Error ?? "";
+            return Page();
+        }
     }
-    
+
     public IActionResult OnPostQuit()
     {
         if (User is GameUserPrincipal gameUser)
         {
-            using (gameUser.GameSession.CreateReadWriteTransaction())
+            if (gameUser.PlayerId != null)
             {
-                if (gameUser.PlayerId != null)
-                {
-                    gameUser.GameSession.PlayerQuit(gameUser.PlayerId.Value);
-                }
-                else
-                {
-                    gameUser.GameSession.TerminateGame();
-                }
+                // Purposefully ignore any error.
+                gameUser.GameSession.PlayerQuit(gameUser.PlayerId.Value);
+            }
+            else
+            {
+                gameUser.GameSession.TerminateGame();
             }
 
             HttpContext.SignOutAsync("Game");

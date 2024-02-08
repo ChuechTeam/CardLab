@@ -20,7 +20,8 @@
             this.strokeUpdate(pos.x, pos.y);
         })
         this.canvas.addEventListener("touchmove", e => {
-            const pos = this.getMousePos(e.changedTouches[0]);
+            // Only support single touch for now.
+            const pos = this.getMousePos(e.touches[0]);
             this.strokeUpdate(pos.x, pos.y);
             e.preventDefault()
         });

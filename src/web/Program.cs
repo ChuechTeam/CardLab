@@ -9,17 +9,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddAuthentication()
     .AddScheme<GameAuthenticationOptions, GameAuthenticationHandler>("Game", o => { });
-builder.Services.AddAuthorization(o =>
-{
-    o.AddPolicy("InGame", p =>
-    {
-        p.RequireAuthenticatedUser();
-    });
-});
-builder.Services.AddRazorPages(options =>
-{
-    options.Conventions.AuthorizeFolder("/Game", "InGame");
-});
+builder.Services.AddAuthorization(o => { o.AddPolicy("InGame", p => { p.RequireAuthenticatedUser(); }); });
+builder.Services.AddRazorPages(options => { options.Conventions.AuthorizeFolder("/Game", "InGame"); });
 builder.Services.AddControllers();
 builder.Services.AddRouting(r =>
 {
@@ -45,6 +36,8 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.UseAuthorization();
+
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
 
 app.MapRazorPages();
 app.MapControllers();

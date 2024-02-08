@@ -8,7 +8,7 @@ namespace CardLab.Pages.Game;
 
 public class Lobby : GamePageModel
 {
-    public GamePhase Phase { get; set; }
+    public GamePhaseName Phase { get; set; }
 
     public string Code { get; set; } = "";
 
@@ -23,36 +23,27 @@ public class Lobby : GamePageModel
             ViewData["NoLayout"] = true;
         }
 
-        using (Session.CreateReadTransaction())
+        Phase = Session.PhaseName;
+        if (Phase != GamePhaseName.WaitingForPlayers)
         {
-            Phase = Session.Phase;
-            if (Phase != GamePhase.WaitingForPlayers)
-            {
-                return RedirectToPage("/Game/Index");
-            }
-
-            Code = Session.Code;
-            Players = Session.Players.Values.Select(p => p.Name).ToImmutableArray();
+            return RedirectToPage("/Game/Index");
         }
+
+        Code = Session.Code;
+        Players = Session.Players.Values.Select(p => p.Name).ToImmutableArray();
 
         return Page();
     }
 
     public IActionResult OnPostStart()
     {
-        if (!IsTheHost)
+        if (IsTheHost)
         {
-            return RedirectToPage("/Game/Index");
-        }
-
-        using (Session.CreateReadWriteTransaction())
-        {
-            if (Session.Phase != GamePhase.WaitingForPlayers)
+            var result = Session.StartGame(); // May fail!
+            if (result.FailedWith(out var errMsg))
             {
-                return RedirectToPage("/Game/Index");
+                // TODO: Show error message
             }
-
-            Session.StartGame();
         }
 
         return RedirectToPage("/Game/Index");
@@ -62,10 +53,7 @@ public class Lobby : GamePageModel
     {
         if (IsTheHost)
         {
-            using (Session.CreateReadWriteTransaction())
-            {
-                Session.TerminateGame();
-            }
+            Session.TerminateGame();
         }
 
         return RedirectToPage("/Game/Index");
@@ -75,10 +63,8 @@ public class Lobby : GamePageModel
     {
         if (Player != null)
         {
-            using (Session.CreateReadWriteTransaction())
-            {
-                Session.PlayerQuit(Player.Id);
-            }
+            // Ignore any errors.
+            Session.PlayerQuit(Player.Id);
         }
 
         return RedirectToPage("/Game/Index");
