@@ -1,6 +1,7 @@
 ﻿using System.Security.Claims;
 using System.Text.Encodings.Web;
 using CardLab.Game;
+using CardLab.Game.Communication;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 
@@ -22,6 +23,10 @@ public sealed class GameUserPrincipal : ClaimsPrincipal
         PlayerId = player?.Id;
         var id = new ClaimsIdentity(null, "Game");
         id.AddClaim(new Claim("Name", $"{GameId};{player?.Id ?? -1}"));
+        if (IsHost)
+        {
+            id.AddClaim(new Claim("IsHost", "true"));
+        }
         AddIdentity(id);
     }
 

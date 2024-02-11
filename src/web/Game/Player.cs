@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using CardLab.Game.Communication;
 
 namespace CardLab.Game;
 
@@ -15,15 +16,15 @@ public sealed class Player(GameSession session, int cardCount)
 
     // -- Mutable state --
 
-    public ImmutableArray<Card> Cards { get; private set; } =
-        Enumerable.Range(0, cardCount).Select(_ => new Card()).ToImmutableArray();
+    public ImmutableArray<CardDefinition> Cards { get; private set; } =
+        Enumerable.Range(0, cardCount).Select(_ => new CardDefinition()).ToImmutableArray();
 
     public ImmutableArray<bool> PendingCardUploads { get; private set; } =
         Enumerable.Range(0, cardCount).Select(_ => false).ToImmutableArray();
 
     // -- Functions --
 
-    public void UpdateCard(Card card, int index)
+    public void UpdateCard(CardDefinition cardDefinition, int index)
     {
         if (index > Cards.Length || index < 0)
         {
@@ -32,7 +33,7 @@ public sealed class Player(GameSession session, int cardCount)
 
         lock (session.Lock)
         {
-            Cards = Cards.SetItem(index, card);
+            Cards = Cards.SetItem(index, cardDefinition);
         }
     }
 

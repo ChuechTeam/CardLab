@@ -1,12 +1,30 @@
-﻿export class DrawCanvas {
+﻿export class DrawCanvas extends HTMLElement {
     /**
      * Make a new draw canvas for your drawing pleasures
-     * @param canvas {HTMLCanvasElement}
      */
-    constructor(canvas) {
-        this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
+    constructor() {
+        super();
+
+        /**
+         * 
+         * @type {HTMLCanvasElement | null}
+         */
+        this.canvas = null;
+    }
+    
+    connectedCallback() {
+        const dom = this.attachShadow({mode: 'open'});
+        const canvas = document.createElement("canvas")
+        canvas.width = 625
+        canvas.height = 375
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
         
+        dom.appendChild(canvas)
+        
+        this.canvas = canvas
+        this.ctx = canvas.getContext('2d');
+
         this.canvas.addEventListener("mousedown", e => {
             this.strokeStart()
         })
@@ -14,7 +32,7 @@
             this.strokeStart()
             e.preventDefault()
         })
-        
+
         this.canvas.addEventListener("mousemove", e => {
             const pos = this.getMousePos(e);
             this.strokeUpdate(pos.x, pos.y);
@@ -25,7 +43,7 @@
             this.strokeUpdate(pos.x, pos.y);
             e.preventDefault()
         });
-        
+
         this.canvas.addEventListener("mouseup", e => {
             this.strokeEnd()
         })
@@ -33,10 +51,10 @@
             this.strokeEnd()
             e.preventDefault()
         });
-        
+
         document.addEventListener("mouseup", e => { this.strokeEnd() })
         document.addEventListener("touchend", e => { this.strokeEnd() })
-        
+
         this.strokeReset()
     }
     
@@ -69,6 +87,9 @@
     }
     
     strokeEnd() {
+        if (this.strokeData.ongoing) {
+            this.dispatchEvent(new Event("stroke-ended"));
+        }
         this.strokeReset()
     }
 
@@ -80,3 +101,5 @@
         };
     }
 }
+
+customElements.define("draw-canvas", DrawCanvas)

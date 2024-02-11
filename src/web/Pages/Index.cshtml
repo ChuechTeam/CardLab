@@ -19,9 +19,12 @@
             <p style="color: darkred;">@Model.JoinErrMsg</p>
         }
         <p>Code : </p>
-        <input type="text" asp-for="JoinCode"/>
+        <input type="text" 
+               oninput="let p=this.selectionStart;this.value=this.value.toUpperCase();this.setSelectionRange(p, p);"
+               asp-for="JoinCode"
+               required/>
         <p>Votre nom : </p>
-        <input type="text" asp-for="PlayerName"/>
+        <input type="text" asp-for="PlayerName" required/>
         <p><button>Rejoindre</button></p>
     </form>
 }

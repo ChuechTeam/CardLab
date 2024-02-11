@@ -51,6 +51,12 @@ public class IndexModel : PageModel
             return RedirectToPage("/Game/Index");
         }
 
+        if (string.IsNullOrWhiteSpace(JoinCode))
+        {
+            JoinErrMsg = "Code invalide.";
+            return Page();
+        }
+        
         var session = _state.FindSession(JoinCode);
         if (session is null)
         {

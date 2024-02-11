@@ -1,13 +1,6 @@
-﻿using System.Text.Json.Serialization;
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 
-namespace CardLab.Game;
-
-[JsonDerivedType(typeof(HelloWorldMessage), "hello-world")]
-[JsonPolymorphic(TypeDiscriminatorPropertyName = "_type")]
-public abstract record LabMessage;
-
-public record HelloWorldMessage(string Message) : LabMessage();
+namespace CardLab.Game.Communication;
 
 // An extremely basic socket for communicating messages with the client.
 // Messages are delivered through WebSockets, so they are fairly reliable (cause it's TCP), 
@@ -49,10 +42,9 @@ public sealed class UserSocket
             
             Connected = true;
             ConnectionId++;
-
-            var token = CancelToken.Token;
-            CancelToken = new CancellationTokenSource();
             
+            var token = CancelToken.Token;
+
             return new Connection(SendChannel, ConnectionId, token);
         }
     }
@@ -68,11 +60,12 @@ public sealed class UserSocket
             
             Connected = false;
             
+            CancelToken.Cancel();
+            CancelToken = new CancellationTokenSource();
+            
             // Discard all messages and notify that the connection is closed using the channel and the token.
             SendChannel.Writer.Complete();
             SendChannel = Channel.CreateBounded<LabMessage>(ChannelOptions);
-            
-            CancelToken.Cancel();
         }
     }
     

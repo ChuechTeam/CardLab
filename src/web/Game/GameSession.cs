@@ -1,5 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.Diagnostics;
+using CardLab.Game.Communication;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CardLab.Game;
@@ -72,6 +73,8 @@ public sealed class GameSession
             };
             Players = Players.Add(id, player);
             PlayersByToken = PlayersByToken.Add(player.LoginToken, player);
+            
+            BroadcastMessage(new LobbyPlayerUpdatedMessage(id, player.Name, LobbyPlayerUpdateKind.Join));
 
             return Result.Success(player);
         }
@@ -93,12 +96,14 @@ public sealed class GameSession
                 {
                     // Mark them as left?
                 }
+                
+                BroadcastMessage(new LobbyPlayerUpdatedMessage(id, player.Name, LobbyPlayerUpdateKind.Quit));
             }
             else
             {
                 return Result.Fail("Joueur non trouvé");
             }
-
+            
             return Result.Success();
         }
     }
@@ -122,6 +127,16 @@ public sealed class GameSession
                 _ => throw new ArgumentOutOfRangeException(nameof(newPhase))
             };
             Phase.OnStart();
+
+            // Send message to host and players
+            var hostState = Phase.GetStateForHost();
+            HostSocket.SendMessage(new SwitchedPhaseMessage(newPhase, hostState));
+
+            foreach (var player in Players.Values)
+            {
+                var playerState = Phase.GetStateForUser(player);
+                player.Socket.SendMessage(new SwitchedPhaseMessage(newPhase, playerState));
+            }
         }
     }
     
@@ -150,6 +165,18 @@ public sealed class GameSession
         lock (Lock)
         {
             SwitchPhase(GamePhaseName.Terminated);
+        }
+    }
+
+    public void BroadcastMessage(LabMessage message)
+    {
+        lock (Lock)
+        {
+            HostSocket.SendMessage(message);
+            foreach (var player in Players.Values)
+            {
+                player.Socket.SendMessage(message);
+            }
         }
     }
 }

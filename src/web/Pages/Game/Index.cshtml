@@ -1,2 +1,10 @@
 ﻿@page
 @model CardLab.Pages.Game.Index
+<div id="game-container"></div>
+@* JS will inject stuff in the game-container div *@
+
+@section Scripts {
+    @* temporary solution! *@
+    <script src="https://unpkg.com/blockly/blockly_compressed.js"></script>
+    <script src="~/js/game.js" type="module" asp-append-version="true"></script>
+}

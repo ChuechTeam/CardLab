@@ -1,11 +1,16 @@
 using System.Buffers;
+using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Net.WebSockets;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using CardLab.Auth;
 using CardLab.Game;
+using CardLab.Game.Communication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Localization.Routing;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
@@ -15,9 +20,17 @@ namespace CardLab.API
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
-    public class GameController(IOptions<JsonOptions> jsonOpt, ILogger<GameController> logger) : ControllerBase
+    public class GameController(
+        IOptions<JsonOptions> jsonOpt,
+        ILogger<GameController> logger,
+        IHostApplicationLifetime lifetime) : ControllerBase
     {
+        public const WebSocketCloseStatus ConnectionReplacedCode = (WebSocketCloseStatus)3001;
+        public const WebSocketCloseStatus ServerShuttingDownCode = (WebSocketCloseStatus)3002;
+
+
         [Route("ws")]
+        [SuppressMessage("ReSharper.DPA", "DPA0011: High execution time of MVC action")]
         public async Task AcceptWebSocketAsync()
         {
             if (!HttpContext.WebSockets.IsWebSocketRequest)
@@ -32,7 +45,7 @@ namespace CardLab.API
                 CancellationToken token)
             {
                 var message = await channel.Reader.ReadAsync(token);
-                var buffer = JsonSerializer.SerializeToUtf8Bytes(message, message.GetType(), serializerOptions);
+                var buffer = JsonSerializer.SerializeToUtf8Bytes(message, serializerOptions);
 
                 await wSocket.SendAsync(buffer, WebSocketMessageType.Text, true, token);
             }
@@ -44,14 +57,31 @@ namespace CardLab.API
             var userSocket = player?.Socket ?? session.HostSocket;
             using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
 
-            var (send, id, token) = userSocket.StartConnection();
+            var (send, id, connectionReplacedToken) = userSocket.StartConnection();
 
-            WebSocketReceiveResult? closingResult = null;
+            // Send the welcome message now
+            // TODO: Fix (very rare) possible race condition issue when a message gets sent before the
+            //       welcome message.
+            send.Writer.TryWrite(
+                new WelcomeMessage(
+                    player is not null ? new PlayerPayload(player.Id, player.Name) : null,
+                    session.PhaseName,
+                    session.Phase.GetStateForUser(player))
+            );
+
+            // Create a token that activates when either of these two tokens are cancelled:
+            // - Application shutdown
+            // - The user socket is replaced by another connection.
+            using var ultimateTokenSrc =
+                CancellationTokenSource.CreateLinkedTokenSource(connectionReplacedToken, lifetime.ApplicationStopping);
+            var token = ultimateTokenSrc.Token;
+
+            var closeStatus = WebSocketCloseStatus.InternalServerError;
+            var closeDesc = "Something very wrong happened, and nobody in this room knows why...";
             try
             {
                 var readBuffer = new byte[1024 * 8];
-                
-                // TODO: Handle timeouts with a ping/pong message.
+
                 var receiveTask =
                     webSocket.ReceiveAsync(new ArraySegment<byte>(readBuffer), token);
                 var sendTask = SendMessageInQueue(send, webSocket, jsonOpt.Value.SerializerOptions, default);
@@ -69,9 +99,19 @@ namespace CardLab.API
                     if (task == receiveTask)
                     {
                         // Stop the loop if we get a cancellation request from the client.
-                        if (receiveTask.Result.CloseStatus != null)
+                        var res = receiveTask.Result;
+                        if (res.CloseStatus != null)
                         {
-                            closingResult = receiveTask.Result;
+                            if (res.CloseStatus is { } stat)
+                            {
+                                closeStatus = stat;
+                            }
+
+                            if (res.CloseStatusDescription is { } desc)
+                            {
+                                closeDesc = res.CloseStatusDescription;
+                            }
+
                             break;
                         }
 
@@ -88,7 +128,18 @@ namespace CardLab.API
             }
             catch (AggregateException e) when (e.InnerException is OperationCanceledException or ChannelClosedException)
             {
-                logger.LogInformation("WebSocket connection cancelled by UserSocket cancellation");
+                if (connectionReplacedToken.IsCancellationRequested || e.InnerException is ChannelClosedException)
+                {
+                    logger.LogInformation("WebSocket connection cancelled by UserSocket cancellation");
+                    closeStatus = ConnectionReplacedCode;
+                    closeDesc = "Another device has been connected to the game.";
+                }
+                else
+                {
+                    logger.LogInformation("WebSocket connection cancelled by application shutdown");
+                    closeStatus = ServerShuttingDownCode;
+                    closeDesc = "The server is shutting down.";
+                }
             }
             catch (Exception e)
             {
@@ -97,84 +148,11 @@ namespace CardLab.API
             finally
             {
                 userSocket.StopConnection(id);
-                
-                await webSocket.CloseAsync(
-                    closingResult?.CloseStatus ?? WebSocketCloseStatus.InternalServerError,
-                    closingResult?.CloseStatusDescription ?? "Something strange happened... Who knows?",
-                    CancellationToken.None);
-            }
-        }
 
-        public record CardInput(string Name, string Description, int Attack, int Health);
-
-        // Limit the image size to 1 MB, which is larger than the maximum size of a
-        // raw bitmap image of size 300x500 (600000 bytes).
-        private const int MaxCardImageSize = 1024 * 1024; // 1 MB
-
-        private string GetCardImagePath(GameSession session, int playerId, int cardIndex, out string dir)
-        {
-            // TODO: should be configurable and cleaned automatically when exceeding a total size.
-            var rootDir = Path.Combine(Path.GetTempPath(), "CardLabAssets");
-            var gameDir = Path.Combine(rootDir, session.PermanentId.ToString());
-            dir = Path.Combine(gameDir, "Cards");
-            var imgFile = Path.Combine(dir, $"{playerId}_{cardIndex}.png");
-            return imgFile;
-        }
-
-        [HttpPost("cards/{index:int}/image")]
-        public async Task<IActionResult> PostCardImage(IFormFile file, int index)
-        {
-            if (file.ContentType != "image/png")
-            {
-                return BadRequest("Only PNG images are supported.");
-            }
-
-            if (file.Length > MaxCardImageSize)
-            {
-                return BadRequest("File too large.");
-            }
-
-            var user = ((GameUserPrincipal)User);
-            var session = user.GameSession;
-            if (user.PlayerId is not { } playerId)
-            {
-                return BadRequest("The host can't upload files (why do you want to do that?)");
-            }
-
-            if (session.CardsPerPlayer <= index || index < 0)
-            {
-                return BadRequest("Invalid card index.");
-            }
-
-            // Is this check unnecessary? BeginCardUpload already does it...
-            if (session.PhaseName != GamePhaseName.CreatingCards)
-            {
-                return BadRequest($"Wrong phase. (Phase=${session.PhaseName})");
-            }
-
-            var player = session.Players[playerId];
-            var result = player.BeginCardUpload(index);
-
-            if (result.FailedWith(out var msg))
-            {
-                return Problem(msg);
-            }
-
-            try
-            {
-                var path = GetCardImagePath(session, playerId, index, out string dir);
-                Directory.CreateDirectory(dir);
-
-                await using (var stream = System.IO.File.Create(path))
+                if (webSocket.State is not WebSocketState.Closed and not WebSocketState.Aborted)
                 {
-                    await file.CopyToAsync(stream);
+                    await webSocket.CloseAsync(closeStatus, closeDesc, CancellationToken.None);
                 }
-
-                return Ok();
-            }
-            finally
-            {
-                player.EndCardUpload(index).ThrowIfFailed();
             }
         }
 
@@ -187,6 +165,27 @@ namespace CardLab.API
             return Ok();
         }
 
+        [HttpGet("hello")]
+        public ActionResult<HelloApiModel> GetHello()
+        {
+            var user = (GameUserPrincipal)User;
+            var session = user.GameSession;
+
+            var me = user.Player is { } p ? new PlayerPayload(p.Id, p.Name) : null;
+
+            return new HelloApiModel(
+                new GameStateApiModel(session.PhaseName, session.Phase.GetStateForUser(user.Player)), me);
+        }
+
+        [HttpGet("state")]
+        public ActionResult<GameStateApiModel> GetState()
+        {
+            var user = (GameUserPrincipal)User;
+            var session = user.GameSession;
+
+            return new GameStateApiModel(session.PhaseName, session.Phase.GetStateForUser(user.Player));
+        }
+
         // [HttpPost("cards/{index:int}")]
         // public IActionResult PostCard(int index, CardInput input)
         // {
@@ -194,3 +193,7 @@ namespace CardLab.API
         // }
     }
 }
+
+public record GameStateApiModel(GamePhaseName Name, PhaseStatePayload? State);
+
+public record HelloApiModel(GameStateApiModel Phase, PlayerPayload? Me);

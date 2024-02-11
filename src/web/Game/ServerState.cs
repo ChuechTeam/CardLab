@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using System.Collections.Immutable;
+using System.Security.Cryptography;
 
 namespace CardLab.Game;
 
@@ -69,4 +70,17 @@ public class ServerState
             _lock.ExitWriteLock();
         }
     }
+
+    public ImmutableArray<GameSession> GetAllSessions()
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return _sessions.Values.ToImmutableArray();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    } 
 }

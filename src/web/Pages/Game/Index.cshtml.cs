@@ -10,11 +10,13 @@ public class Index : GamePageModel
 {
     public IActionResult OnGet()
     {
-        return (Session.PhaseName, IsTheHost) switch
-        {
-            (GamePhaseName.WaitingForPlayers, _) => RedirectToPage("/Game/Lobby"),
-            (GamePhaseName.CreatingCards, false) => RedirectToPage("/Game/MakeCards"),
-            _ => Content("Y'a pas de page lol")
-        };
+        // return (Session.PhaseName, IsTheHost) switch
+        // {
+        //     (GamePhaseName.WaitingForPlayers, _) => RedirectToPage("/Game/Lobby"),
+        //     (GamePhaseName.CreatingCards, false) => RedirectToPage("/Game/MakeCards"),
+        //     _ => Content("Y'a pas de page lol")
+        // };
+
+        return Page();
     }
 }

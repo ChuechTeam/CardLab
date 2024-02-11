@@ -1,6 +1,9 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using CardLab.Auth;
 using CardLab.Game;
 using Microsoft.AspNetCore.Mvc;
+using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 [assembly: ApiController]
 
@@ -9,9 +12,19 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddAuthentication()
     .AddScheme<GameAuthenticationOptions, GameAuthenticationHandler>("Game", o => { });
-builder.Services.AddAuthorization(o => { o.AddPolicy("InGame", p => { p.RequireAuthenticatedUser(); }); });
+builder.Services.AddAuthorization(o =>
+{
+    o.AddPolicy("InGame", p => { p.RequireAuthenticatedUser(); });
+    o.AddPolicy("Host", p => { p.RequireClaim("IsHost", "true"); });
+});
 builder.Services.AddRazorPages(options => { options.Conventions.AuthorizeFolder("/Game", "InGame"); });
-builder.Services.AddControllers();
+var configJson = (JsonSerializerOptions o) =>
+{
+    var conv = new JsonStringEnumConverter(JsonNamingPolicy.CamelCase);
+    o.Converters.Add(conv);
+};
+builder.Services.ConfigureHttpJsonOptions(x => configJson(x.SerializerOptions));
+builder.Services.AddControllers().AddJsonOptions(x => configJson(x.JsonSerializerOptions));
 builder.Services.AddRouting(r =>
 {
     r.LowercaseUrls = true;
@@ -19,6 +32,7 @@ builder.Services.AddRouting(r =>
 });
 
 builder.Services.AddSingleton<ServerState>();
+builder.Services.AddSingleton<CardBalancer>();
 
 var app = builder.Build();
 

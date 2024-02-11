@@ -68,11 +68,11 @@ html {
     border: 1px solid var(--card-color);
 }
 
-.game-card-fields > .-image > canvas  {
+.game-card-fields > .-image > .-draw-canvas  {
     width: 100%;
     height: 100%;
+    display: block;
 }
-
 
 .game-card-fields > .-desc {
     grid-row: 3;
@@ -121,3 +121,25 @@ html {
 .game-card-fields > .-attribs > .-attack > .-shape {
     transform: scaleX(-1);
 }
+
+.blocklyTreeLabel {
+    font-family: "Chakra Petch", sans-serif;
+}
+
+.blocklyTreeRow {
+    padding: 3px 0;
+}
+
+.blocklyTreeRowContentContainer {
+    display: flex;
+    
+    align-content: center;
+    justify-content: center;
+    
+    padding: 0 4px;
+}
+
+.blocklyToolboxCategory {
+    margin: 0 4px !important;
+}
+
