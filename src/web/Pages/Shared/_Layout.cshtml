@@ -4,7 +4,13 @@
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>@ViewData["Title"] - CardLab</title>
-    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true"/>
+    <environment include="Development">
+        <script type="module" src="@DevServerStatus.ServerUrlWithBasePath/@@vite/client"></script>
+        <link rel="stylesheet" href="@DevServerStatus.ServerUrlWithBasePath/src/style.css" asp-append-version="true"/>
+    </environment>
+    <environment include="Production">
+        <link rel="stylesheet" href="~/client/assets/style.css" asp-append-version="true"/>
+    </environment>
 </head>
 <body>
 <header></header>
@@ -12,7 +18,6 @@
     @RenderBody()
 </main>
 <footer></footer>
-
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

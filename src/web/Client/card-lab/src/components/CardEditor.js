@@ -1,6 +1,6 @@
 ﻿import "./DrawCanvas.js";
 import "./CardStatInput.js";
-import "./CardScriptEditor.js"
+import "./CardScriptEditor.js"; // TODO: import async (correctly without it being ugly as hell)
 import {importGlobalStyles, registerTemplate} from "../dom.js";
 import {gameApi} from "../api.js";
 import {runAfterDelay} from "../async.js";
@@ -230,7 +230,7 @@ export class CardEditor extends HTMLElement {
                 this.updateDefinition(false)
             }
         })
-
+        
         this.updateDefinitionDom()
     }
 

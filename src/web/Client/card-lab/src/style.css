@@ -90,7 +90,7 @@ html {
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    
+
     margin: var(--card-inner-margin);
     padding-bottom: 4px;
 }
@@ -98,23 +98,23 @@ html {
 .game-card-fields > .-attribs > * {
     font-size: 2.25em;
     color: white;
-    
+
     display: flex;
     align-items: center;
     justify-content: center;
-    
+
     width: 23px;
     height: 16px;
-    
+
     position: relative;
 }
 
 .game-card-fields > .-attribs > * > .-shape {
     position: absolute;
-    
+
     top: 0;
     left: 0;
-    
+
     z-index: -2;
 }
 
@@ -132,10 +132,10 @@ html {
 
 .blocklyTreeRowContentContainer {
     display: flex;
-    
+
     align-content: center;
     justify-content: center;
-    
+
     padding: 0 4px;
 }
 

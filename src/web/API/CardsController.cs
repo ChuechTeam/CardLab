@@ -83,7 +83,7 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
         }
     }
 
-    public record CardInput(string Name, string Lore, int Cost, int Attack, int Health, CardScript Script);
+    public record CardInput(string Name, string Lore, int Cost, int Attack, int Health, CardScript? Script);
 
     public record CardPostResult(
         CardBalancer.ValidationSummary Validation,

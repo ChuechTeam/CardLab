@@ -4,7 +4,10 @@
 @* JS will inject stuff in the game-container div *@
 
 @section Scripts {
-    @* temporary solution! *@
-    <script src="https://unpkg.com/blockly/blockly_compressed.js"></script>
-    <script src="~/js/game.js" type="module" asp-append-version="true"></script>
+    <environment include="Development">
+        <script type="module" src="@DevServerStatus.ServerUrlWithBasePath/src/game.js"></script>
+    </environment>
+    <environment include="Production">
+        <script src="~/client/scripts/game.js" type="module" asp-append-version="true"></script>
+    </environment>
 }

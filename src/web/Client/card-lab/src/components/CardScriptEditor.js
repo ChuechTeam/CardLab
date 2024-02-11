@@ -1,4 +1,5 @@
 ﻿import {blocklyToolbox, blocklyWorkspaceToScript} from "../cardScript.js";
+import * as Blockly from 'blockly/core';
 
 class CardScriptEditor extends HTMLElement {
     constructor() {

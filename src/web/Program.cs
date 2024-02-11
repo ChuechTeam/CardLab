@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using CardLab.Auth;
 using CardLab.Game;
 using Microsoft.AspNetCore.Mvc;
+using Vite.AspNetCore.Extensions;
 using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 [assembly: ApiController]
@@ -34,6 +35,11 @@ builder.Services.AddRouting(r =>
 builder.Services.AddSingleton<ServerState>();
 builder.Services.AddSingleton<CardBalancer>();
 
+builder.Services.AddViteServices(opt =>
+{
+    opt.PackageDirectory = "Client/card-lab";
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -55,5 +61,10 @@ app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSecond
 
 app.MapRazorPages();
 app.MapControllers();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseViteDevelopmentServer();
+}
 
 app.Run();

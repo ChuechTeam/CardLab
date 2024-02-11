@@ -1,4 +1,6 @@
-﻿export let blocklyToolbox;
+﻿import * as Blockly from 'blockly/core';
+
+export let blocklyToolbox;
 
 export function initBlockly() {
     blocklyToolbox = {
