@@ -1,28 +1,13 @@
-﻿import "./DrawCanvas.js";
-import "./CardStatInput.js";
-import "./CardScriptEditor.js"; // TODO: import async (correctly without it being ugly as hell)
-import {importGlobalStyles, registerTemplate} from "../dom.js";
-import {gameApi} from "../api.js";
-import {runAfterDelay} from "../async.js";
+﻿import "./CardScriptEditor.ts"; // TODO: import async (correctly without it being ugly as hell)
+import {fromDom, LabElement, registerTemplate} from "../dom.ts";
+import {gameApi} from "../api.ts";
+import {runAfterDelay} from "../async.ts";
+import {DrawCanvas} from "./DrawCanvas.ts";
+import {CardStatInput} from "./CardStatInput.ts";
+import "./CardStatInput.ts"; // So the component gets registered
+import "./DrawCanvas.ts"; // So the component gets registered
 
-export class CardEditor extends HTMLElement {
-    constructor(card, index) {
-        super();
-
-        this.card = card;
-        this.cardIndex = index;
-
-        this.delayedImgUpload = runAfterDelay({
-            func: () => this.uploadCardImage(),
-            delay: 3000
-        })
-        this.delayedDefUpdate = runAfterDelay({
-            func: () => this.uploadDefinitionServer(),
-            delay: 400
-        })
-    }
-
-    static template = registerTemplate('card-editor-template', `
+const template = registerTemplate('card-editor-template', `
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
     <symbol viewBox="0 0 104.85 144.56" id="card-svg-bg">
         <defs>
@@ -185,30 +170,41 @@ export class CardEditor extends HTMLElement {
 </div>
 `)
 
-    connectedCallback() {
-        const dom = this.attachShadow({mode: 'open'});
-        const template = document.getElementById('card-editor-template');
+export class CardEditor extends LabElement {
+    delayedImgUpload= runAfterDelay({
+        func: () => this.uploadCardImage(),
+        delay: 3000
+    })
+    delayedDefUpdate = runAfterDelay({
+        func: () => this.uploadDefinitionServer(),
+        delay: 400
+    })
+    
+    @fromDom("card-name") nameTxt: HTMLElement = null!
+    @fromDom("card-cost") costTxt: HTMLElement = null!
+    @fromDom("card-attack") attackTxt: HTMLElement = null!
+    @fromDom("card-health") healthTxt: HTMLElement = null!
+    
+    @fromDom("name-input") nameInput: HTMLInputElement = null!
+    @fromDom("cost-input") costInput: CardStatInput = null!
+    @fromDom("attack-input") attackInput: CardStatInput = null!
+    @fromDom("health-input") healthInput: CardStatInput = null!
+    
+    @fromDom("card-canvas") cardCanvas: DrawCanvas = null!
+    @fromDom("script-editor") scriptEditor: HTMLElement = null!
+    
+    constructor(public card: CardDefinition, public cardIndex: number) {
+        super();
+        this.importGlobalStyles = true
+    }
 
-        importGlobalStyles(dom)
+    render() {
+        this.dom.appendChild(template.content.cloneNode(true))
+    }
 
-        dom.appendChild(template.content.cloneNode(true))
-
-        this.nameTxt = dom.getElementById("card-name");
-        this.costTxt = dom.getElementById("card-cost");
-        this.attackTxt = dom.getElementById("card-attack");
-        this.healthTxt = dom.getElementById("card-health");
-
-        this.nameInput = dom.getElementById("name-input");
-        this.costInput = dom.getElementById("cost-input");
-        this.attackInput = dom.getElementById("attack-input");
-        this.healthInput = dom.getElementById("health-input");
-
-        /**
-         * @type {DrawCanvas}
-         */
-        this.cardCanvas = dom.getElementById("card-canvas");
-        this.scriptEditor = dom.getElementById("script-editor");
-
+    connected() {
+        this.updateDefinitionDom()
+        
         for (const input of [this.costInput, this.attackInput, this.healthInput]) {
             input.addEventListener('decrement', () => this.addToStat(input, -1))
             input.addEventListener('increment', () => this.addToStat(input, 1))
@@ -219,26 +215,24 @@ export class CardEditor extends HTMLElement {
         })
 
         this.cardCanvas.addEventListener("stroke-ended", e => {
-            this.updateDefinition(false)
+            this.delayedImgUpload.run()
         })
         
         this.scriptEditor.addEventListener('script-updated', e => {
-            const script = e.detail.script
+            const script = (e as any).detail.script
             if (script !== null) {
                 console.log("New script: ", script)
                 this.card.script = script
                 this.updateDefinition(false)
             }
         })
-        
-        this.updateDefinitionDom()
     }
 
-    disconnectedCallback() {
+    disconnected() {
         // Upload the image before entering the next phase
         // ...It's a bit fragile though, we'll sort it later
         this.uploadCardImage().then(() => {
-            console.log("cool!")
+            console.log("cool! the image still got uploaded!")
         })
     }
 
@@ -251,9 +245,9 @@ export class CardEditor extends HTMLElement {
     
     updateDefinitionDom() {
         this.nameTxt.textContent = this.card.name;
-        this.costTxt.textContent = this.card.cost;
-        this.attackTxt.textContent = this.card.attack;
-        this.healthTxt.textContent = this.card.health;
+        this.costTxt.textContent = this.card.cost.toString();
+        this.attackTxt.textContent = this.card.attack.toString();
+        this.healthTxt.textContent = this.card.health.toString();
 
         this.costInput.value = this.card.cost;
         this.attackInput.value = this.card.attack;
@@ -268,7 +262,7 @@ export class CardEditor extends HTMLElement {
         console.log(`Uploaded card definition ${this.cardIndex}, we got: `, result)
     }
     
-    addToStat(inputSrc, delta) {
+    addToStat(inputSrc: CardStatInput, delta: number) {
         if (inputSrc === this.costInput) {
             if (this.card.cost + delta > 0 && this.card.cost + delta <= 10) {
                 this.card.cost += delta;
@@ -289,11 +283,8 @@ export class CardEditor extends HTMLElement {
     async uploadCardImage() {
         try {
             console.log(`Generating image for card ${this.cardIndex}...`)
-
-            /**
-             * @type {Blob}
-             */
-            const blob = await new Promise((resolve, reject) => {
+            
+            const blob = await new Promise<Blob>((resolve, reject) => {
                 this.cardCanvas.canvas.toBlob(blob => {
                     if (blob === null) {
                         reject(new Error('Blob is null'));
@@ -310,8 +301,6 @@ export class CardEditor extends HTMLElement {
             console.error(`Error uploading card image ${this.cardIndex}`, e)
         }
     }
-
-    
 }
 
 customElements.define('card-editor', CardEditor);

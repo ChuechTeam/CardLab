@@ -1,15 +1,19 @@
 ﻿import {CardEditor} from "./components/CardEditor.js";
-import {gameApi} from "./api.js";
-import {LobbyView} from "./views/LobbyView.js";
-import {PlayerCardWorkshopView} from "./views/PlayerCardWorkshopView.js";
-
+import {gameApi} from "./api.ts";
+import {LobbyView} from "./views/LobbyView.ts";
+import {PlayerCardWorkshopView} from "./views/PlayerCardWorkshopView.ts";
 const baseUrl = window.location.origin;
 
-class CardLab {
-    view = null;
+export class CardLab {
+    gameContainer: HTMLElement
+    player: Player | null
+    phase: PhaseName
+    phaseState: PhaseState
+    socket: WebSocket
+    view: HTMLElement | null = null
 
-    constructor(helloResponse, socket) {
-        this.gameContainer = document.getElementById("game-container");
+    constructor(helloResponse: WelcomeMessage, socket: WebSocket) {
+        this.gameContainer = document.getElementById("game-container")!;
         this.player = helloResponse.me;
         this.phase = helloResponse.phaseName;
         this.phaseState = helloResponse.phaseState;
@@ -30,7 +34,7 @@ class CardLab {
         } else {
             this.view = null;
         }
-        
+
         if (this.view !== null) {
             this.gameContainer.replaceChildren(this.view)
         } else {
@@ -49,27 +53,27 @@ class CardLab {
         });
     }
 
-    handleMessage(strMessage) {
+    handleMessage(strMessage: string) {
         const message = JSON.parse(strMessage)
 
         if (message.type === 'lobbyPlayerUpdated') {
+            const phState = this.phaseState as WaitingForPlayersPhaseState;
             if (message.kind === 'quit') {
                 let i = 0;
-                for (const player of this.phaseState.players) {
+                for (const player of phState.players) {
                     if (player.id === message.playerId) {
-                        this.phaseState.players.splice(i, 1)
+                        phState.players.splice(i, 1)
                         break;
                     } else {
                         i++
                     }
                 }
             } else if (message.kind === 'join') {
-                this.phaseState.players.push({id: message.playerId, name: message.playerName})
+                phState.players.push({id: message.playerId, name: message.playerName})
             } else {
                 // todo update if we ever dare to implement it
             }
-        }
-        else if (message.type === 'switchedPhase') {
+        } else if (message.type === 'switchedPhase') {
             this.phase = message.name;
             this.phaseState = message.state;
             this.renderView();
@@ -77,7 +81,9 @@ class CardLab {
             // todo: reconnection, reset state
         }
 
-        if (this.view !== null && 'labMessageReceived' in this.view) {
+        if (this.view !== null
+            && 'labMessageReceived' in this.view
+            && typeof this.view.labMessageReceived === 'function') {
             this.view.labMessageReceived(message)
         }
     }
@@ -99,29 +105,29 @@ class CardLab {
     }
 }
 
-document.getElementById("game-container").textContent = "Connexion au serveur...";
+document.getElementById("game-container")!.textContent = "Connexion au serveur...";
 
-let socket = null;
+let socket: WebSocket | null = null;
 try {
     const domainRoot = window.location.host;
     socket = new WebSocket(`ws://${domainRoot}/api/game/ws`);
 } catch (e) {
     console.error("Connection to web socket failed.", e);
-    document.getElementById("game-container").textContent 
+    document.getElementById("game-container")!.textContent
         = "Connexion échouée. Rafraîchissez la page svp c'est pas encore implémenté de réessayer..."
     // TODO: Retry and tell the user that something is going wrong
 }
 
 if (socket !== null) {
-    const initMessageListener = e => {
+    const initMessageListener = (e: MessageEvent) => {
         const parsed = JSON.parse(e.data)
 
         if (parsed.type === 'welcome') {
-            socket.removeEventListener('message', initMessageListener)
+            socket!.removeEventListener('message', initMessageListener)
             console.log("Received welcome message: ", parsed)
 
-            const lab = new CardLab(parsed, socket);
-            window.cardLab = lab;
+            const lab = new CardLab(parsed, socket!);
+            (window as any).cardLab = lab;
             lab.renderView();
         } else {
             // todo queue

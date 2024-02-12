@@ -1,29 +1,32 @@
-﻿export class DrawCanvas extends HTMLElement {
+﻿import {LabElement} from "../dom.ts";
+
+export class DrawCanvas extends LabElement {
+    canvas: HTMLCanvasElement = null!;
+    ctx: CanvasRenderingContext2D = null!;
+    strokeData: {
+        prevPoint: {x: number, y: number} | null,
+        ongoing: boolean
+    } = { prevPoint: null, ongoing: false }
+    
     /**
      * Make a new draw canvas for your drawing pleasures
      */
     constructor() {
         super();
-
-        /**
-         * 
-         * @type {HTMLCanvasElement | null}
-         */
-        this.canvas = null;
     }
     
-    connectedCallback() {
-        const dom = this.attachShadow({mode: 'open'});
+    connected() {
         const canvas = document.createElement("canvas")
+        // Aspect ratio: 1:5/3 <==> 3:5
         canvas.width = 625
         canvas.height = 375
         canvas.style.width = '100%';
         canvas.style.height = '100%';
         
-        dom.appendChild(canvas)
+        this.dom.appendChild(canvas)
         
         this.canvas = canvas
-        this.ctx = canvas.getContext('2d');
+        this.ctx = canvas.getContext('2d')!;
 
         this.canvas.addEventListener("mousedown", e => {
             this.strokeStart()
@@ -54,8 +57,6 @@
 
         document.addEventListener("mouseup", e => { this.strokeEnd() })
         document.addEventListener("touchend", e => { this.strokeEnd() })
-
-        this.strokeReset()
     }
     
     strokeReset() {
@@ -68,13 +69,8 @@
     strokeStart() {
         this.strokeData.ongoing = true;
     }
-
-    /**
-     * 
-     * @param x {number}
-     * @param y {number}
-     */
-    strokeUpdate(x, y) {
+    
+    strokeUpdate(x: number, y: number) {
         if (!this.strokeData.ongoing) { return; }
         
         if (this.strokeData.prevPoint != null) {
@@ -93,7 +89,7 @@
         this.strokeReset()
     }
 
-    getMousePos(e) {
+    getMousePos(e: MouseEvent | Touch) {
         const rect = this.canvas.getBoundingClientRect();
         return {
             x: (e.clientX - rect.left) / (rect.right - rect.left) * this.canvas.width,

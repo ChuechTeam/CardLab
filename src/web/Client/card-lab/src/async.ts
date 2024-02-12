@@ -1,8 +1,8 @@
-﻿export function runAfterDelay({func, delay}) {
+﻿export function runAfterDelay({func, delay}: {func: () => Promise<any>, delay: number}): RunAfterDelayState {
     return {
-        handle: null,
+        handle: null as number | null,
         queued: false,
-        runningPromise: null,
+        runningPromise: null as Promise<any> | null,
         func: func,
         delay: delay,
 
@@ -12,7 +12,7 @@
                 return;
             }
 
-            clearTimeout(this.handle)
+            clearTimeout(this.handle!)
             this.handle = setTimeout(async () => {
                 // Convert to a promise if not already one
                 this.runningPromise = Promise.resolve(this.func())
@@ -31,3 +31,12 @@
         }
     }
 }
+
+export type RunAfterDelayState = {
+    delay: number;
+    func: () => Promise<any>;
+    runningPromise: Promise<any> | null;
+    queued: boolean;
+    handle: number | null;
+    run(): void
+} 

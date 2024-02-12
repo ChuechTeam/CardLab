@@ -1,16 +1,6 @@
-﻿import {importGlobalStyles, registerTemplate} from "../dom.js";
-class CardStatInput extends HTMLElement {
-    constructor() {
-        super();
-        
-        this.valueNode = null;
-    }
-    
-    static get observedAttributes() {
-        return ['value'];
-    }
-    
-    static template = registerTemplate('card-stat-input-template',`
+﻿import {fromDom, LabElement, registerTemplate} from "../dom.ts";
+
+const template = registerTemplate('card-stat-input-template',`
 <style>
 :host {
     font-family: "Chakra Petch", system-ui;
@@ -49,22 +39,31 @@ button {
     <button id="increment">+</button>
 </div>
 `)
+
+export class CardStatInput extends LabElement {
+    @fromDom("value") valueNode: HTMLElement = null!
+    @fromDom("decrement") decrementButton: HTMLElement = null!
+    @fromDom("increment") incrementButton: HTMLElement = null!
     
-    connectedCallback() {
-        const dom = this.attachShadow({ mode: 'open' });
-        const template = document.getElementById('card-stat-input-template');
-        
-        importGlobalStyles(dom)
-        dom.appendChild(template.content.cloneNode(true))
-        
-        this.valueNode = dom.getElementById('value');
-        this.decrementButton = dom.getElementById('decrement');
-        this.incrementButton = dom.getElementById('increment');
-        
+    constructor() {
+        super();
+    }
+    
+    static get observedAttributes() {
+        return ['value'];
+    }
+    
+    init() {
         if (!this.hasAttribute('value')) {
             this.setAttribute('value', '1');
         }
-        
+    }
+    
+    render() {
+        this.renderTemplate(template)
+    }
+    
+    connected() {
         this.updateValueText(this.getAttribute('value'));
         
         this.decrementButton.addEventListener('click', () => {
@@ -76,22 +75,22 @@ button {
         });
     }
     
-    updateValueText(val) {
+    updateValueText(val: string | null) {
         this.valueNode.textContent = val;
     }
     
-    attributeChangedCallback(name, oldValue, newValue) {
+    attributeChanged(name: string, oldValue: string, newValue: string) {
         if (name === 'value' && this.valueNode !== null) {
             this.updateValueText(newValue);
         }
     }
     
     get value() {
-        return parseInt(this.getAttribute('value'));
+        return parseInt(this.getAttribute('value')!);
     }
     
-    set value(val) {
-        this.setAttribute('value', val);
+    set value(val: number) {
+        this.setAttribute('value', val.toString());
     }
 }
 

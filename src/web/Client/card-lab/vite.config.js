@@ -5,7 +5,7 @@ export default defineConfig({
         manifest: false,
         rollupOptions: {
             // overwrite default .html entry
-            input: 'src/game.js',
+            input: 'src/game.ts',
             output: {
                 entryFileNames: `scripts/[name].js`,
                 chunkFileNames: `scripts/chunks/[name].js`,
@@ -15,5 +15,5 @@ export default defineConfig({
                 }
             }
         },
-    },
+    }
 })

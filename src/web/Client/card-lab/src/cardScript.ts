@@ -1,25 +1,31 @@
 ﻿import * as Blockly from 'blockly/core';
 
-export let blocklyToolbox;
+export let blocklyToolbox = {
+    "kind": "categoryToolbox",
+    "contents": [
+        {
+            "kind": "category",
+            "name": "Actions",
+            "contents": [],
+        },
+        {
+            "kind": "category",
+            "name": "Évènements",
+            "contents": [],
+        },
+    ] as any
+};
+
+type CardLabBlock = Blockly.Block & ({
+    labType: "event"
+    type: CardEventType
+} | {
+    labType: "action"
+    type: CardActionType
+})
 
 export function initBlockly() {
-    blocklyToolbox = {
-        "kind": "categoryToolbox",
-        "contents": [
-            {
-                "kind": "category",
-                "name": "Actions",
-                "contents": [],
-            },
-            {
-                "kind": "category",
-                "name": "Évènements",
-                "contents": [],
-            },
-        ]
-    };
-    
-    function defineEventBlock(type, data, initFunc = null) {
+    function defineEventBlock(type: string, data: any, initFunc: ((block: any) => void) | null = null) {
         Blockly.Blocks[type] = {
             init() {
                 this.jsonInit({
@@ -35,10 +41,10 @@ export function initBlockly() {
                 }
             }
         }
-        blocklyToolbox.contents[1].contents.push({ "kind": "block", "type": type })
+        blocklyToolbox.contents[1].contents!.push({"kind": "block", "type": type})
     }
 
-    function defineActionBlock(type, data, initFunc = null) {
+    function defineActionBlock(type: string, data: any, initFunc: ((block: any) => void) | null = null) {
         Blockly.Blocks[type] = {
             init() {
                 this.jsonInit({
@@ -55,22 +61,23 @@ export function initBlockly() {
                 }
             }
         }
-        blocklyToolbox.contents[0].contents.push({ "kind": "block", "type": type })
+        blocklyToolbox!.contents[0].contents.push({"kind": "block", "type": type})
     }
 
     Blockly.Theme.defineTheme('cardLab', {
-        'base': Blockly.Themes.Classic,
-        "fontStyle": {
-            "family": "Chakra Petch, sans-serif",
-            "size": 11
+        name: "cardLab",
+        base: Blockly.Themes.Classic,
+        fontStyle: {
+            family: "Chakra Petch, sans-serif",
+            size: 11
         },
         startHats: true
     });
-    
+
     defineActionBlock('winTheGame', {
         "message0": "Gagner la partie",
     });
-    
+
     defineActionBlock('drawCard', {
         "message0": "Piocher une carte",
     });
@@ -80,32 +87,31 @@ export function initBlockly() {
     });
 }
 
-export function blocklyWorkspaceToScript(workspace) {
-    const handlers = []
-    
-    for (const block of workspace.getAllBlocks()) {
+export function blocklyWorkspaceToScript(workspace: Blockly.Workspace): CardScript {
+    const script: CardScript = {handlers: []}
+    const handlers = script.handlers
+
+    for (const block of workspace.getAllBlocks() as CardLabBlock[])
         if (block.labType === 'event') {
-            const handler = { event: block.type, actions: [] }
+            const handler = {event: block.type, actions: [] as CardAction[]}
             let conn = block.nextConnection
             while (conn !== null) {
-                const targetBlock = conn.targetBlock();
-                if (targetBlock !== null) {
-                    handler.actions.push({ type: targetBlock.type })
+                const targetBlock = conn.targetBlock() as CardLabBlock;
+                if (targetBlock !== null && targetBlock.labType === "action") {
+                    handler.actions.push({type: targetBlock.type})
                     conn = targetBlock.nextConnection
                 } else {
                     break;
                 }
             }
-            
+
             handlers.push(handler)
         }
-    }
     
-    return {
-        handlers: handlers
-    }
+    return script
 }
-window.blocklyWorkspaceToScript = blocklyWorkspaceToScript; // For debugging
+
+(window as any).blocklyWorkspaceToScript = blocklyWorkspaceToScript; // For debugging
 // Called in the module for now, should later be called asynchronously while loading
 // blockly in the background.
 initBlockly();

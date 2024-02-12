@@ -1,19 +1,25 @@
-﻿import {blocklyToolbox, blocklyWorkspaceToScript} from "../cardScript.js";
+﻿import {blocklyToolbox, blocklyWorkspaceToScript} from "../cardScript.ts";
 import * as Blockly from 'blockly/core';
+import {LabElement} from "../dom.ts";
 
-class CardScriptEditor extends HTMLElement {
+class CardScriptEditor extends LabElement {
+    blocklyDiv: HTMLElement = null!;
+    blocklyPlaceholder: HTMLElement = null!;
+    workspace: Blockly.WorkspaceSvg = null!;
+    
+    sizeObs: ResizeObserver = new ResizeObserver(() => this.updateBlocklyDivSize());
+    posObs: ResizeObserver = new ResizeObserver(() => this.updateBlocklyDivPosition());
+
     constructor() {
         super();
     }
 
-    connectedCallback() {
+    connected() {
         // We need to do very ugly hacks because blockly doesn't support shadow dom well,
         // which we can sum up in three suspicious points:
         // 1. Create a blank placeholder div to get a slot in the layout
         // 2. Create the *real* blockly div and append it to the body of the page
         // 3. Move and resize it to the placeholder div when layout changes (that's the hard part)
-
-        const dom = this.attachShadow({mode: 'open'});
 
         this.blocklyDiv = document.createElement('div');
         this.blocklyDiv.style.height = '500px';
@@ -22,7 +28,7 @@ class CardScriptEditor extends HTMLElement {
         this.blocklyPlaceholder = document.createElement('div');
         this.blocklyPlaceholder.style.height = '500px';
 
-        dom.appendChild(this.blocklyPlaceholder);
+        this.dom.appendChild(this.blocklyPlaceholder);
 
         this.workspace = Blockly.inject(this.blocklyDiv, {
             toolbox: blocklyToolbox,
@@ -72,7 +78,6 @@ class CardScriptEditor extends HTMLElement {
 
         // 1. Observe the placeholder div for resize changes, and when it changes,
         // update the blockly div size.
-        this.sizeObs = new ResizeObserver(() => this.updateBlocklyDivSize());
         this.sizeObs.observe(this.blocklyPlaceholder);
 
         // 2. Update the blockly div position when the window is scrolled, which is usually why
@@ -83,14 +88,13 @@ class CardScriptEditor extends HTMLElement {
         // 3. To *try* handling cases where scroll is not enough, we'll observe the game container's
         // size changes. It's very likely that it changes when something else contained inside
         // also changes size, which could move the blockly div.
-        this.posObs = new ResizeObserver(() => this.updateBlocklyDivPosition());
-        this.posObs.observe(document.getElementById('game-container'));
+        this.posObs.observe(document.getElementById('game-container')!);
 
         this.updateBlocklyDivPosition();
         this.updateBlocklyDivSize();
     }
 
-    disconnectedCallback() {
+    disconnected() {
         this.sizeObs.disconnect();
         this.posObs.disconnect();
         document.body.removeChild(this.blocklyDiv);
