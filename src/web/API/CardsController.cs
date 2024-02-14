@@ -1,9 +1,12 @@
 ﻿using System.Collections.Immutable;
 using System.Net;
+using System.Text;
 using CardLab.Auth;
 using CardLab.Game;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.Primitives;
 
 namespace CardLab.API;
 
@@ -87,7 +90,8 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
 
     public record CardPostResult(
         CardBalancer.ValidationSummary Validation,
-        CardBalancer.UsageSummary? Balance);
+        CardBalancer.UsageSummary? Balance,
+        string Description);
 
     [HttpPost]
     public ActionResult<IEnumerable<CardPostResult?>> PostCards(IEnumerable<CardInput?> cards)
@@ -139,8 +143,8 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
         {
             return Problem("Invalid card index.", statusCode: (int)HttpStatusCode.Conflict);
         }
-        
-        return  UpdateSingleCard(index, card, player);
+
+        return UpdateSingleCard(index, card, player);
     }
 
     private CardPostResult UpdateSingleCard(int index, CardInput card, Player player)
@@ -160,6 +164,10 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
         if (!preventsBalanceCalc)
         {
             balance = cardBalancer.CalculateCardBalance(definition);
+            definition = definition with
+            {
+                Description = GenerateCardDescription(definition)
+            };
         }
 
         if (validation.DefinitionValid && balance is { Balanced: true })
@@ -167,7 +175,63 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
             player.UpdateCard(definition, index);
         }
 
-        CardPostResult result = new(validation, balance);
+        CardPostResult result = new(validation, balance, definition.Description);
         return result;
+    }
+
+    // Should later be put somewhere else but meh
+    private string GenerateCardDescription(CardDefinition def)
+    {
+        var desc = new StringBuilder();
+
+        static string SentenceStart(CardEvent ev)
+        {
+            return ev switch
+            {
+                CardEvent.WhenISpawn => "À l'apparition, ",
+                _ => "Quand on ne sait quoi se produit, "
+            };
+        }
+
+        static string ActionInSentence(CardAction act)
+        {
+            return act switch
+            {
+                DrawCardCardAction => "piochez une carte",
+            };
+        }
+
+        var script = def.Script;
+        if (script is not null)
+        {
+            foreach (var handler in script.Handlers)
+            {
+                desc.Append(SentenceStart(handler.Event));
+                for (var i = 0; i < handler.Actions.Length; i++)
+                {
+                    var act = handler.Actions[i];
+                    desc.Append(ActionInSentence(act));
+
+                    // Peak programming right there
+                    var dist = i - handler.Actions.Length + 1;
+
+                    var connector = dist switch
+                    {
+                        0 => ".",
+                        1 => " et ",
+                        _ => ", "
+                    };
+
+                    desc.Append(connector);
+                }
+
+                if (handler != script.Handlers.Last())
+                {
+                    desc.AppendLine();
+                }
+            }
+        }
+        
+        return desc.ToString();
     }
 }

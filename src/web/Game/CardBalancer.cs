@@ -58,7 +58,7 @@ public class CardBalancer
         {
             errors.Add("La description est trop longue (plus de 200 caractères).");
         }
-        
+
         // todo: validate script
 
         return new ValidationSummary(errors.Count == 0, errors.ToImmutable());
@@ -67,7 +67,72 @@ public class CardBalancer
     public UsageSummary CalculateCardBalance(CardDefinition cardDef)
     {
         var entries = ImmutableArray.CreateBuilder<UsageEntry>();
-        entries.Add(new UsageEntry("LGTM", 0, ImmutableArray<UsageEntry>.Empty));
-        return new UsageSummary(100, 0, entries.ToImmutable());
+
+        int creditsAvailable = cardDef.Cost * 5 * 2;
+        int creditsUsed = 0;
+
+        void AddEntry(in UsageEntry entry)
+        {
+            entries.Add(entry);
+            creditsUsed += entry.Credits;
+        }
+
+        AddEntry(new UsageEntry($"Attaque : {cardDef.Attack} points", cardDef.Attack * 5));
+        AddEntry(new UsageEntry($"Santé : {cardDef.Health} points", cardDef.Health * 5));
+
+        if (cardDef.Script is not null)
+        {
+            foreach (var evHandler in cardDef.Script.Handlers)
+            {
+                if (evHandler.Actions.Any())
+                {
+                    AddEntry(CalculateEventUsage(evHandler));
+                }
+            }
+        }
+        
+        return new UsageSummary(creditsAvailable, creditsUsed, entries.ToImmutable());
+    }
+
+    private UsageEntry CalculateEventUsage(CardEventHandler handler)
+    {
+        var entries = ImmutableArray.CreateBuilder<UsageEntry>();
+        int creditsUsed = 0;
+
+        void AddEntry(in UsageEntry entry)
+        {
+            entries.Add(entry);
+            creditsUsed += entry.Credits;
+        }
+
+        foreach (var act in handler.Actions)
+        {
+            AddEntry(new UsageEntry(ActionName(act), ActionCost(act)));
+        }
+
+        return new UsageEntry($"Déclencheur : « {EventName(handler.Event)} »", creditsUsed, entries.ToImmutable());
+    }
+
+    private string EventName(CardEvent ev)
+    {
+        return ev switch
+        {
+            CardEvent.WhenISpawn => "Lorsque la carte est jouée",
+            _ => "ah bah je sais pas"
+        };
+    }
+
+    private string ActionName(CardAction act)
+    {
+        return act switch
+        {
+            DrawCardCardAction => "Piocher une carte",
+            _ => "ah bah je sais pas"
+        };
+    }
+
+    private int ActionCost(CardAction act)
+    {
+        return 5;
     }
 }

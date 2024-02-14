@@ -83,6 +83,8 @@ html {
 
     margin: var(--card-inner-margin);
     font-size: 0.8em;
+    
+    white-space: pre;
 }
 
 .game-card-fields > .-attribs {

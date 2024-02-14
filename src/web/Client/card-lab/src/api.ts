@@ -62,5 +62,6 @@ export const gameApi = {
 
 export interface CardUpdateResult {
     validation: CardValidationSummary,
-    balance: CardBalanceSummary
+    balance: CardBalanceSummary,
+    description: string
 }

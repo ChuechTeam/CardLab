@@ -33,17 +33,21 @@ export function fromDom(id: string) {
     };
 }
 
+// All LabElements are display: block by default.
+const sharedStyle = new CSSStyleSheet();
+sharedStyle.insertRule(":host { display: block; }");
+
 export class LabElement extends HTMLElement {
     dom: ShadowRoot = null!
     importGlobalStyles = false
     // nodePropMap?: Record<string, string>
     // Set by the decorator using the prototype
-
     private connectedCallback() {
         this.dom = this.attachShadow({mode: 'open'});
         if (this.importGlobalStyles) {
             importGlobalStyles(this.dom)
         }
+        this.dom.adoptedStyleSheets.push(sharedStyle);
 
         this.init();
         this.render();

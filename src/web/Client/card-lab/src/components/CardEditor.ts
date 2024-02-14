@@ -6,6 +6,8 @@ import {DrawCanvas} from "./DrawCanvas.ts";
 import {CardStatInput} from "./CardStatInput.ts";
 import "./CardStatInput.ts"; // So the component gets registered
 import "./DrawCanvas.ts"; // So the component gets registered
+import {BalanceOverview} from "./BalanceOverview.ts"; 
+import "./BalanceOverview.ts";
 
 const template = registerTemplate('card-editor-template', `
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
@@ -108,10 +110,11 @@ const template = registerTemplate('card-editor-template', `
     padding-right:0;    
     width: 100%;
 }
+#balance-overview { 
+    margin: 8px 0;
+}
 #script-editor {
     margin-bottom: 8px;
-    
-    height: 450px;
 }
 
 </style>
@@ -128,7 +131,7 @@ const template = registerTemplate('card-editor-template', `
                     <div class="-image">
                         <draw-canvas class="-draw-canvas" id="card-canvas"></draw-canvas>
                     </div>
-                    <div class="-desc">
+                    <div class="-desc" id="card-desc">
                         <div>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla nec purus feugiat, molestie
                             ipsum et, consequat nibh. Etiam non elit dui. Nullam vel eros sit amet arcu vestibulum
                             accumsan in in leo.
@@ -166,6 +169,7 @@ const template = registerTemplate('card-editor-template', `
        <span>Santé</span>
        <card-stat-input id="health-input" value="6"></card-stat-input>
     </div>
+    <balance-overview id="balance-overview"></balance-overview>
     <card-script-editor id="script-editor"></card-script-editor>
 </div>
 `)
@@ -184,6 +188,7 @@ export class CardEditor extends LabElement {
     @fromDom("card-cost") costTxt: HTMLElement = null!
     @fromDom("card-attack") attackTxt: HTMLElement = null!
     @fromDom("card-health") healthTxt: HTMLElement = null!
+    @fromDom("card-desc") descTxt: HTMLInputElement = null!
     
     @fromDom("name-input") nameInput: HTMLInputElement = null!
     @fromDom("cost-input") costInput: CardStatInput = null!
@@ -192,6 +197,7 @@ export class CardEditor extends LabElement {
     
     @fromDom("card-canvas") cardCanvas: DrawCanvas = null!
     @fromDom("script-editor") scriptEditor: HTMLElement = null!
+    @fromDom("balance-overview") balanceOverview: BalanceOverview = null!
     
     constructor(public card: CardDefinition, public cardIndex: number) {
         super();
@@ -199,7 +205,7 @@ export class CardEditor extends LabElement {
     }
 
     render() {
-        this.dom.appendChild(template.content.cloneNode(true))
+        this.renderTemplate(template)
     }
 
     connected() {
@@ -245,6 +251,7 @@ export class CardEditor extends LabElement {
     
     updateDefinitionDom() {
         this.nameTxt.textContent = this.card.name;
+        this.descTxt.textContent = this.card.description;
         this.costTxt.textContent = this.card.cost.toString();
         this.attackTxt.textContent = this.card.attack.toString();
         this.healthTxt.textContent = this.card.health.toString();
@@ -260,6 +267,10 @@ export class CardEditor extends LabElement {
     async uploadDefinitionServer() {
         const result = await gameApi.cards.update(this.cardIndex, this.card)
         console.log(`Uploaded card definition ${this.cardIndex}, we got: `, result)
+        
+        this.balanceOverview.updateData(result.balance)
+        this.card.description = result.description
+        this.updateDefinitionDom()
     }
     
     addToStat(inputSrc: CardStatInput, delta: number) {
