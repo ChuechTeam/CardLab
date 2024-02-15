@@ -69,6 +69,9 @@ const template = registerTemplate('card-editor-template', `
 }
 .game-card {
     margin-bottom: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 .stats-inputs {
     display: grid;  
@@ -116,7 +119,6 @@ const template = registerTemplate('card-editor-template', `
 #script-editor {
     margin-bottom: 8px;
 }
-
 </style>
 <div class="card-editor">
     <div class="game-card">

@@ -6,19 +6,19 @@ export let blocklyToolbox = {
         {
             "kind": "category",
             "name": "Actions",
-            "contents": [],
+            "contents": [] as any,
         },
         {
             "kind": "category",
             "name": "Évènements",
-            "contents": [],
+            "contents": [] as any,
         },
         {
             "kind": "category",
             "name": "Cibles",
-            "contents": []
+            "contents": [] as any
         }
-    ] as any
+    ]
 };
 
 type CardLabBlock = Blockly.Block & ({
@@ -28,12 +28,13 @@ type CardLabBlock = Blockly.Block & ({
     labType: "action"
     type: CardActionType
 }) | {
-    labType: "cardTarget"
-    type: CardTargetType
+    labType: "target"
+    type: TargetType,
+    frenchAuInsteadOfA: boolean
 }
 
 export function initBlockly() {
-    function defineEventBlock(type: string, data: any, initFunc: ((block: any) => void) | null = null) {
+    function defineEventBlock(type: CardEventType, data: any, initFunc: ((block: any) => void) | null = null) {
         Blockly.Blocks[type] = {
             init() {
                 this.jsonInit({
@@ -49,10 +50,10 @@ export function initBlockly() {
                 }
             }
         }
-        blocklyToolbox.contents[1].contents!.push({"kind": "block", "type": type})
+        blocklyToolbox.contents[1].contents.push({"kind": "block", "type": type})
     }
 
-    function defineActionBlock(type: string, data: any, 
+    function defineActionBlock(type: CardActionType, data: any,
                                initFunc: ((block: any) => void) | null = null) {
         Blockly.Blocks[type] = {
             init() {
@@ -72,22 +73,27 @@ export function initBlockly() {
         }
         blocklyToolbox!.contents[0].contents.push({"kind": "block", "type": type})
     }
-    
-    function defineTargetBlock(type: string, data: any,
-                               initFunc: ((block: any) => void) | null = null) {
+
+    function defineTargetBlock(type: TargetType, data: any,
+                               settings: {
+                                   initFunc?: ((block: any) => void) | null,
+                                   frenchAuInsteadOfA?: boolean
+                               } = {}) {
         Blockly.Blocks[type] = {
             init() {
                 this.jsonInit({
                     type: type,
                     "colour": 40,
-                    "output": "CardTarget",
+                    "output": "Target",
                     ...data
                 });
 
-                this.labType = "cardTarget";
-                if (initFunc != null && typeof initFunc === 'function') {
-                    initFunc(this);
+                this.labType = "target";
+
+                if (settings.initFunc) {
+                    settings.initFunc(this);
                 }
+                this.frenchAuInsteadOfA = settings.frenchAuInsteadOfA === true;
             }
         }
         blocklyToolbox!.contents[2].contents.push({"kind": "block", "type": type})
@@ -119,14 +125,21 @@ export function initBlockly() {
             }
         ]
     });
-    
-    defineActionBlock('hurtCard',  {
-        "message0": "Infliger 1 dégât à %1",
+
+    defineActionBlock('hurt', {
+        "message0": "Infliger %1 dégât(s) à %2",
         "args0": [
+            {
+                "type": "field_number",
+                "name": "damage",
+                "value": 1,
+                "min": 1,
+                "max": 99
+            },
             {
                 "type": "input_value",
                 "name": "target",
-                "check": "CardTarget"
+                "check": "Target"
             }
         ]
     })
@@ -134,10 +147,28 @@ export function initBlockly() {
     defineEventBlock('whenISpawn', {
         "message0": "Lorsque la carte est jouée",
     });
-    
+
     defineTargetBlock('randomEnemy', {
         "message0": "un ennemi au hasard"
     });
+
+    defineTargetBlock("enemyCore", {
+        "message0": "noyau ennemi"
+    }, {
+        frenchAuInsteadOfA: true
+    });
+
+    defineTargetBlock("myCore", {
+        "message0": "mon noyau"
+    });
+}
+
+function blockToScriptTarget(block: CardLabBlock): Target {
+    if (block.labType !== 'target') {
+        throw new Error("Not a target block.")
+    }
+
+    return {type: block.type}
 }
 
 // null if action block invalid
@@ -145,22 +176,22 @@ function blockToScriptAction(block: CardLabBlock): CardAction | null {
     if (block.labType !== 'action') {
         throw new Error("Not an action block.")
     }
-    
+
     const base = {type: block.type} as CardAction
     switch (base.type) {
-        case "heal":
-            break;
         case "drawCard":
             base.numCards = parseInt(block.getFieldValue('nCards'))
             break;
-        case "hurtCard":
-            const target = block.getInputTargetBlock('target')
+        case "hurt":
+            const target = block.getInputTargetBlock('target') as CardLabBlock
             if (target === null) {
                 return null;
             }
+            base.target = blockToScriptTarget(target)
+            base.damage = parseInt(block.getFieldValue('damage'))
             break;
     }
-    
+
     return base
 }
 
@@ -187,7 +218,7 @@ export function blocklyWorkspaceToScript(workspace: Blockly.Workspace): CardScri
 
             handlers.push(handler)
         }
-    
+
     return script
 }
 

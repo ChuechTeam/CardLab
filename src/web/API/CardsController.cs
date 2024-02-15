@@ -166,7 +166,7 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
             balance = cardBalancer.CalculateCardBalance(definition);
             definition = definition with
             {
-                Description = GenerateCardDescription(definition)
+                Description = cardBalancer.GenerateCardDescription(definition)
             };
         }
 
@@ -177,67 +177,5 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
 
         CardPostResult result = new(validation, balance, definition.Description);
         return result;
-    }
-
-    // Should later be put somewhere else but meh
-    private string GenerateCardDescription(CardDefinition def)
-    {
-        var desc = new StringBuilder();
-
-        static string SentenceStart(CardEvent ev)
-        {
-            return ev switch
-            {
-                CardEvent.WhenISpawn => "À l'apparition, ",
-                _ => "Quand on ne sait quoi se produit, "
-            };
-        }
-
-        static string ActionInSentence(CardAction act)
-        {
-            return act switch
-            {
-                DrawCardCardAction (var numCards) => numCards switch
-                {
-                    > 1 => $"piochez {numCards} cartes",
-                    _ => "piochez une carte"
-                },
-                WinGameCardAction => "gagnez la partie",
-                _ => "faites un truc"
-            };
-        }
-
-        var script = def.Script;
-        if (script is not null)
-        {
-            foreach (var handler in script.Handlers)
-            {
-                desc.Append(SentenceStart(handler.Event));
-                for (var i = 0; i < handler.Actions.Length; i++)
-                {
-                    var act = handler.Actions[i];
-                    desc.Append(ActionInSentence(act));
-
-                    // Peak programming right there
-                    var dist = handler.Actions.Length - (i + 1);
-
-                    var connector = dist switch
-                    {
-                        0 => ".",
-                        1 => " et ",
-                        _ => ", "
-                    };
-
-                    desc.Append(connector);
-                }
-
-                if (handler != script.Handlers.Last())
-                {
-                    desc.AppendLine();
-                }
-            }
-        }
-        
-        return desc.ToString();
     }
 }

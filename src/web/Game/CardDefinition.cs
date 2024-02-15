@@ -40,12 +40,27 @@ public sealed record CardEventHandler
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(DrawCardCardAction), typeDiscriminator: "drawCard")]
 [JsonDerivedType(typeof(WinGameCardAction), typeDiscriminator: "winGame")]
+[JsonDerivedType(typeof(HurtAction), typeDiscriminator: "hurt")]
 public abstract record CardAction;
 
 // i hate this name btw
-public record DrawCardCardAction(int NumCards) : CardAction;
+public sealed record DrawCardCardAction(int NumCards) : CardAction;
 
-public record WinGameCardAction : CardAction;
+public sealed record WinGameCardAction : CardAction;
+
+public sealed record HurtAction(int Damage, Target Target) : CardAction;
+
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
+[JsonDerivedType(typeof(RandomEnemyTarget), typeDiscriminator: "randomEnemy")]
+[JsonDerivedType(typeof(EnemyCoreTarget), typeDiscriminator: "enemyCore")]
+[JsonDerivedType(typeof(MyCoreTarget), typeDiscriminator: "myCore")]
+public abstract record Target;
+
+public sealed record RandomEnemyTarget : Target;
+
+public sealed record EnemyCoreTarget : Target;
+
+public sealed record MyCoreTarget : Target;
 
 public enum CardEvent
 {

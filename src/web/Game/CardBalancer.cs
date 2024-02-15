@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.Text;
 using CardLab.API;
 
 namespace CardLab.Game;
@@ -67,7 +68,7 @@ public class CardBalancer
     {
         var entries = ImmutableArray.CreateBuilder<UsageEntry>();
 
-        int creditsAvailable = cardDef.Cost * 5 * 2;
+        int creditsAvailable = cardDef.Cost * 5 * 2 + cardDef.Cost * 3;
         int creditsUsed = 0;
 
         void AddEntry(in UsageEntry entry)
@@ -89,7 +90,7 @@ public class CardBalancer
                 }
             }
         }
-        
+
         return new UsageSummary(creditsAvailable, creditsUsed, entries.ToImmutable());
     }
 
@@ -112,7 +113,77 @@ public class CardBalancer
         return new UsageEntry($"Déclencheur : « {EventName(handler.Event)} »", creditsUsed, entries.ToImmutable());
     }
 
-    private string EventName(CardEvent ev)
+    public string GenerateCardDescription(CardDefinition def)
+    {
+        var desc = new StringBuilder();
+
+        static string SentenceStart(CardEvent ev)
+        {
+            return ev switch
+            {
+                CardEvent.WhenISpawn => "À l'apparition, ",
+                _ => "Quand on ne sait quoi se produit, "
+            };
+        }
+
+        static string ActionInSentence(CardAction act)
+        {
+            return act switch
+            {
+                DrawCardCardAction (var numCards) => numCards switch
+                {
+                    > 1 => $"piochez {numCards} cartes",
+                    _ => "piochez une carte"
+                },
+                WinGameCardAction => "gagnez la partie",
+                HurtAction (var dmg, var target) => dmg switch
+                {
+                    > 1 => $"inflige {dmg} dégâts {TargetNameWithPreposition(target)}",
+                    _ => $"inflige 1 dégât {TargetNameWithPreposition(target)}"
+                },
+                _ => "faites un truc"
+            };
+        }
+
+        var script = def.Script;
+        if (script is not null)
+        {
+            foreach (var handler in script.Handlers)
+            {
+                desc.Append(SentenceStart(handler.Event));
+                for (var i = 0; i < handler.Actions.Length; i++)
+                {
+                    var act = handler.Actions[i];
+                    desc.Append(ActionInSentence(act));
+
+                    // Peak programming right there
+                    var dist = handler.Actions.Length - (i + 1);
+
+                    var connector = dist switch
+                    {
+                        0 => ".",
+                        1 => handler.Actions.Length switch
+                        {
+                            > 2 => ", ensuite, ",
+                            _ => " et ",
+                        },
+                        _ => ", "
+                    };
+
+                    desc.Append(connector);
+                }
+
+                if (handler != script.Handlers.Last())
+                {
+                    desc.AppendLine();
+                }
+            }
+        }
+
+        return desc.ToString();
+    }
+
+    private static string EventName(CardEvent ev)
     {
         return ev switch
         {
@@ -121,22 +192,35 @@ public class CardBalancer
         };
     }
 
-    private string ActionName(CardAction act)
+    private static string TargetNameWithPreposition(Target target)
+    {
+        return target switch
+        {
+            RandomEnemyTarget => "à un ennemi aléatoire",
+            EnemyCoreTarget => "au noyau ennemi",
+            MyCoreTarget => "à votre noyau",
+            _ => "à je sais pas qui"
+        };
+    }
+
+    private static string ActionName(CardAction act)
     {
         return act switch
         {
             DrawCardCardAction { NumCards: var n } => $"Piocher {n} carte(s)",
             WinGameCardAction => "Gagner la partie",
+            HurtAction (var dmg, var target) => $"Infliger {dmg} dégâts {TargetNameWithPreposition(target)}",
             _ => "ah bah je sais pas"
         };
     }
 
-    private int ActionCost(CardAction act)
+    private static int ActionCost(CardAction act)
     {
         return act switch
         {
             WinGameCardAction => 200,
-            DrawCardCardAction { NumCards: var n } => n*n*5,
+            DrawCardCardAction { NumCards: var n } => n * n * 5,
+            HurtAction (var dmg, _) => dmg * 10,
             _ => 0
         };
     }

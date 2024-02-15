@@ -28,38 +28,43 @@ declare interface CardScript {
     handlers: CardEventHandler[]
 }
 
-declare enum CardEventType {
-    WHEN_I_SPAWN = "whenISpawn"
-}
-
-declare enum CardActionType {
-    DRAW_CARD = "drawCard",
-    HEAL = "heal",
-    HURT_CARD = "hurtCard",
-    WIN_GAME = "winGame"
-}
+/* Base stuff & types */
 
 declare type CardEventHandlerBase<I extends CardEventType> = {
     event: I,
     actions: CardAction[]
 }
+declare type CardEventType = CardEventHandler["event"]
+
+declare type CardActionBase<I extends string> = { type: I }
+declare type CardActionType = CardAction["type"]
+
+declare type TargetBase<I extends string> = { type: I }
+declare type TargetType = Target["type"]
+
+/* Card events */
 
 declare type CardEventHandler =
-    | CardEventHandlerBase<CardEventType.WHEN_I_SPAWN>
+    | CardEventHandlerBase<"whenISpawn">
 
-declare type CardActionBase<I extends CardActionType> = { type: I }
+/* Card actions */
 
 declare type CardAction =
-    | CardActionBase<CardActionType.DRAW_CARD> & {
+    | CardActionBase<"drawCard"> & {
     numCards: number
 }
-    | CardActionBase<CardActionType.HEAL>
-    | CardActionBase<CardActionType.HURT_CARD>
-    | CardActionBase<CardActionType.WIN_GAME>
-
-declare enum CardTargetType {
-    RANDOM_ENEMY = "randomEnemy"
+    | CardActionBase<"hurt"> & {
+    target: Target
+    damage: number
 }
+    | CardActionBase<"winGame">
+
+/* Card targets */
+
+declare type Target =
+    | TargetBase<"randomEnemy">
+    | TargetBase<"enemyCore">
+    | TargetBase<"myCore">
 
 declare interface CardValidationSummary {
     definitionValid: boolean,
@@ -82,26 +87,26 @@ declare interface CardBalanceEntry {
  * Phases
  */
 
-declare enum PhaseName {
-    WAITING_FOR_PLAYERS = "waitingForPlayers",
-    CREATING_CARDS = "creatingCards",
-    POST_CREATE = "postCreate",
-    ENDED = "ended",
-    TERMINATED = "terminated"
-}
+// PhaseName is necessary here because not all phases have states right now
+declare type PhaseName =
+    | "waitingForPlayers"
+    | "creatingCards"
+    | "postCreate"
+    | "ended"
+    | "terminated"
 
 declare type WaitingForPlayersPhaseState = {
-    type: PhaseName.WAITING_FOR_PLAYERS,
+    type: "waitingForPlayers",
     players: Player[],
     code: string
 }
 
 declare type CreatingCardPhaseState = {
-    type: PhaseName.CREATING_CARDS,
-    host: {},
+    type: "creatingCards",
+    host: {} | null,
     player: {
         cards: CardDefinition[]
-    }
+    } | null
 }
 
 declare type PhaseState =
@@ -112,27 +117,21 @@ declare type PhaseState =
  * Messages
  */
 
-declare enum MessageType {
-    LOBBY_PLAYER_UPDATED = "lobbyPlayerUpdated",
-    SWITCHED_PHASE = "switchedPhase",
-    WELCOME = "welcome",
-}
-
 declare type LobbyPlayerUpdatedMessage = {
-    type: MessageType.LOBBY_PLAYER_UPDATED,
+    type: "lobbyPlayerUpdated",
     playerId: number,
     playerName: string,
     kind: "join" | "quit" | "update"
 }
 
 declare type SwitchedPhaseMessage = {
-    type: MessageType.SWITCHED_PHASE,
+    type: "switchedPhase",
     phaseName: PhaseName,
     phaseState: PhaseState
 }
 
 declare type WelcomeMessage = {
-    type: MessageType.WELCOME,
+    type: "welcome",
     me: Player | null,
     phaseName: PhaseName,
     phaseState: PhaseState
@@ -142,3 +141,5 @@ declare type LabMessage =
     | LobbyPlayerUpdatedMessage
     | SwitchedPhaseMessage
     | WelcomeMessage
+
+declare type MessageType = LabMessage["type"]

@@ -18,6 +18,34 @@ function jsonPost(obj: any, options = {}) {
     }
 }
 
+export type ApiErrorResponse = {
+    status: number,
+    detail?: string,
+    title?: string
+    // and others but we don't care
+}
+
+export class ApiError extends Error {
+    constructor(public response: Response, public body: ApiErrorResponse) {
+        super((body.detail || body.title) ?
+            `Error ${response.status} during request to ${response.url}: ${body.title ?? body.detail}.` :
+            `Error ${response.status} during request to ${response.url}.`);
+    }
+}
+
+async function ensureOk(res: Response): Promise<Response> {
+    if (!res.ok) {
+        throw new ApiError(res, await res.json() as ApiErrorResponse);
+    }
+    
+    return res
+}
+
+async function clFetch(input: RequestInfo | URL, init?: RequestInit) {
+    let res = await fetch(input, init);
+    return await ensureOk(res);
+}
+
 export const gameApi = {
     // Unused for now
     // getState() {
@@ -32,26 +60,26 @@ export const gameApi = {
 
     lobby: {
         async startGame() {
-            let res = await fetch(apiUrl("api/game/lobby/start-game"), {method: 'POST'});
+            let res = await clFetch(apiUrl("api/game/lobby/start-game"), {method: 'POST'});
             return res.ok;
         }
     },
 
     cards: {
         async update(index: number, card: CardDefinition): Promise<CardUpdateResult> {
-            let res = await fetch(apiUrl(`api/game/cards/${index}`), jsonPost(card));
+            let res = await clFetch(apiUrl(`api/game/cards/${index}`), jsonPost(card));
             return await res.json();
         },
 
         async updateAll(cards: (CardDefinition | null)[]): Promise<(CardUpdateResult | null)[]> {
-            let res = await fetch(apiUrl("api/game/cards"), jsonPost(cards));
+            let res = await clFetch(apiUrl("api/game/cards"), jsonPost(cards));
             return await res.json();
         },
 
         async uploadImage(cardId: number, imageBlob: Blob) {
             const formData = new FormData();
             formData.append('image', imageBlob);
-            let res = await fetch(apiUrl(`api/game/cards/${cardId}/image`), {
+            let res = await clFetch(apiUrl(`api/game/cards/${cardId}/image`), {
                 method: 'POST',
                 body: formData,
             });

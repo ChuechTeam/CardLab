@@ -4,6 +4,11 @@ import {gameApi} from "../api.ts";
 import type {CardLab} from "../game.ts";
 
 const template = registerTemplate('player-card-workshop-template', `
+<style>
+card-editor {
+    margin-bottom: 120px; /* temporary */
+}
+</style>
 <h1>Créez vos cartes !</h1>
 <div id="card-editors"></div>
 `)
@@ -16,6 +21,10 @@ export class PlayerCardWorkshopView extends LabElement {
         super();
 
         this.phaseState = cardLab.phaseState as CreatingCardPhaseState
+        if (!this.phaseState.player) {
+            throw new Error("Card workshop used while the user is a host!")
+        }
+        
         this.cards = this.phaseState.player.cards.map(x => structuredClone(x))
         this.importGlobalStyles = true
     }

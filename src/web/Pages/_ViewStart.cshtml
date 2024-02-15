@@ -1,3 +1,10 @@
-﻿@{
+﻿@using Microsoft.Extensions.Options
+@using Vite.AspNetCore
+@inject IOptions<ViteServerOptions> ViteOptions
+@{
     Layout = "_Layout";
+    // todo: if development
+    // This is a weird hack so we get the right url for other local devices (mandatory for testing on phones)
+    ViewData["ViteBase"] = Context.Request.Scheme + "://"
+                                                  + Context.Request.Host.Host + ":" + (ViteOptions.Value.Port ?? 5174);
 }
