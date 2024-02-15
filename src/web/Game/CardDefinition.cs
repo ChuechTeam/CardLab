@@ -39,10 +39,13 @@ public sealed record CardEventHandler
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(DrawCardCardAction), typeDiscriminator: "drawCard")]
+[JsonDerivedType(typeof(WinGameCardAction), typeDiscriminator: "winGame")]
 public abstract record CardAction;
 
 // i hate this name btw
-public record DrawCardCardAction : CardAction;
+public record DrawCardCardAction(int NumCards) : CardAction;
+
+public record WinGameCardAction : CardAction;
 
 public enum CardEvent
 {

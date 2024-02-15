@@ -35,6 +35,8 @@ declare enum CardEventType {
 declare enum CardActionType {
     DRAW_CARD = "drawCard",
     HEAL = "heal",
+    HURT_CARD = "hurtCard",
+    WIN_GAME = "winGame"
 }
 
 declare type CardEventHandlerBase<I extends CardEventType> = {
@@ -48,8 +50,16 @@ declare type CardEventHandler =
 declare type CardActionBase<I extends CardActionType> = { type: I }
 
 declare type CardAction =
-    | CardActionBase<CardActionType.DRAW_CARD>
+    | CardActionBase<CardActionType.DRAW_CARD> & {
+    numCards: number
+}
     | CardActionBase<CardActionType.HEAL>
+    | CardActionBase<CardActionType.HURT_CARD>
+    | CardActionBase<CardActionType.WIN_GAME>
+
+declare enum CardTargetType {
+    RANDOM_ENEMY = "randomEnemy"
+}
 
 declare interface CardValidationSummary {
     definitionValid: boolean,

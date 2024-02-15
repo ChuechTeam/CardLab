@@ -169,8 +169,8 @@ const template = registerTemplate('card-editor-template', `
        <span>Santé</span>
        <card-stat-input id="health-input" value="6"></card-stat-input>
     </div>
-    <balance-overview id="balance-overview"></balance-overview>
     <card-script-editor id="script-editor"></card-script-editor>
+    <balance-overview id="balance-overview"></balance-overview>
 </div>
 `)
 

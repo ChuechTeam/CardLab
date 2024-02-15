@@ -19,7 +19,6 @@ public class CardBalancer
         }
     }
 
-
     public ValidationSummary ValidateDefinition(CardDefinition cardDef, out bool preventsBalanceCalc)
     {
         var errors = ImmutableArray.CreateBuilder<string>();
@@ -126,13 +125,19 @@ public class CardBalancer
     {
         return act switch
         {
-            DrawCardCardAction => "Piocher une carte",
+            DrawCardCardAction { NumCards: var n } => $"Piocher {n} carte(s)",
+            WinGameCardAction => "Gagner la partie",
             _ => "ah bah je sais pas"
         };
     }
 
     private int ActionCost(CardAction act)
     {
-        return 5;
+        return act switch
+        {
+            WinGameCardAction => 200,
+            DrawCardCardAction { NumCards: var n } => n*n*5,
+            _ => 0
+        };
     }
 }

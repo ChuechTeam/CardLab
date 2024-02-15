@@ -197,7 +197,13 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
         {
             return act switch
             {
-                DrawCardCardAction => "piochez une carte",
+                DrawCardCardAction (var numCards) => numCards switch
+                {
+                    > 1 => $"piochez {numCards} cartes",
+                    _ => "piochez une carte"
+                },
+                WinGameCardAction => "gagnez la partie",
+                _ => "faites un truc"
             };
         }
 
@@ -213,7 +219,7 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
                     desc.Append(ActionInSentence(act));
 
                     // Peak programming right there
-                    var dist = i - handler.Actions.Length + 1;
+                    var dist = handler.Actions.Length - (i + 1);
 
                     var connector = dist switch
                     {

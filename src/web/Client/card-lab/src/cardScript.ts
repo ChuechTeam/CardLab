@@ -13,6 +13,11 @@ export let blocklyToolbox = {
             "name": "Évènements",
             "contents": [],
         },
+        {
+            "kind": "category",
+            "name": "Cibles",
+            "contents": []
+        }
     ] as any
 };
 
@@ -22,7 +27,10 @@ type CardLabBlock = Blockly.Block & ({
 } | {
     labType: "action"
     type: CardActionType
-})
+}) | {
+    labType: "cardTarget"
+    type: CardTargetType
+}
 
 export function initBlockly() {
     function defineEventBlock(type: string, data: any, initFunc: ((block: any) => void) | null = null) {
@@ -44,7 +52,8 @@ export function initBlockly() {
         blocklyToolbox.contents[1].contents!.push({"kind": "block", "type": type})
     }
 
-    function defineActionBlock(type: string, data: any, initFunc: ((block: any) => void) | null = null) {
+    function defineActionBlock(type: string, data: any, 
+                               initFunc: ((block: any) => void) | null = null) {
         Blockly.Blocks[type] = {
             init() {
                 this.jsonInit({
@@ -63,6 +72,26 @@ export function initBlockly() {
         }
         blocklyToolbox!.contents[0].contents.push({"kind": "block", "type": type})
     }
+    
+    function defineTargetBlock(type: string, data: any,
+                               initFunc: ((block: any) => void) | null = null) {
+        Blockly.Blocks[type] = {
+            init() {
+                this.jsonInit({
+                    type: type,
+                    "colour": 40,
+                    "output": "CardTarget",
+                    ...data
+                });
+
+                this.labType = "cardTarget";
+                if (initFunc != null && typeof initFunc === 'function') {
+                    initFunc(this);
+                }
+            }
+        }
+        blocklyToolbox!.contents[2].contents.push({"kind": "block", "type": type})
+    }
 
     Blockly.Theme.defineTheme('cardLab', {
         name: "cardLab",
@@ -74,17 +103,65 @@ export function initBlockly() {
         startHats: true
     });
 
-    defineActionBlock('winTheGame', {
+    defineActionBlock('winGame', {
         "message0": "Gagner la partie",
     });
 
     defineActionBlock('drawCard', {
-        "message0": "Piocher une carte",
+        "message0": "Piocher %1 carte(s)",
+        "args0": [
+            {
+                "type": "field_number",
+                "name": "nCards",
+                "value": 1,
+                "min": 0,
+                "max": 4
+            }
+        ]
     });
+    
+    defineActionBlock('hurtCard',  {
+        "message0": "Infliger 1 dégât à %1",
+        "args0": [
+            {
+                "type": "input_value",
+                "name": "target",
+                "check": "CardTarget"
+            }
+        ]
+    })
 
     defineEventBlock('whenISpawn', {
         "message0": "Lorsque la carte est jouée",
     });
+    
+    defineTargetBlock('randomEnemy', {
+        "message0": "un ennemi au hasard"
+    });
+}
+
+// null if action block invalid
+function blockToScriptAction(block: CardLabBlock): CardAction | null {
+    if (block.labType !== 'action') {
+        throw new Error("Not an action block.")
+    }
+    
+    const base = {type: block.type} as CardAction
+    switch (base.type) {
+        case "heal":
+            break;
+        case "drawCard":
+            base.numCards = parseInt(block.getFieldValue('nCards'))
+            break;
+        case "hurtCard":
+            const target = block.getInputTargetBlock('target')
+            if (target === null) {
+                return null;
+            }
+            break;
+    }
+    
+    return base
 }
 
 export function blocklyWorkspaceToScript(workspace: Blockly.Workspace): CardScript {
@@ -98,7 +175,10 @@ export function blocklyWorkspaceToScript(workspace: Blockly.Workspace): CardScri
             while (conn !== null) {
                 const targetBlock = conn.targetBlock() as CardLabBlock;
                 if (targetBlock !== null && targetBlock.labType === "action") {
-                    handler.actions.push({type: targetBlock.type})
+                    const action = blockToScriptAction(targetBlock);
+                    if (action !== null) {
+                        handler.actions.push(action)
+                    }
                     conn = targetBlock.nextConnection
                 } else {
                     break;
