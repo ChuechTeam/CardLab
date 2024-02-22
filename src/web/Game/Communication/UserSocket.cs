@@ -29,6 +29,8 @@ public sealed class UserSocket
 
     // Used to notify that we're ending an ongoing connection, to end the websocket.
     public CancellationTokenSource CancelToken { get; set; } = new();
+    
+    public Action<LabMessage>? ReceiveHandler { get; set; } = null;
 
     public Connection StartConnection()
     {

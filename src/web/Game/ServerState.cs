@@ -5,7 +5,7 @@ namespace CardLab.Game;
 
 public class ServerState
 {
-    private const string CodeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    private const string CodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private const int CodeLength = 5;
     
     private ReaderWriterLockSlim _lock = new();

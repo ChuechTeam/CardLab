@@ -1,7 +1,5 @@
 ﻿using System.Collections.Immutable;
-using System.Diagnostics;
 using CardLab.Game.Communication;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CardLab.Game;
 
@@ -149,6 +147,7 @@ public sealed class GameSession
                 return Result.Fail("La partie a déjà commencé");
             }
 
+            // Should later be 2
             if (Players.Count < 1)
             {
                 return Result.Fail("Il n'y a pas assez de joueurs");

@@ -1,4 +1,5 @@
 ﻿using System.Text.Json.Serialization;
+using CardLab.Game.Duels;
 
 namespace CardLab.Game.Communication;
 
@@ -6,6 +7,10 @@ namespace CardLab.Game.Communication;
 [JsonDerivedType(typeof(LobbyPlayerUpdatedMessage), "lobbyPlayerUpdated")]
 [JsonDerivedType(typeof(SwitchedPhaseMessage), "switchedPhase")]
 [JsonDerivedType(typeof(WelcomeMessage), "welcome")]
+[JsonDerivedType(typeof(DuelStatusChangedMessage), "duelStatusChanged")]
+[JsonDerivedType(typeof(DuelWelcomeMessage), "duelWelcome")]
+[JsonDerivedType(typeof(DuelMutatedMessage), "duelMutated")]
+[JsonDerivedType(typeof(DuelRequestFailed), "duelRequestFailed")]
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 public abstract record LabMessage;
 

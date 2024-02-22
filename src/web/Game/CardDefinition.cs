@@ -21,6 +21,8 @@ public sealed record CardDefinition
     public int Attack { get; init; } = 5;
     public int Health { get; init; } = 5;
     public int Cost { get; init; } = 5;
+    
+    public ImmutableArray<CardTrait> Traits { get; init; } = ImmutableArray<CardTrait>.Empty;
 
     public CardScript? Script { get; init; } = null;
 }
@@ -61,6 +63,12 @@ public sealed record RandomEnemyTarget : Target;
 public sealed record EnemyCoreTarget : Target;
 
 public sealed record MyCoreTarget : Target;
+
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
+[JsonDerivedType(typeof(GuardianTrait), typeDiscriminator: "guardian")]
+public abstract record CardTrait;
+
+public sealed record GuardianTrait : CardTrait;
 
 public enum CardEvent
 {

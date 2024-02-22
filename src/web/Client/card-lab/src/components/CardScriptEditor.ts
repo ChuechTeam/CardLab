@@ -6,7 +6,7 @@ class CardScriptEditor extends LabElement {
     blocklyDiv: HTMLElement = null!;
     blocklyPlaceholder: HTMLElement = null!;
     workspace: Blockly.WorkspaceSvg = null!;
-    
+
     sizeObs: ResizeObserver = new ResizeObserver(() => this.updateBlocklyDivSize());
     posObs: ResizeObserver = new ResizeObserver(() => this.updateBlocklyDivPosition());
 
@@ -61,7 +61,9 @@ class CardScriptEditor extends LabElement {
         this.workspace.addChangeListener(e => {
             if (e.type === Blockly.Events.BLOCK_CHANGE
                 || e.type === Blockly.Events.BLOCK_DELETE
-                || e.type === Blockly.Events.BLOCK_MOVE) {
+                || (e.type === Blockly.Events.BLOCK_MOVE &&
+                    (e as Blockly.Events.BlockMove).newParentId != null
+                    || (e as Blockly.Events.BlockMove).oldParentId != null)) {
                 this.dispatchEvent(new CustomEvent('script-updated', {
                     detail: {
                         script: blocklyWorkspaceToScript(this.workspace)
