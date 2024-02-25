@@ -46,7 +46,7 @@ public sealed class BasePackRegistry(
         {
             Directory.CreateDirectory(resDir);
         }
-        
+
         var cardAssets = ImmutableArray.CreateBuilder<CardAsset>(cards.Count);
         uint size;
         await using (var resWrite = new ResourceWriter(File.OpenWrite(resFile)))
@@ -73,13 +73,14 @@ public sealed class BasePackRegistry(
             await JsonSerializer.SerializeAsync(defStream, pack, jsonOptions.Value.JsonSerializerOptions);
         }
 
-        _loadedPacks[id] = new LoadedPack(pack, defFileRel, resFileRel);
+        // some kind of windows hack
+        _loadedPacks[id] = new LoadedPack(pack, defFileRel.Replace('\\', '/'), resFileRel.Replace('\\', '/'));
 
         stopwatch.Stop();
-        logger.LogInformation("Pack {Id} ({Name}) compiled in {Time}ms, resource file size is {Size}", 
+        logger.LogInformation("Pack {Id} ({Name}) compiled in {Time}ms, resource file size is {Size}",
             id, name, stopwatch.ElapsedMilliseconds, size);
     }
-    
+
     // todo: method to add preexisting pack from filesystem
 
     public GamePack? GetPack(Guid id)
@@ -91,7 +92,7 @@ public sealed class BasePackRegistry(
     {
         var pack = _loadedPacks.GetValueOrDefault(id);
 
-        var b = context.Request.PathBase;
-        return (b.Add("/" + pack.DefFileRelative), b.Add("/" + pack.ResFileRelative));
+        var b = context.Request.Scheme + "://" + context.Request.Host;
+        return (b + "/" + pack.DefFileRelative, b + "/" + pack.ResFileRelative);
     }
 }

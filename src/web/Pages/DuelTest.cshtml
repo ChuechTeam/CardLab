@@ -1,0 +1,28 @@
+﻿@page "{playerIndex:int}"
+@using CardLab.Game.BasePacks
+@model CardLab.Pages.DuelTest
+@inject BasePackRegistry BasePackRegistry
+@{
+    var (defUrl, resUrl) = BasePackRegistry.GetPackUrls(HttpContext, BasePack1.PackId)!.Value;
+    var @base = HttpContext.Request.Scheme + "://" + HttpContext.Request.Host;
+}
+<script>
+    window.duelTest =
+    { 
+        player: @ViewBag.PlayerIndex,
+        defUrl: "@defUrl",
+        resUrl: "@resUrl",
+        socketUrl: "@(@base)/api/duel-test/p@(ViewBag.PlayerIndex)/ws"
+    };
+</script>
+
+<div id="duel-container"></div>
+
+@section Scripts {
+    <environment include="Development">
+        <script type="module" src="@ViewData["ViteBase"]/src/game.ts"></script>
+    </environment>
+    <environment include="Production">
+        <script src="~/client/scripts/game.js" type="module" asp-append-version="true"></script>
+    </environment>
+}

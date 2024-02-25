@@ -2,6 +2,7 @@
 import {gameApi} from "./api.ts";
 import {LobbyView} from "./views/LobbyView.ts";
 import {PlayerCardWorkshopView} from "./views/PlayerCardWorkshopView.ts";
+import {tryRunDuelTest} from "./duel/duelTest.ts";
 const baseUrl = window.location.origin;
 
 export class CardLab {
@@ -105,37 +106,42 @@ export class CardLab {
     }
 }
 
-document.getElementById("game-container")!.textContent = "Connexion au serveur...";
+const gameContainer = document.getElementById("game-container");
+if (gameContainer !== null) {
+    gameContainer.textContent = "Connexion au serveur...";
 
-let socket: WebSocket | null = null;
-try {
-    const domainRoot = window.location.host;
-    socket = new WebSocket(`ws://${domainRoot}/api/game/ws`);
-} catch (e) {
-    console.error("Connection to web socket failed.", e);
-    document.getElementById("game-container")!.textContent
-        = "Connexion échouée. Rafraîchissez la page svp c'est pas encore implémenté de réessayer..."
-    // TODO: Retry and tell the user that something is going wrong
-}
-
-if (socket !== null) {
-    const initMessageListener = (e: MessageEvent) => {
-        const parsed = JSON.parse(e.data)
-
-        if (parsed.type === 'welcome') {
-            socket!.removeEventListener('message', initMessageListener)
-            console.log("Received welcome message: ", parsed)
-
-            const lab = new CardLab(parsed, socket!);
-            (window as any).cardLab = lab;
-            lab.renderView();
-        } else {
-            // todo queue
-        }
+    let socket: WebSocket | null = null;
+    try {
+        const domainRoot = window.location.host;
+        socket = new WebSocket(`ws://${domainRoot}/api/game/ws`);
+    } catch (e) {
+        console.error("Connection to web socket failed.", e);
+        gameContainer.textContent
+            = "Connexion échouée. Rafraîchissez la page svp c'est pas encore implémenté de réessayer..."
+        // TODO: Retry and tell the user that something is going wrong
     }
-    socket.addEventListener("message", initMessageListener);
-    socket.addEventListener("error", () => { /* TODO RETRY */
-    })
-    socket.addEventListener("close", () => { /* TODO RETRY IF UNEXPECTED */
-    })
+
+    if (socket !== null) {
+        const initMessageListener = (e: MessageEvent) => {
+            const parsed = JSON.parse(e.data)
+
+            if (parsed.type === 'welcome') {
+                socket!.removeEventListener('message', initMessageListener)
+                console.log("Received welcome message: ", parsed)
+
+                const lab = new CardLab(parsed, socket!);
+                (window as any).cardLab = lab;
+                lab.renderView();
+            } else {
+                // todo queue
+            }
+        }
+        socket.addEventListener("message", initMessageListener);
+        socket.addEventListener("error", () => { /* TODO RETRY */
+        })
+        socket.addEventListener("close", () => { /* TODO RETRY IF UNEXPECTED */
+        })
+    }
+} else {
+    tryRunDuelTest();
 }

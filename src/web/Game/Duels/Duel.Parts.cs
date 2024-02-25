@@ -6,32 +6,31 @@ namespace CardLab.Game.Duels;
 
 public sealed partial class Duel
 {
-    public DuelFragment PartHurtEntity(DuelFragment frag, DuelSource source, DuelTarget target, int hp, 
-        out bool success)
+    public bool PartHurtEntity<T>(DuelFragment2<T> frag, DuelSource source, DuelTarget target, int hp)
     {
-        success = false;
         if (hp < 0)
         {
-            return frag;
+            return false;
         }
 
         switch (target)
         {
             case UnitDuelTarget unitTarget:
             {
-                var unit = frag.Mutation.State.Units.GetValueOrDefault(unitTarget.UnitId);
+                var unit = State.Units.GetValueOrDefault(unitTarget.UnitId);
                 if (unit is null)
                 {
-                    return frag;
+                    return false;
                 }
 
                 if (unit.Attribs.CurHealth <= 0)
                 {
-                    return frag;
+                    return false;
                 }
                 
                 var newAttribs = unit.Attribs with { CurHealth = unit.Attribs.CurHealth - hp };
-                frag = FragDeltaOpt(frag, new UpdateBoardAttribsDelta
+                unit.LastDamageSource = source; // update the damage source for death event
+                frag.ApplyDelta(new UpdateBoardAttribsDelta
                 {
                     Attribs = ImmutableArray.Create(new UpdateBoardAttribsDelta.AttribChange(unit.Id, newAttribs))
                 });
@@ -40,13 +39,13 @@ public sealed partial class Duel
             }
             case CoreDuelTarget coreTarget:
             {
-                var coreHp = frag.Mutation.State.GetPlayer(coreTarget.Player).CoreHealth;
+                var coreHp = State.GetPlayer(coreTarget.Player).CoreHealth;
                 if (coreHp <= 0)
                 {
-                    return frag;
+                    return false;
                 }
                 
-                frag = FragDeltaOpt(frag, new UpdateBoardAttribsDelta
+                frag.ApplyDelta(new UpdateBoardAttribsDelta
                 {
                     CoreHealths = PlayerPair.ForPlayer<int?>(coreTarget.Player, coreHp - hp)
                 });
@@ -55,8 +54,7 @@ public sealed partial class Duel
             }
         }
 
-        frag = HandlePostHurt(frag, source, target, ref hp);
-        success = true;
-        return frag;
+        HandlePostHurt(frag, source, target, hp);
+        return true;
     }
 }

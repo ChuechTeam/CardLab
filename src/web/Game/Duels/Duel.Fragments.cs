@@ -11,310 +11,416 @@ namespace CardLab.Game.Duels;
 
 public sealed partial class Duel
 {
-    private DuelFragmentFunc FragPlayCard(int cardId, PlayerIndex player)
+    public sealed class FragUseCard(int cardId, PlayerIndex player) : DuelFragment2<bool>
     {
-        return new DuelFragmentFunc(new PlayCardFragKind(cardId), MakeFrag);
-
-        DuelFragment MakeFrag(DuelFragment frag)
+        protected override bool Verify(ref bool resultOnErr)
         {
-            // todo: move validation to a separate function so we can do validation for user actions 
-            var playerSt = frag.Mutation.State.GetPlayer(player);
-            var card = playerSt.Hand.FirstOrDefault(c => c.Id == cardId);
-            if (card is null)
+            var playerSt = State.GetPlayer(player);
+            if (!playerSt.Hand.Contains(cardId))
             {
-                return frag with { Result = new DuelFragmentResult { Success = false } };
+                return false;
             }
 
-            var cost = ResolveCardRef(card.BaseDefRef).Cost;
-            if (playerSt.Energy < cost)
+            var card = State.FindCard(cardId)!;
+            if (playerSt.Energy < card.Cost)
             {
-                return frag with { Result = new DuelFragmentResult { Success = false } };
+                return false;
             }
 
-            frag = FragDeltaOpt(frag, new UpdateEnergyDelta
+            return true;
+        }
+
+        protected override bool Run()
+        {
+            // todo: better validation.
+            var playerSt = State.GetPlayer(player);
+            var card = State.FindCard(cardId)!;
+
+            ApplyDelta(new UpdateEnergyDelta
             {
                 Player = player,
-                NewEnergy = playerSt.Energy - cost,
+                NewEnergy = playerSt.Energy - card.Cost,
                 NewMaxEnergy = playerSt.MaxEnergy
             });
 
-            frag = FragDeltaOpt(frag, new RemoveCardsDelta
+            ApplyDelta(new RevealCardsDelta
             {
-                CardIds = ImmutableArray.Create(cardId),
-                Player = player,
-                Reason = RemoveCardsDelta.RemReason.Played
+                Changes = [(cardId, new PlayerPair<bool>(true))]
             });
 
-            return frag;
+            ApplyDelta(new MoveCardsDelta
+            {
+                Changes = [new(cardId, DuelCardLocation.Discarded, null)],
+                Context = MoveCardsDelta.Reason.Played
+            });
+
+            return true;
         }
     }
 
-    private DuelFragmentFunc FragPlaceUnit(PlayerIndex player, DuelUnit unit, int placementIdx)
+    public sealed class FragPlaceUnit(PlayerIndex player, DuelUnit unit, DuelGridVec placementPos) : DuelFragment2<bool>
     {
-        var kind = new PlaceUnitFragKind(unit);
-        return new DuelFragmentFunc(kind, MakeFrag);
-
-        DuelFragment MakeFrag(DuelFragment frag)
+        protected override bool Verify(ref bool resultOnErr)
         {
-            var state = frag.Mutation.State;
-            if (placementIdx > state.GetPlayer(player).Units.Length)
+            if (!placementPos.Valid(Duel))
             {
-                placementIdx = state.GetPlayer(player).Units.Length;
+                return false;
             }
 
-            return FragDeltaOpt(frag, new PlaceUnitDelta
+            if (State.GetPlayer(player).Units[placementPos.ToIndex(Duel)] != null)
+            {
+                // todo: give options to choose randomly or not place the unit.
+                return false;
+            }
+
+            return true;
+        }
+
+        protected override bool Run()
+        {
+            var res = ApplyDelta(new PlaceUnitDelta
             {
                 Player = player,
-                Position = placementIdx,
+                Position = placementPos,
                 Unit = unit
             });
+
+            return res.Succeeded;
         }
     }
 
     // Switch turn does not draw cards.
-    private DuelFragmentFunc FragSwitchTurn(PlayerIndex player)
+    public sealed class FragSwitchTurn(PlayerIndex player) : DuelFragment2<Unit>
     {
-        return new DuelFragmentFunc(new SwitchTurnFragKind(player), Frag);
-
-        DuelFragment Frag(DuelFragment frag)
+        protected override Unit Run()
         {
-            var state = frag.Mutation.State;
+            var state = State;
             var nextTurn = state.Turn + 1;
-            var energy = Math.Min(Settings.MaxEnergy, state.GetPlayer(player).MaxEnergy + 1);
+            var energy = Math.Min(Duel.Settings.MaxEnergy, state.GetPlayer(player).MaxEnergy + 1);
 
-            frag = FragDeltaOpt(frag, new SwitchTurnDelta
+            ApplyDelta(new SwitchTurnDelta
             {
                 NewTurn = nextTurn,
-                WhoPlays = player,
-                NewEnergy = energy
+                WhoPlays = player
+            });
+
+            ApplyDelta(new UpdateEnergyDelta
+            {
+                Player = player,
+                NewEnergy = energy,
+                NewMaxEnergy = energy
             });
 
             // Refresh all units inaction turns and action count
-            state = frag.Mutation.State;
-            var changes = state.GetPlayer(player).Units
-                .Select(x => state.Units[x])
-                .Select(x => new UpdateBoardAttribsDelta.AttribChange(x.Id,
-                    x.Attribs with
-                    {
-                        InactionTurns = Math.Max(0, x.Attribs.InactionTurns - 1),
-                        ActionsLeft = x.Attribs.ActionsPerTurn
-                    }))
-                .ToImmutableArray();
-
-            frag = FragDeltaOpt(frag, new UpdateBoardAttribsDelta
+            var units = state.GetPlayer(player).ExistingUnits.ToList();
+            if (units.Any())
             {
-                Attribs = changes
-            });
+                var changes = units
+                    .Select(x => state.Units[x])
+                    .Select(x => new UpdateBoardAttribsDelta.AttribChange(x.Id,
+                        x.Attribs with
+                        {
+                            InactionTurns = Math.Max(0, x.Attribs.InactionTurns - 1),
+                            ActionsLeft = x.Attribs.ActionsPerTurn
+                        }))
+                    .ToImmutableArray();
 
-            return frag;
+                ApplyDelta(new UpdateBoardAttribsDelta
+                {
+                    Attribs = changes
+                });
+            }
+
+            return default;
         }
     }
 
-    private DuelFragmentFunc FragDrawDeckCards(PlayerIndex player, int num)
+    public sealed class FragDrawDeckCards(PlayerIndex player, int num) : DuelFragment2<bool>
     {
-        var kind = new DrawDeckCardsFragKind(player, num);
-        return new DuelFragmentFunc(kind, Frag);
+        public override ScopeDelta? Scope => new CardDrawScopeDelta(player);
 
-        DuelFragment Frag(DuelFragment frag)
+        protected override bool Verify(ref bool resultOnErr)
         {
-            return FragDeltaOpt(frag, new DrawDeckCardsDelta
+            var ps = State.GetPlayer(player);
+            if (ps.Deck.Count < num)
             {
-                Num = PlayerPair.ForPlayer(player, num)
+                return false;
+            }
+
+            return true;
+        }
+
+        protected override bool Run()
+        {
+            var ps = State.GetPlayer(player);
+            
+            var moves = ImmutableArray.CreateBuilder<MoveCardsDelta.Move>(num);
+            var reveals = ImmutableArray.CreateBuilder<(int, PlayerPair<bool>)>(num);
+            var handEnum = player == PlayerIndex.P1 ? DuelCardLocation.HandP1 : DuelCardLocation.HandP2;
+
+            for (int i = 0; i < num; i++)
+            {
+                var id = ps.Deck[ps.Deck.Count - i - 1];
+                moves.Add(new MoveCardsDelta.Move(id, handEnum, 0));
+
+                var reveal = State.Cards[id].Revealed;
+                reveal[player] = true;
+                reveals.Add((id, reveal));
+            }
+
+            ApplyDelta(new RevealCardsDelta
+            {
+                Changes = reveals.ToImmutable()
             });
+
+            ApplyDelta(new MoveCardsDelta
+            {
+                Changes = moves.ToImmutable()
+            });
+
+            return true;
         }
     }
 
-    private DuelFragmentFunc FragAttackUnit(int unitId, DuelTarget target)
+    // Attacks a unit. Disallows for friendly fire unless stated otherwise.
+    public sealed class FragAttackUnit(int unitId, DuelTarget target, bool friendlyFire = false) : DuelFragment2<bool>
     {
-        return new DuelFragmentFunc(new AttackUnitFragKind(unitId, target), Frag);
+        public override ScopeDelta? Scope { get; } = new UnitAttackScopeDelta(unitId, target);
 
-        DuelFragment Frag(DuelFragment frag)
+        protected override bool Verify(ref bool resultOnErr)
         {
-            var state = frag.Mutation.State;
-            var atkUnit = state.Units.GetValueOrDefault(unitId);
-
+            var atkUnit = State.FindUnit(unitId);
             if (atkUnit is null)
             {
-                return frag.Failed();
+                return false;
             }
 
             var attack = atkUnit.Attribs.Attack;
             if (attack == 0)
             {
-                return frag.Failed();
+                return false;
             }
 
-            frag = PartHurtEntity(frag, new UnitDuelSource(atkUnit.Id), target, attack, out var success);
+            if (target is UnitDuelTarget { UnitId: var u } && u == unitId)
+            {
+                return false;
+            }
+
+            if (!friendlyFire)
+            {
+                switch (target)
+                {
+                    case UnitDuelTarget { UnitId: var u2 } when State.Units[u2].Owner == atkUnit.Owner:
+                    case CoreDuelTarget { Player: var p } when atkUnit.Owner == p:
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        protected override bool Run()
+        {
+            var atkUnit = State.FindUnit(unitId)!;
+            var attack = atkUnit.Attribs.Attack;
+
+            var success = Duel.PartHurtEntity(this, new UnitDuelSource(atkUnit.Id), target, attack);
             if (success)
             {
                 if (target is UnitDuelTarget { UnitId: var defUnitId })
                 {
-                    var defU = frag.Mutation.State.Units[defUnitId];
+                    var defU = State.Units[defUnitId];
                     if (defU.Attribs.Attack > 0)
                     {
-                        frag = PartHurtEntity(frag, new UnitDuelSource(defUnitId), new UnitDuelTarget(atkUnit.Id),
-                            defU.Attribs.Attack, out _);
+                        Duel.PartHurtEntity(this, new UnitDuelSource(defUnitId), new UnitDuelTarget(atkUnit.Id),
+                            defU.Attribs.Attack);
                     }
                 }
 
-                return frag;
+                return true;
             }
             else
             {
-                return frag.Failed();
+                return false;
             }
         }
     }
 
-    private DuelFragmentFunc FragUnitConsumeAction(int unitId)
+    public sealed class FragUnitConsumeAction(int unitId) : DuelFragment2<bool>
     {
-        return new DuelFragmentFunc(new UnitConsumeActionFragKind(unitId), Frag);
-
-        DuelFragment Frag(DuelFragment frag)
+        protected override bool Verify(ref bool resultOnErr)
         {
-            var state = frag.State;
-            var unit = state.Units.GetValueOrDefault(unitId);
+            var unit = State.FindUnit(unitId);
 
             if (unit is null || unit.Attribs.ActionsLeft <= 0)
             {
-                return frag.Failed();
+                return false;
             }
 
+            return true;
+        }
+
+        protected override bool Run()
+        {
+            var unit = State.FindUnit(unitId)!;
+            
             var change = new UpdateBoardAttribsDelta.AttribChange(unitId, unit.Attribs with
             {
                 ActionsLeft = unit.Attribs.ActionsLeft - 1
             });
 
-            frag = FragDeltaOpt(frag, new UpdateBoardAttribsDelta
+            var res = ApplyDelta(new UpdateBoardAttribsDelta
             {
                 Attribs = ImmutableArray.Create(change)
-            }, out var success);
-            
-            if (success)
+            });
+
+            return res.Succeeded;
+        }
+    }
+
+    // returns the number of units killed.
+    // also used to finish off units that have 0 health.
+    public sealed class FragKillUnits(ImmutableArray<int> unitIds, DuelSource? source, bool guessSource = true)
+        : DuelFragment2<int>
+    {
+        public override ScopeDelta? Scope { get; } = new DeathScopeDelta();
+
+        protected override int Run()
+        {
+            var existing = ImmutableArray.CreateBuilder<int>(unitIds.Length);
+
+            foreach (var id in unitIds)
             {
-                return frag;
+                if (State.Units.TryGetValue(id, out var unit))
+                {
+                    existing.Add(id);
+
+                    var src = source ?? (guessSource ? unit.LastDamageSource : null);
+                    Duel.HandlePostDeath(this, src, unit);
+                }
             }
-            else
+
+            ApplyDelta(new RemoveUnitDelta
             {
-                return frag.Failed();
-            }
+                RemovedIds = existing.ToImmutable()
+            });
+
+            return existing.Count;
         }
     }
 
-    // Utilities for applying fragments
-    private (DuelMutation mut, DuelFragmentResult res) ApplyFragEx(DuelMutation mut, DuelFragmentFunc func)
+    public sealed class FragSwitchToPlay : DuelFragment2<bool>
     {
-        var scope = func.Kind.Scope;
+        protected override bool Verify(ref bool resultOnErr)
+            => State.Status is DuelStatus.AwaitingConnection or DuelStatus.ChoosingCards;
 
-        mut = HandlePreFragment(mut, func.Kind);
-        if (scope is not null)
+        protected override bool Run()
         {
-            mut = mut.Apply(scope with { State = ScopeDelta.ScopeState.Start }).ThrowIfFailed();
-        }
-
-        var frag = func.Func(new DuelFragment(func.Kind, mut));
-        mut = frag.Mutation;
-
-        mut = HandlePostFragment(mut, func.Kind);
-        if (scope is not null)
-        {
-            mut = mut.Apply(scope with { State = ScopeDelta.ScopeState.End }).ThrowIfFailed();
-        }
-
-        return (mut, frag.Result);
-    }
-
-    private DuelMutation ApplyFrag(DuelMutation mut, DuelFragmentFunc func)
-    {
-        return ApplyFragEx(mut, func).mut;
-    }
-
-    // Apply a delta to a fragment, and raise any events. 
-    private Result<DuelFragment> FragDelta(DuelFragment frag, DuelStateDelta delta)
-    {
-        return frag.Apply(delta).Map(x =>
-        {
-            var actions = HandleDeltaApplied(x, delta);
-            _logger.LogTrace("Applying delta {Delta} to fragment {Frag}, with actions: {Actions}",
-                delta, x.Kind, string.Join(", ", actions.Select(a => a.Name)));
-            return x.EnqueueActions(actions);
-        });
-    }
-
-    private DuelFragment FragDeltaOpt(DuelFragment frag, DuelStateDelta delta, out bool success)
-    {
-        var res = FragDelta(frag, delta);
-        if (res.SucceededWith(out var f))
-        {
-            success = true;
-            return f;
-        }
-        else
-        {
-            success = false;
-            return frag;
+            ApplyDelta(new SwitchStatusDelta { Status = DuelStatus.Playing });
+            return true;
         }
     }
 
-    private DuelFragment FragDeltaOpt(DuelFragment frag, DuelStateDelta delta)
+    // Pretty much the core of any game action.
+    public T ApplyFrag2<T>(DuelMutation mut, IDuelFragment2<T> frag)
     {
-        return FragDeltaOpt(frag, delta, out _);
+        HandlePreFragment(mut, frag);
+        if (frag.Scope is { } sc)
+        {
+            mut.Apply(sc with { State = ScopeDelta.ScopeState.Start }).ThrowIfFailed();
+        }
+
+        var ret = frag.Run(this, mut);
+        
+        KillZeroHealthUnits(mut);
+        HandlePostFragment(mut, frag, ret);
+        foreach (var action in frag.GetQueuedActions())
+        {
+            mut.ApplyAct(action);
+        }
+
+        if (frag.Scope is { } sc2)
+        {
+            mut.Apply(sc2 with { State = ScopeDelta.ScopeState.End }).ThrowIfFailed();
+        }
+
+        return ret;
+    }
+
+    private void KillZeroHealthUnits(DuelMutation mut)
+    {
+        var toKill = State.Units.Values
+            .Where(x => x.Attribs.CurHealth <= 0)
+            .Select(x => x.Id)
+            .ToImmutableArray();
+        
+        if (toKill.Length > 0)
+        {
+            mut.ApplyFrag(new FragKillUnits(toKill, null));
+        }
     }
 }
 
-public sealed record DuelFragment(DuelFragmentKind Kind, DuelMutation Mutation)
+public interface IDuelFragment2
 {
-    public ImmutableQueue<DuelAction> QueuedActions { get; init; }
-        = ImmutableQueue<DuelAction>.Empty;
+    public ScopeDelta? Scope { get; }
+    public void EnqueueAction(DuelAction act);
 
-    public DuelFragmentResult Result { get; init; } = new();
+    public ImmutableArray<DuelAction> GetQueuedActions();
+}
 
-    public DuelState State => Mutation.State;
+public interface IDuelFragment2<out T> : IDuelFragment2
+{
+    public T Run(Duel duel, DuelMutation mutation);
+}
 
-    public Result<DuelFragment> Apply(DuelStateDelta delta)
+public abstract class DuelFragment2<T> : IDuelFragment2<T>
+{
+    public Queue<DuelAction> QueuedActions { get; } = new();
+
+    public Duel Duel { get; private set; } = null!;
+    public DuelState State => Duel.State;
+    public DuelMutation Mutation { get; private set; } = null!;
+
+    public virtual ScopeDelta? Scope { get; } = null;
+
+    public void EnqueueAction(DuelAction act)
     {
-        return Mutation.Apply(delta).Map(m => this with { Mutation = m });
+        QueuedActions.Enqueue(act);
     }
 
-    public DuelFragment EnqueueActions(IEnumerable<DuelAction> act)
+    public ImmutableArray<DuelAction> GetQueuedActions()
+        => QueuedActions.ToImmutableArray();
+
+    public T Run(Duel duel, DuelMutation mutation)
     {
-        var queued = QueuedActions;
-        foreach (var item in act)
+        Duel = duel;
+        Mutation = mutation;
+        
+        // not very safe... but i don't want to overcomplicate it
+        T? result = default;
+        if (Verify(ref result))
         {
-            queued = queued.Enqueue(item);
+            result = Run();
         }
 
-        return this with { QueuedActions = queued };
+        return result!;
     }
-
-    public DuelFragment Failed()
+    
+    public bool Verify(Duel duel)
     {
-        return this with { Result = new DuelFragmentResult { Success = false } };
+        Duel = duel;
+        
+        T? result = default;
+        return Verify(ref result);
     }
-}
 
-public readonly record struct DuelFragmentFunc(DuelFragmentKind Kind, Func<DuelFragment, DuelFragment> Func);
+    protected abstract T Run();
 
-public abstract record DuelFragmentKind
-{
-    public ScopeDelta? Scope { get; init; } = null;
-}
+    protected virtual bool Verify(ref T? resultOnErr) => true;
 
-public sealed record PlayCardFragKind(int CardId) : DuelFragmentKind;
-
-public sealed record PlaceUnitFragKind(DuelUnit Unit) : DuelFragmentKind;
-
-public sealed record SwitchTurnFragKind(PlayerIndex Who) : DuelFragmentKind;
-
-public sealed record DrawDeckCardsFragKind(PlayerIndex Player, int Num) : DuelFragmentKind;
-
-public sealed record AttackUnitFragKind(int UnitId, DuelTarget Target) : DuelFragmentKind;
-
-public sealed record UnitConsumeActionFragKind(int UnitId) : DuelFragmentKind;
-
-public sealed record CustomFragKind : DuelFragmentKind;
-
-public record DuelFragmentResult
-{
-    public bool Success { get; init; } = true;
+    public Result<Unit> ApplyDelta(DuelStateDelta delta)
+    {
+        return Mutation.Apply(delta);
+    }
 }

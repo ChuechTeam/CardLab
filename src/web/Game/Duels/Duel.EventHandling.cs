@@ -2,34 +2,54 @@
 
 namespace CardLab.Game.Duels;
 
+// Event handling: where we handle stuff named events.
+// HandleX methods occurs inside fragments, and can only queue actions to be executed after the fragment is done.
+
 public sealed partial class Duel
 {
     /**
      * Event handling
      */
-    private DuelMutation HandlePreFragment(DuelMutation mut, DuelFragmentKind kind)
+    private void HandlePreFragment(DuelMutation mut, IDuelFragment2 fragment)
     {
-        _logger.LogTrace("Applying fragment start: {Frag}", kind.ToString());
+        _logger.LogTrace("Applying fragment start: {Frag}", fragment);
         // todo
-        return mut;
     }
 
-    private DuelMutation HandlePostFragment(DuelMutation mut, DuelFragmentKind kind)
+    private void HandlePostFragment<T>(DuelMutation mut, IDuelFragment2<T> fragment, T ret)
     {
-        _logger.LogTrace("Applying fragment end: {Frag}", kind.ToString());
+        _logger.LogTrace("Applying fragment end: {Frag}", fragment);
         // todo
-        return mut;
     }
 
-    private ImmutableArray<DuelAction> HandleDeltaApplied(DuelFragment fragment, DuelStateDelta delta)
-    {
-        return ImmutableArray<DuelAction>.Empty;
-    }
+    // private ImmutableArray<DuelAction> HandleDeltaApplied(DuelFragment fragment, DuelStateDelta delta)
+    // {
+    //     return ImmutableArray<DuelAction>.Empty;
+    // }
 
     // Fragment event handlers only add actions to the queue.
 
-    private DuelFragment HandlePostHurt(DuelFragment frag, DuelSource source, DuelTarget target, ref int hp)
+    private void HandlePostHurt(IDuelFragment2 frag, DuelSource source, DuelTarget target, int hp)
     {
-        return frag;
+        _logger.LogTrace("""
+                         EVENT: PostHurt
+                         in fragment {Frag}
+                         by {Source}
+                         to {Target}
+                         dmg {Hp}
+                         """, frag, source, target, hp);
+        // todo
+    }
+
+    // core death is a special case
+    private void HandlePostDeath(IDuelFragment2 frag, DuelSource? source, DuelUnit target)
+    {
+        _logger.LogTrace("""
+                         EVENT: PostDeath
+                         in fragment {Frag}
+                         by {Source}
+                         to {Target}
+                         """, frag, source?.ToString() ?? "<NONE>", target);
+        // todo
     }
 }

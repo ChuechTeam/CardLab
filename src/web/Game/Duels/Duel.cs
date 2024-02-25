@@ -16,7 +16,7 @@ public sealed partial class Duel
     public int StateIteration { get; private set; } = 0;
 
     // For now, we'll skip the "choosing cards" phase and instead directly pick some cards.
-    public DuelStatus Status { get; private set; } = DuelStatus.AwaitingConnection;
+    //public DuelStatus Status { get; private set; } = DuelStatus.AwaitingConnection;
     public PlayerIndex? Winner { get; private set; } = null;
     public DuelSettings Settings { get; }
 
@@ -70,7 +70,7 @@ public sealed partial class Duel
     {
         lock (_lock)
         {
-            if (Status != DuelStatus.ChoosingCards && Status != DuelStatus.AwaitingConnection)
+            if (State.Status != DuelStatus.ChoosingCards && State.Status != DuelStatus.AwaitingConnection)
             {
                 throw new InvalidOperationException("Can't switch to playing from this status");
             }
@@ -80,40 +80,37 @@ public sealed partial class Duel
             // {
             //     throw new InvalidOperationException("Both players must be ready");
             // }
-
-            Status = DuelStatus.Playing;
-            BroadcastMessage(new DuelStatusChangedMessage(DuelStatus.Playing));
-            RunMutation(m => ApplyActOpt(m, ActGameStartRandom()));
+            
+            RunMutation(m => m.ApplyAct(new ActGameStartRandom()));
         }
     }
 
-    public Result<Unit> PlayUnitCard(PlayerIndex player, int cardId, int placementIdx)
+    public Result<Unit> PlayUnitCard(PlayerIndex player, int cardId, DuelGridVec placement)
     {
         CheckPlayer(player);
 
         lock (_lock)
         {
-            if (Status != DuelStatus.Playing)
+            if (State.Status != DuelStatus.Playing)
             {
                 return Result.Fail<Unit>("Pas encore en jeu.");
             }
 
             var state = State;
             var playerState = state.GetPlayer(player);
-            var card = playerState.Hand.FirstOrDefault(c => c.Id == cardId);
+            var card = State.FindCard(playerState.Hand.FirstOrDefault(c => c == cardId));
             if (card is not UnitDuelCard unitCard)
             {
                 return Result.Fail<Unit>("Carte invalide.");
             }
             
-            if (placementIdx < 0 || state.GetPlayer(player).Units.Length < placementIdx)
+            var act = new ActPlayUnitCard(player, unitCard, placement);
+            if (!act.CanDo(this))
             {
-                return Result.Fail<Unit>("Emplacement invalide");
+                return Result.Fail("Action impossible.");
             }
-            
-            var mut = new DuelMutation(State);
-            var act = ActPlayUnitCard(player, unitCard, placementIdx);
-            SubmitMutation(ApplyActOpt(mut, act));
+
+            RunMutation(m => m.ApplyAct(act));
 
             return Result.Success();
         }
@@ -123,7 +120,7 @@ public sealed partial class Duel
     {
         lock (_lock)
         {
-            if (Status != DuelStatus.Playing)
+            if (State.Status != DuelStatus.Playing)
             {
                 return Result.Fail<Unit>("Pas encore en jeu.");
             }
@@ -133,33 +130,69 @@ public sealed partial class Duel
                 return Result.Fail<Unit>("Ce n'est pas votre tour.");
             }
 
-            RunMutation(x => ApplyActOpt(x, ActNextTurn()));
+            RunMutation(x => ApplyAct(x, new ActNextTurn()));
 
             return Result.Success();
         }
     }
 
+    public Result<Unit> UseUnitAttack(PlayerIndex player, int unitId, DuelTarget target)
+    {
+        lock (_lock)
+        {
+            if (State.Status != DuelStatus.Playing)
+            {
+                return Result.Fail<Unit>("Pas encore en jeu.");
+            }
+
+            var unit = State.FindUnit(unitId);
+            if (unit == null || unit.Owner != player)
+            {
+                return Result.Fail<Unit>("Unité invalide.");
+            }
+
+            var act = new ActUseUnitAttack(unit, target);
+            if (!act.CanDo(this))
+            {
+                return Result.Fail<Unit>("Action impossible.");
+            }
+
+            RunMutation(x => ApplyAct(x, act));
+
+            return Result.Success();
+        }
+    }
+    
     private DuelState MakeStartState()
     {
-        DuelPlayerState MakePlayerState(ImmutableArray<QualCardRef> deck)
+        var cardDb = new Dictionary<int, DuelCard>();
+
+        DuelPlayerState MakePlayerState(ImmutableArray<QualCardRef> deck, PlayerIndex whoIdx)
         {
+            var cards = deck.Select(MakeCard).ToList();
+            foreach (var card in cards)
+            {
+                // Register the card to the deck
+                card.Location = whoIdx == PlayerIndex.P1 ? DuelCardLocation.DeckP1 : DuelCardLocation.DeckP2;
+                cardDb.Add(card.Id, card);
+            }
+
             return new DuelPlayerState
             {
                 CoreHealth = Settings.MaxCoreHealth,
                 Energy = 0,
                 MaxEnergy = 0,
-                Deck = ImmutableStack.Create(deck.Select(MakeCard).ToArray()),
-                CardsInDeck = deck.Length,
-                CardsInHand = 0,
-                Hand = ImmutableArray<DuelCard>.Empty
+                Deck = cards.Select(x => x.Id).ToList(),
+                Units = new int?[Settings.UnitsX * Settings.UnitsY]
             };
         }
 
         return new DuelState
         {
-            Player1 = MakePlayerState(Settings.Player1Deck),
-            Player2 = MakePlayerState(Settings.Player2Deck),
+            Player1 = MakePlayerState(Settings.Player1Deck, PlayerIndex.P1),
+            Player2 = MakePlayerState(Settings.Player2Deck, PlayerIndex.P2),
             Turn = 0,
+            Cards = cardDb,
             WhoseTurn = PlayerIndex.P1 // this is completely bogus
         };
     }
@@ -174,20 +207,21 @@ public sealed partial class Duel
             return;
         }
 
-        State = mut.State;
         StateIteration++;
 
         var deltas = mut.Deltas;
         BroadcastMessage(p => new DuelMutatedMessage(
-            deltas.Select(d => Sanitize(d, p)).ToList(),
-            Sanitize(State, p),
+            deltas.Select(d => Sanitize(d, p)).Where(DeltaRelevant).ToList(),
+            GeneratePropositions(p),
             StateIteration
         ));
     }
 
-    private void RunMutation(Func<DuelMutation, DuelMutation> act)
+    private void RunMutation(Action<DuelMutation> act)
     {
-        SubmitMutation(act(new DuelMutation(State)));
+        var mut = new DuelMutation(this, State);
+        act(mut);
+        SubmitMutation(mut);
     }
 
 
@@ -212,8 +246,9 @@ public sealed partial class Duel
         {
             return new DuelWelcomeMessage(
                 Sanitize(State, playerIndex),
+                GeneratePropositions(playerIndex),
                 StateIteration,
-                Status
+                playerIndex
             );
         }
     }
@@ -229,7 +264,6 @@ public sealed partial class Duel
             return new UnitDuelCard
             {
                 Id = _cardIdSeq++,
-                AppliedModifiers = ImmutableArray<(int id, UnitDuelCardModifier mod)>.Empty,
                 BaseDefRef = c,
                 Cost = def.Cost,
                 Stats = new DuelCardStats
@@ -237,7 +271,7 @@ public sealed partial class Duel
                     Attack = def.Attack,
                     Health = def.Health
                 },
-                Traits = def.Traits
+                Traits = def.Traits.ToList()
             };
         }
         else
@@ -246,7 +280,7 @@ public sealed partial class Duel
         }
     }
 
-    private DuelUnit MakeUnit(UnitDuelCard card)
+    private DuelUnit MakeUnit(UnitDuelCard card, PlayerIndex owner)
     {
         // Once the unit is summonned, the modifiers are "solidifed" and part of the base definition
         // of the unit.
@@ -255,7 +289,8 @@ public sealed partial class Duel
             Id = _unitIdSeq++,
             OriginRef = card.BaseDefRef,
             OriginStats = card.Stats,
-            OriginTraits = card.Traits,
+            OriginTraits = card.Traits.ToImmutableArray(),
+            Owner = owner,
             Attribs =
                 new DuelUnitAttribs
                 {
@@ -266,8 +301,7 @@ public sealed partial class Duel
                     ActionsLeft = 0,
                     InactionTurns = 1,
                     ActionsPerTurn = 1 // soon: function of traits
-                },
-            AppliedModifiers = ImmutableArray<(int id, DuelUnitModifier mod)>.Empty
+                }
         };
         // todo: apply traits that modify actionsleft/inactionturns
     }
@@ -281,32 +315,60 @@ public sealed partial class Duel
     private static DuelState Sanitize(DuelState state, PlayerIndex player)
     {
         CheckPlayer(player);
+        // todo: very hacky... find some other way
+        // first "clone" the state in a very vague way
+        state = state with { };
 
-        return state with
+        var hidden = ImmutableArray.CreateBuilder<int>();
+        var shown = ImmutableDictionary.CreateBuilder<int, DuelCard>();
+
+        foreach (var card in state.Cards.Values)
         {
-            Player1 = player == PlayerIndex.P2 ? ClearHand(state.Player1) : state.Player1,
-            Player2 = player == PlayerIndex.P1 ? ClearHand(state.Player2) : state.Player2,
-        };
+            if (card.Revealed[player])
+            {
+                shown.Add(card.Id, card);
+            }
+            else
+            {
+                hidden.Add(card.Id);
+            }
+        }
 
-        static DuelPlayerState ClearHand(DuelPlayerState p) => p with { Hand = ImmutableArray<DuelCard>.Empty };
+        state.HiddenCards = hidden.ToImmutable();
+        state.KnownCards = shown.ToImmutable();
+
+        return state;
     }
 
     private static T Sanitize<T>(T delta, PlayerIndex player) where T : DuelStateDelta
     {
         DuelStateDelta d2 = delta switch
         {
-            DrawDeckCardsDelta d => d with
+            RevealCardsDelta { CardSnapshots: var cards } => new RevealCardsDelta
             {
-                Cards = new PlayerPair<ImmutableArray<DuelCard>>
-                {
-                    P1 = player == PlayerIndex.P2 ? ImmutableArray<DuelCard>.Empty : d.Cards.P1,
-                    P2 = player == PlayerIndex.P1 ? ImmutableArray<DuelCard>.Empty : d.Cards.P2
-                }
+                HiddenCards = cards
+                    .Where(x => !x.card.Revealed[player] && x.prevReveal[player])
+                    .Select(x => x.card.Id).ToImmutableArray(),
+
+                RevealedCards = cards
+                    .Where(x => x.card.Revealed[player] && !x.prevReveal[player])
+                    .Select(x => x.card)
+                    .ToImmutableArray()
             },
             _ => delta
         };
 
         return (T)d2;
+    }
+
+    private static bool DeltaRelevant(DuelStateDelta delta)
+    {
+        if (delta is RevealCardsDelta { HiddenCards: [], RevealedCards: [] })
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static void CheckPlayer(PlayerIndex player)
@@ -324,10 +386,10 @@ public sealed record DuelSettings
     public int MaxEnergy { get; init; } = 999;
     public int SecondsPerTurn { get; init; } = 40;
     public int StartCards { get; init; } = 5;
-    
+
     public int UnitsX { get; init; } = 4;
     public int UnitsY { get; init; } = 2;
-    
+
     public required ImmutableArray<GamePack> Packs { get; init; }
     public required ImmutableArray<QualCardRef> Player1Deck { get; init; }
     public required ImmutableArray<QualCardRef> Player2Deck { get; init; }
@@ -341,27 +403,29 @@ public enum DuelStatus
     Ended
 }
 
-public readonly record struct DuelMutation(DuelState State)
+public class DuelMutation(Duel duel, DuelState state)
 {
-    public ImmutableLinkedList<DuelStateDelta> Deltas { get; init; } = [];
+    public List<DuelStateDelta> Deltas { get; init; } = [];
 
-    public Result<DuelMutation> Apply(DuelStateDelta delta)
+    public Result<Unit> Apply(DuelStateDelta delta)
     {
-        var res = delta.Apply(State);
-        if (res.SucceededWith(out var newState))
+        var res = delta.Apply(duel, state);
+
+        if (res.Succeeded)
         {
-            return new DuelMutation
-            {
-                State = newState,
-                Deltas = Deltas.Append(delta)
-            };
+            Deltas.Add(delta);
         }
 
-        return Result.Fail<DuelMutation>(res.Error!);
+        return res;
     }
 
-    public T Map<T>(Func<DuelMutation, T> map)
+    public T ApplyFrag<T>(DuelFragment2<T> f)
     {
-        return map(this);
+        return duel.ApplyFrag2(this, f);
+    }
+
+    public void ApplyAct(DuelAction act)
+    {
+        duel.ApplyAct(this, act);
     }
 }

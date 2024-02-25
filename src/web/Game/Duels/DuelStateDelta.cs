@@ -14,82 +14,36 @@ namespace CardLab.Game.Duels;
 
 // Deltas are designed to be one-to-one with in-game animations, but there might
 // be some exceptions (too complex stuff for instance).
+// In these cases, scopes are there!
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
-[JsonDerivedType(typeof(DrawDeckCardsDelta), "drawDeckCards")]
+[JsonDerivedType(typeof(CreateCardsDelta), "createCards")]
+[JsonDerivedType(typeof(RevealCardsDelta), "revealCards")]
+[JsonDerivedType(typeof(MoveCardsDelta), "moveCards")]
 [JsonDerivedType(typeof(SwitchTurnDelta), "switchTurn")]
-[JsonDerivedType(typeof(RemoveCardsDelta), "removeCards")]
+[JsonDerivedType(typeof(SwitchStatusDelta), "switchStatus")]
 [JsonDerivedType(typeof(PlaceUnitDelta), "placeUnit")]
 [JsonDerivedType(typeof(RemoveUnitDelta), "removeUnit")]
 [JsonDerivedType(typeof(UpdateBoardAttribsDelta), "updateBoardAttribs")]
 [JsonDerivedType(typeof(UpdateEnergyDelta), "updateEnergy")]
 [JsonDerivedType(typeof(UnitAttackScopeDelta), "unitAttackScope")]
 [JsonDerivedType(typeof(UnitTriggerScopeDelta), "unitTriggerScope")]
+[JsonDerivedType(typeof(CardPlayScopeDelta), "cardPlayScope")]
+[JsonDerivedType(typeof(CardDrawScopeDelta), "cardDrawScope")]
+[JsonDerivedType(typeof(DeathScopeDelta), "deathScope")]
 public abstract record DuelStateDelta
 {
-    public abstract Result<DuelState> Apply(DuelState state);
+    public abstract Result<Unit> Apply(Duel duel, DuelState state);
 }
 
-// Must be sanitized!
-// The delta used when drawing cards from the top of the deck.
-// Removes N top cards from the deck, and add those top cards.
-// Simultaneous draws are supported with this technique.
-public sealed record DrawDeckCardsDelta : DuelStateDelta
+public sealed record SwitchStatusDelta : DuelStateDelta
 {
-    public PlayerPair<int> Num { get; init; }
-
-    // For the client only!
-    // Set in Apply, i'm not sure if this mutability is a good idea but honestly i'm out of ideas anyway...
-    // Sanitize: empty array if opposite player
-    private PlayerPair<ImmutableArray<DuelCard>> _cards;
-
-    public PlayerPair<ImmutableArray<DuelCard>> Cards
+    public required DuelStatus Status { get; init; }
+    
+    public override Result<Unit> Apply(Duel duel, DuelState state)
     {
-        get => _cards;
-        set => _cards = value;
-    }
-
-    public override Result<DuelState> Apply(DuelState state)
-    {
-        static DuelPlayerState ApplyPlayer(DuelPlayerState player, int num, out ImmutableArray<DuelCard> outCards)
-        {
-            var cardsBuilder = ImmutableArray.CreateBuilder<DuelCard>();
-            var newDeck = player.Deck;
-            for (int i = 0; i < num; i++)
-            {
-                cardsBuilder.Add(newDeck.Peek());
-                newDeck = newDeck.Pop();
-            }
-
-            var cards = cardsBuilder.ToImmutable();
-            var newHand = player.Hand.AddRange(cards);
-            outCards = cards;
-
-            return player with
-            {
-                Hand = newHand,
-                CardsInHand = newHand.Length,
-                Deck = newDeck,
-                CardsInDeck = newDeck.Count() // todo perf!
-            };
-        }
-
-        if (!EnoughCards(state))
-        {
-            return Result.Fail<DuelState>("Not enough cards for drawing from a deck.");
-        }
-
-        return state with
-        {
-            Player1 = ApplyPlayer(state.Player1, Num.P1, out _cards.P1),
-            Player2 = ApplyPlayer(state.Player2, Num.P2, out _cards.P2)
-        };
-    }
-
-    private bool EnoughCards(DuelState state)
-    {
-        // todo: perf!!
-        return state.Player1.Deck.Count() >= Num.P1 && state.Player2.Deck.Count() >= Num.P2;
+        state.Status = Status;
+        return Result.Success();
     }
 }
 
@@ -97,108 +51,74 @@ public sealed record SwitchTurnDelta : DuelStateDelta
 {
     public required int NewTurn { get; init; }
     public required PlayerIndex WhoPlays { get; init; }
-    public required int NewEnergy { get; init; }
 
-    public override Result<DuelState> Apply(DuelState state)
+    public override Result<Unit> Apply(Duel duel, DuelState state)
     {
-        DuelPlayerState ApplyPlayer(DuelPlayerState player)
-        {
-            return player with
-            {
-                Energy = NewEnergy,
-                MaxEnergy = NewEnergy
-            };
-        }
+        state.Turn = NewTurn;
+        state.WhoseTurn = WhoPlays;
 
-        return state with
-        {
-            Turn = NewTurn,
-            WhoseTurn = WhoPlays,
-            Player1 = WhoPlays == PlayerIndex.P1 ? ApplyPlayer(state.Player1) : state.Player1,
-            Player2 = WhoPlays == PlayerIndex.P2 ? ApplyPlayer(state.Player2) : state.Player2
-        };
+        return Result.Success();
     }
 }
-
-public sealed record RemoveCardsDelta : DuelStateDelta
-{
-    public required PlayerIndex Player { get; init; }
-
-    public required ImmutableArray<int> CardIds { get; init; }
-
-    public required RemReason Reason { get; init; } // (Only for cosmetic purposes)
-
-    public enum RemReason
-    {
-        Played,
-        Discarded
-    }
-
-    public override Result<DuelState> Apply(DuelState state)
-    {
-        var playerSt = state.GetPlayer(Player);
-        var newHand = playerSt.Hand.RemoveAll(c => CardIds.Contains(c.Id));
-
-        var newPlayerSt = playerSt with
-        {
-            Hand = newHand,
-            CardsInHand = newHand.Length
-        };
-        return state.WithPlayerState(Player, newPlayerSt);
-    }
-}
-
 public sealed record PlaceUnitDelta : DuelStateDelta
 {
     public required PlayerIndex Player { get; init; }
-    public required DuelUnit Unit { get; init; }
-    public required int Position { get; init; }
+    [JsonIgnore] public required DuelUnit Unit { get; init; }
+    public required DuelGridVec Position { get; init; }
+    
+    // set in apply for the client
+    [JsonPropertyName("unit")] public DuelUnit SnapshotUnit { get; set; } = null!;
 
-    public override Result<DuelState> Apply(DuelState state)
+    public override Result<Unit> Apply(Duel duel, DuelState state)
     {
-        var newGlobalUnits = state.Units.Add(Unit.Id, Unit);
+        SnapshotUnit = Unit.Snapshot();
 
+        // todo: validate position somehow
+        if (!Position.Valid(duel))
+        {
+            return Result.Fail("invalid position");
+        }
+        
         var playerSt = state.GetPlayer(Player);
-        var newUnits = playerSt.Units.Insert(Position, Unit.Id);
-        var newPlayerSt = playerSt with
+        var index = Position.ToIndex(duel);
+        if (playerSt.Units[index] != null)
         {
-            Units = newUnits
-        };
-        return state.WithPlayerState(Player, newPlayerSt) with
-        {
-            Units = newGlobalUnits
-        };
+            return Result.Fail("position already occupied");
+        }
+        
+        state.Units.Add(Unit.Id, Unit);
+        playerSt.Units[index] = Unit.Id;
+        Unit.Position = Position;
+
+        return Result.Success();
     }
 }
 
 public sealed record RemoveUnitDelta : DuelStateDelta
 {   
     public required ImmutableArray<int> RemovedIds { get; init; }
-    public RemReason Reason { get; init; } // Cosmetic
 
-    public enum RemReason
+    public override Result<Unit> Apply(Duel duel, DuelState state)
     {
-        Death
-    }
+        // todo: validation?
+        foreach (var removedId in RemovedIds)
+        {
+            state.Units.Remove(removedId);
 
-    public override Result<DuelState> Apply(DuelState state)
-    {
-        var newUnits = state.Units.RemoveRange(RemovedIds);
-        var newP1State = state.Player1 with
-        {
-            Units = state.Player1.Units.RemoveAll(x => RemovedIds.Contains(x))
-        };
-        var newP2State = state.Player2 with
-        {
-            Units = state.Player2.Units.RemoveAll(x => RemovedIds.Contains(x))
-        };
+            var i = Array.IndexOf(state.Player1.Units, removedId);
+            if (i != -1)
+            {
+                state.Player1.Units[i] = null;
+            }
 
-        return state with
-        {
-            Units = newUnits,
-            Player1 = newP1State,
-            Player2 = newP2State
-        };
+            i = Array.IndexOf(state.Player2.Units, removedId);
+            if (i != -1)
+            {
+                state.Player2.Units[i] = null;
+            }
+        }
+
+        return Result.Success();
     }
 }
 
@@ -211,36 +131,33 @@ public sealed record UpdateBoardAttribsDelta : DuelStateDelta
     
     public readonly record struct AttribChange(int UnitId, DuelUnitAttribs NewAttribs);
     
-    public override Result<DuelState> Apply(DuelState state)
+    public override Result<Unit> Apply(Duel duel, DuelState state)
     {
-        var newUnits = state.Units;
-        foreach (var attrib in Attribs)
+        foreach (var (unitId, _) in Attribs)
         {
-            var unit = newUnits[attrib.UnitId];
-            newUnits = newUnits.SetItem(attrib.UnitId, unit with
+            if (!state.Units.ContainsKey(unitId))
             {
-                Attribs = attrib.NewAttribs
-            });
+                return Result.Fail("unit not found");
+            }
         }
 
-        static DuelPlayerState UpdatePlayer(DuelPlayerState st, int? coreHp)
+        foreach (var attrib in Attribs)
+        {
+            state.Units[attrib.UnitId].Attribs = attrib.NewAttribs;
+        }
+
+        static void UpdatePlayer(DuelPlayerState st, int? coreHp)
         {
             if (coreHp is { } hp)
             {
-                return st with { CoreHealth = hp };
-            }
-            else
-            {
-                return st;
+                st.CoreHealth = hp;
             }
         }
 
-        return state with
-        {
-            Units = newUnits,
-            Player1 = UpdatePlayer(state.Player1, CoreHealths.P1),
-            Player2 = UpdatePlayer(state.Player2, CoreHealths.P2)
-        };
+        UpdatePlayer(state.Player1, CoreHealths.P1);
+        UpdatePlayer(state.Player2, CoreHealths.P2);
+
+        return Result.Success();
     }
 }
 
@@ -250,61 +167,161 @@ public sealed record UpdateEnergyDelta : DuelStateDelta
     public required int NewEnergy { get; init; }
     public required int NewMaxEnergy { get; init; }
 
-    public override Result<DuelState> Apply(DuelState state)
+    public override Result<Unit> Apply(Duel duel, DuelState state)
     {
         var player = state.GetPlayer(Player);
-        var newPlayer = player with
-        {
-            Energy = NewEnergy,
-            MaxEnergy = NewMaxEnergy
-        };
-        return state.WithPlayerState(Player, newPlayer);
+        player.Energy = NewEnergy;
+        player.MaxEnergy = NewMaxEnergy;
+
+        return Result.Success();
     }
 }
 
-
+// Create cards that are revealed by neither player.
 public sealed record CreateCardsDelta : DuelStateDelta
 {
-    public required ImmutableArray<DuelCard> Cards { get; init; }
+    [JsonIgnore] public required IEnumerable<DuelCard> Cards { get; init; }
     
-    public override Result<DuelState> Apply(DuelState state)
+    // set in apply for the client
+    public List<int> CardIds { get; set; } = new();
+    
+    public override Result<Unit> Apply(Duel duel, DuelState state)
     {
-        var newCards = state.Cards.AddRange(Cards.Select(c => new KeyValuePair<int, DuelCard>(c.Id, c)));
-        return state with
+        foreach (var c in Cards)
         {
-            Cards = newCards
-        };
+            state.Cards.Add(c.Id, c);
+            CardIds.Add(c.Id);
+        }
+
+        return Result.Success();
     }
 }
 
-public sealed record UpdateCardsRevealStateDelta : DuelStateDelta
+public sealed record RevealCardsDelta : DuelStateDelta
 {
-    [JsonIgnore] public ImmutableArray<(DuelCard card, PlayerPair<bool> newReveal)> Changes { get; init; }
+    [JsonIgnore] public ImmutableArray<(int cardId, PlayerPair<bool> newReveal)> Changes { get; init; }
+    
+    // set in apply for sanitizer
+    [JsonIgnore] public List<(DuelCard card, PlayerPair<bool> prevReveal)> CardSnapshots { get; } = new();
     
     // Set by sanitizer
     public ImmutableArray<int> HiddenCards { get; set; } = ImmutableArray<int>.Empty;
+    // must be snapshots!
     public ImmutableArray<DuelCard> RevealedCards { get; set; } = ImmutableArray<DuelCard>.Empty;
-    public override Result<DuelState> Apply(DuelState state)
+    
+    public override Result<Unit> Apply(Duel duel, DuelState state)
     {
-        var newCards = state.Cards;
-        foreach (var (card, newReveal) in Changes)
+        foreach (var (cardId, newReveal) in Changes)
         {
-            newCards = newCards.SetItem(card.Id, card with
+            if (!state.Cards.ContainsKey(cardId))
             {
-                Revealed = newReveal
-            });
+                return Result.Fail("");
+            }
+        }
+        foreach (var (cardId, newReveal) in Changes)
+        {
+            var card = state.Cards[cardId];
+            var prevRev = card.Revealed;
+            card.Revealed = newReveal;
+            CardSnapshots.Add((card.TakeSnapshot(), prevRev));
         }
 
-        return state with
-        {
-            Cards = newCards
-        };
+        return Result.Success();
     }
 }
 
-public sealed record MoveCardsToDeckDelta : DuelStateDelta
+public sealed record MoveCardsDelta : DuelStateDelta
 {
+    // null index = append or none
+    public ImmutableArray<Move> Changes { get; init; }
     
+    public Reason Context { get; init; } // Cosmetic
+
+    public readonly record struct Move(int CardId, DuelCardLocation NewLocation, int? Index);
+    
+    public enum Reason
+    {
+        Played,
+        Discarded,
+        Drawn,
+        Other
+    }
+    
+    public override Result<Unit> Apply(Duel duel, DuelState state)
+    {
+        // check
+        foreach (var (cardId, _, _) in Changes)
+        {
+            if (!state.Cards.ContainsKey(cardId))
+            {
+                return Result.Fail("");
+            }
+        }
+        
+        foreach (var (cardId, newLocation, index) in Changes)
+        {
+            // 1. remove from old list (if there's one)
+            var card = state.Cards[cardId];
+            switch (card.Location)
+            {
+                case DuelCardLocation.DeckP1:
+                    state.Player1.Deck.Remove(cardId);
+                    break;
+                case DuelCardLocation.DeckP2:
+                    state.Player2.Deck.Remove(cardId);
+                    break;
+                case DuelCardLocation.HandP1:
+                    state.Player1.Hand.Remove(cardId);
+                    break;
+                case DuelCardLocation.HandP2:
+                    state.Player2.Hand.Remove(cardId);
+                    break;
+                case DuelCardLocation.Discarded: // no list for them
+                case DuelCardLocation.Temp:
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+            
+            // 2. Set the new location
+            card.Location = newLocation;
+            
+            // 3. Insert to list
+            void InsertTo(List<int> cards)
+            {
+                if (index is { } i)
+                {
+                    cards.Insert(Math.Min(cards.Count, i), cardId);
+                }
+                else
+                {
+                    cards.Add(cardId);
+                }
+            }
+            switch (card.Location)
+            {
+                case DuelCardLocation.DeckP1:
+                    InsertTo(state.Player1.Deck);
+                    break;
+                case DuelCardLocation.DeckP2:
+                    InsertTo(state.Player2.Deck);
+                    break;
+                case DuelCardLocation.HandP1:
+                    InsertTo(state.Player1.Hand);
+                    break;
+                case DuelCardLocation.HandP2:
+                    InsertTo(state.Player2.Hand);
+                    break;
+                case DuelCardLocation.Discarded: // no list for them
+                case DuelCardLocation.Temp:
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        return Result.Success();
+    }
 }
 
 // Scopes: used to know who did what
@@ -318,13 +335,17 @@ public abstract record ScopeDelta : DuelStateDelta
     }
     
     public ScopeState State { get; init; }
-
-    public string? Tag { get; init; } = null;
     
-    public override Result<DuelState> Apply(DuelState state) => state;
+    public override Result<Unit> Apply(Duel duel, DuelState state)
+    {
+        return Result.Success();
+    }
 }
 
-public sealed record UnitAttackScopeDelta(int UnitId) : ScopeDelta;
+public sealed record UnitAttackScopeDelta(int UnitId, DuelTarget Target) : ScopeDelta;
 public sealed record UnitTriggerScopeDelta(int UnitId) : ScopeDelta;
 
-public sealed record CardScopeDelta(DuelCard Card) : ScopeDelta;
+public sealed record CardPlayScopeDelta(int CardId, PlayerIndex Player) : ScopeDelta;
+public sealed record CardDrawScopeDelta(PlayerIndex Player) : ScopeDelta;
+
+public sealed record DeathScopeDelta() : ScopeDelta;

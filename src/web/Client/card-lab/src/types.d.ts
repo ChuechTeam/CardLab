@@ -21,7 +21,8 @@ declare interface CardDefinition {
     attack: number,
     health: number,
     cost: number,
-    script: CardScript | null
+    script: CardScript | null,
+    traits?: any[] // todo
 }
 
 declare interface CardScript {
@@ -141,5 +142,6 @@ declare type LabMessage =
     | LobbyPlayerUpdatedMessage
     | SwitchedPhaseMessage
     | WelcomeMessage
+    | DuelMessage
 
 declare type MessageType = LabMessage["type"]

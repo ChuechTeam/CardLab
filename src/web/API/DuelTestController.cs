@@ -161,7 +161,7 @@ public class DuelTestController(
         return Ok(new
         {
             duel.State,
-            duel.Status,
+            duel.State.Status,
             duel.StateIteration
         });
     }
@@ -170,7 +170,7 @@ public class DuelTestController(
     public IActionResult StartPlaying()
     {
         var duel = globalDuelTest.TheDuel;
-        if (duel.Status != DuelStatus.AwaitingConnection)
+        if (duel.State.Status != DuelStatus.AwaitingConnection)
         {
             return BadRequest();
         }
@@ -178,16 +178,30 @@ public class DuelTestController(
         return Ok();
     }
 
-    public record PlayUnitInput(int CardId, int PlaceIdx);
+    public record PlayUnitInput(int CardId, DuelGridVec Place);
     [HttpPost("p{playerIndex:int}/play-unit")]
     public IActionResult PlayUnit(int playerIndex, [FromBody] PlayUnitInput message)
     {
         var duel = globalDuelTest.TheDuel;
-        if (duel.Status != DuelStatus.Playing)
+        if (duel.State.Status != DuelStatus.Playing)
         {
             return BadRequest();
         }
-        var res = duel.PlayUnitCard((PlayerIndex)playerIndex, message.CardId, message.PlaceIdx);
+        var res = duel.PlayUnitCard((PlayerIndex)playerIndex, message.CardId, message.Place);
+        return res.FailedWith(out var m) ? Conflict(m) : Ok();
+    }
+    
+    public record UseUnitAttackInput(int UnitId, DuelTarget Target);
+
+    [HttpPost("p{playerIndex:int}/use-unit-attack")]
+    public IActionResult UseUnitAttack(int playerIndex, [FromBody] UseUnitAttackInput message)
+    {
+        var duel = globalDuelTest.TheDuel;
+        if (duel.State.Status != DuelStatus.Playing)
+        {
+            return BadRequest();
+        }
+        var res = duel.UseUnitAttack((PlayerIndex)playerIndex, message.UnitId, message.Target);
         return res.FailedWith(out var m) ? Conflict(m) : Ok();
     }
     
@@ -195,7 +209,7 @@ public class DuelTestController(
     public IActionResult EndTurn(int playerIndex)
     {
         var duel = globalDuelTest.TheDuel;
-        if (duel.Status != DuelStatus.Playing)
+        if (duel.State.Status != DuelStatus.Playing)
         {
             return BadRequest();
         }
