@@ -21,7 +21,7 @@ export interface CardAsset {
 export class DuelGamePack {
     id: string
     name: string
-    cards: Record<number, CardAsset>
+    cards= new Map<number, CardAsset>()
     
     definition: DuelGamePackDef
     
@@ -30,13 +30,12 @@ export class DuelGamePack {
         this.id = def.id
         this.name = def.name
         
-        this.cards = {}
         for (const card of def.cards) {
-            this.cards[card.id] = {
+            this.cards.set(card.id, {
                 id: card.id,
                 image: res.slice(card.image.loc, card.image.loc + card.image.size, "image/png"),
                 definition: card.definition
-            }
+            });
         }
     }
 }

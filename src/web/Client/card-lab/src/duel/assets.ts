@@ -20,7 +20,7 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
 
     const assetPromises: Promise<[string, CardAsset, ImageBitmap]>[] = []
     for (const pack of gameRegistry.packs) {
-        for (const card of Object.values(pack.cards)) {
+        for (const card of pack.cards.values()) {
             assetPromises.push(createImageBitmap(card.image).then(img => [pack.id, card, img]))
         }
     }

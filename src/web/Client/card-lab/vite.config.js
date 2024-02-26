@@ -12,6 +12,8 @@ export default defineConfig({
                 assetFileNames: `assets/[name].[ext]`,
                 manualChunks: {
                     blockly: ['blockly/core'],
+                    pixi: ['pixi.js'],
+                    duel: ['./src/duel/duel.ts', './src/duel/duelTest.ts']
                 }
             }
         },

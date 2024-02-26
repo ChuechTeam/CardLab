@@ -17,8 +17,8 @@ export class LocalDuelState {
     players: LocalDuelPlayerState[]
     turn: number
     whoseTurn: DuelPlayerIndex
-    units: Record<DuelUnitId, LocalDuelUnit> = {}
-    cards: Record<DuelCardId, LocalDuelCard> = {}
+    units = new Map<DuelUnitId, LocalDuelUnit>()
+    cards = new Map<DuelCardId, LocalDuelCard>()
     
     constructor(state?: NetDuelState | null) {
         if (state) {
@@ -28,16 +28,16 @@ export class LocalDuelState {
             
             for (const [id, unit] of Object.entries(state.units)) {
                 const numId = Number(id);
-                this.units[numId] = new LocalDuelUnit(unit);
+                this.units.set(numId, new LocalDuelUnit(unit));
             }
             
             for (const hidId of state.hiddenCards) {
-                this.cards[hidId] = new UnknownLocalDuelCard(hidId);
+                this.cards.set(hidId, new UnknownLocalDuelCard(hidId));
             }
             for (const [id, card] of Object.entries(state.knownCards)) {
                 const numId = Number(id)
                 if (card.type === "unit") {
-                    this.cards[numId] = new LocalUnitDuelCard(card);
+                    this.cards.set(numId, new LocalUnitDuelCard(card));
                 } else {
                     throw new Error(`Unknown card type: ${card.type}`)
                 }
@@ -47,8 +47,6 @@ export class LocalDuelState {
             this.players = [];
             this.turn = 0;
             this.whoseTurn = 0;
-            this.units = {};
-            this.cards = {};
         }
     }
     

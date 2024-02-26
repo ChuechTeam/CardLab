@@ -13,8 +13,9 @@ export class WaitingScene extends Scene {
         text.y = 50;
         this.addChild(text);
         
-        const gamePack = this.game.registry.packs[0];
-        const card = Object.values(gamePack.cards)[0];
+        const gamePack = this.game.registry.packs[0]!;
+        const cardAssets = gamePack.cards.values();
+        const card = cardAssets.next().value;
 
         const texture= this.game.assets.getCardTexture({packId: gamePack.id, cardId: card.id})!;
         const sprite = new Sprite(texture);
