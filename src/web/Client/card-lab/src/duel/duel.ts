@@ -17,12 +17,20 @@ export class DuelGame {
                 public assets: DuelAssets,
                 public messaging: DuelMessaging) {
         this.app = new Application({
-            width: 720,
-            height: 1280,
             backgroundColor: 0x1099bb,
-            resolution: window.devicePixelRatio || 1,
+            antialias: true,
+            resolution: window.devicePixelRatio  || 1,
+            eventMode: "passive",
+            eventFeatures: {
+                move: true,
+                click: true
+            }
         });
         parent.appendChild(this.app.view as any);
+        (this.app.view.style as any).display = "block";
+        
+        window.addEventListener("resize", () => this.resizeToWindow())
+        this.resizeToWindow();
         
         this.switchScene(new WaitingScene(this));
         this.controller = new DuelController(this);
@@ -37,5 +45,11 @@ export class DuelGame {
         this.scene = scene;
         this.app.stage.addChild(scene);
         this.scene.start();
+    }
+    
+    resizeToWindow() {
+        this.app.renderer.view.style!.height = window.innerHeight + "px"
+        this.app.renderer.view.style!.width = window.innerWidth + "px"
+        this.app.renderer.resize(window.innerWidth, window.innerHeight);
     }
 }

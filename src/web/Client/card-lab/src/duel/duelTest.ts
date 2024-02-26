@@ -34,6 +34,6 @@ async function runDuelTest(container: HTMLElement, params: DuelTestParam) {
     const registry = new DuelGameRegistry([gamePack])
     const assets = await loadDuelAssets(registry)
     
-    const game = new DuelGame(container, registry, assets, new DuelMessaging(new URL(params.socketUrl)));
+    const game = new DuelGame(container, registry, assets, new DuelMessaging(params.socketUrl));
     (window as any).duelGame = game
 }

@@ -4,8 +4,11 @@
 @inject BasePackRegistry BasePackRegistry
 @{
     var (defUrl, resUrl) = BasePackRegistry.GetPackUrls(HttpContext, BasePack1.PackId)!.Value;
-    var @base = HttpContext.Request.Scheme + "://" + HttpContext.Request.Host;
+    var @base =  "ws://" + HttpContext.Request.Host;
 }
+<style>
+    html, body {margin: 0; padding: 0;}
+</style>
 <script>
     window.duelTest =
     { 

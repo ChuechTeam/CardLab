@@ -2,9 +2,9 @@
     managedSocket: WebSocket | null = null
     onMessageReceived: (message: DuelMessage) => void = () => {}
 
-    constructor(managedSocketUrl: URL | null) {
+    constructor(managedSocketUrl: string | URL | null) {
         if (managedSocketUrl) {
-            this.managedSocket = new WebSocket(managedSocketUrl.toString())
+            this.managedSocket = new WebSocket(managedSocketUrl)
             this.managedSocket.addEventListener("message", 
                     m => this.receiveMessage(JSON.parse(m.data)));
         }
