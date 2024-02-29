@@ -145,3 +145,7 @@ html {
     margin: 0 4px !important;
 }
 
+.duel-container, .duel-container > * {
+    max-height: 100vh;
+    max-width: 100vh;
+}

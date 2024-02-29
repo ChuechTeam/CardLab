@@ -1,8 +1,8 @@
 ﻿import {Scene} from "./scene.ts";
-import {DuelGame} from "../duel.ts";
+import {DuelGame} from "./duel.ts";
 import * as PIXI from 'pixi.js';
 import {Sprite} from "pixi.js";
-import {GameScene} from "./GameScene.ts";
+import {GameScene} from "./game/GameScene.ts";
 
 export class WaitingScene extends Scene {
     constructor(game: DuelGame) {

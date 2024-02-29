@@ -1,7 +1,8 @@
-import {Scene} from "./scene.ts";
+import {Scene} from "../scene.ts";
 import {DuelGame} from "../duel.ts";
 import {Viewport} from "pixi-viewport";
 import * as PIXI from 'pixi.js';
+import {Card} from "./Card.ts";
 
 export const GAME_WIDTH = 720;
 export const GAME_HEIGHT = 1440;
@@ -24,7 +25,10 @@ export class GameScene extends Scene {
         funRect.drawRect(0, 0, this.viewport.worldWidth, this.viewport.worldHeight)
         this.viewport.addChild(funRect)
 
-        this.viewport.addChild(new PIXI.Text("Hello World", {fill: 0xFFFFFF}));
+        const pack = this.game.registry.packs[0]
+        const card = Array.from(pack.cards.values())[0];
+        (window as any).funCard =  this.viewport.addChild(new Card(this, Card.dataFromCardRef({packId: pack.id, cardId: card.id}, this.game)));
+        
         this.addChild(this.viewport)
 
         document.addEventListener("keydown", e => {

@@ -1,4 +1,4 @@
-﻿import type {DuelGame} from "../duel.ts";
+﻿import type {DuelGame} from "./duel.ts";
 import {Container} from "pixi.js";
 
 export class Scene extends Container {

@@ -65,6 +65,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
+if (app.Environment.IsDevelopment())
+{
+    app.UseViteDevelopmentServer(true);
+}
+
 app.UseHttpsRedirection();
 
 app.UseStaticFiles(new StaticFileOptions
@@ -87,10 +92,5 @@ app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSecond
 
 app.MapRazorPages();
 app.MapControllers();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseViteDevelopmentServer();
-}
 
 await app.RunAsync();

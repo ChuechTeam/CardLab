@@ -1,12 +1,15 @@
 ﻿import {DuelGameRegistry} from "./gameRegistry.ts";
 import {CardAsset} from "./gamePack.ts";
 import {Assets, Texture} from "pixi.js";
+import cardUpBgUrl from "./assets/card-up-bg.png";
 
 export interface BaseAssets {
-
+    cardUpBg: Texture
 }
 
-const baseBundle = {}
+const baseBundle = {
+    "cardUpBg": cardUpBgUrl,
+}
 
 export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     const begin = performance.now()

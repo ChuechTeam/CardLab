@@ -3,8 +3,8 @@ import {DuelGameRegistry} from "./gameRegistry.ts";
 import {DuelGamePack} from "./gamePack.ts";
 import {DuelAssets} from "./assets.ts";
 import {DuelMessaging} from "./messaging.ts";
-import {Scene} from "./scenes/scene.ts";
-import {WaitingScene} from "./scenes/WaitingScene.ts";
+import {Scene} from "./scene.ts";
+import {WaitingScene} from "./WaitingScene.ts";
 import {DuelController} from "./control/controller.ts";
 
 export class DuelGame {
@@ -19,12 +19,14 @@ export class DuelGame {
         this.app = new Application({
             backgroundColor: 0x1099bb,
             antialias: true,
-            resolution: window.devicePixelRatio  || 1,
+            resolution: Math.min(window.devicePixelRatio, 2),
             eventMode: "passive",
             eventFeatures: {
                 move: true,
                 click: true
-            }
+            },
+            width: window.visualViewport!.width,
+            height: window.visualViewport!.height
         });
         parent.appendChild(this.app.view as any);
         (this.app.view.style as any).display = "block";
@@ -48,8 +50,8 @@ export class DuelGame {
     }
     
     resizeToWindow() {
-        this.app.renderer.view.style!.height = window.innerHeight + "px"
-        this.app.renderer.view.style!.width = window.innerWidth + "px"
-        this.app.renderer.resize(window.innerWidth, window.innerHeight);
+        this.app.renderer.view.style!.height = window.visualViewport!.height + "px"
+        this.app.renderer.view.style!.width = window.visualViewport!.width + "px"
+        this.app.renderer.resize(window.visualViewport!.width, window.visualViewport!.height);
     }
 }
