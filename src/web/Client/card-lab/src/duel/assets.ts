@@ -2,13 +2,15 @@
 import {CardAsset} from "./gamePack.ts";
 import {Assets, Texture} from "pixi.js";
 import cardUpBgUrl from "./assets/card-up-bg.png";
+import attribBgUrl from "./assets/attrib-bg.png";
 
-export interface BaseAssets {
-    cardUpBg: Texture
+export type BaseAssets = {
+    [T in keyof typeof baseBundle]: Texture
 }
 
 const baseBundle = {
     "cardUpBg": cardUpBgUrl,
+    "attribBg": attribBgUrl
 }
 
 export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
@@ -41,7 +43,10 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     }
 
     const baseAssets = await bundlePromise
-
+    
+    // this requires the style.css file to be loaded in the page! 
+    await document.fonts.load("12px Chakra Petch")
+    
     const end = performance.now()
     console.log(`DUEL: assets loaded in ${end - begin}ms`)
 

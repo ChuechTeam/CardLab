@@ -27,7 +27,7 @@ export class GameScene extends Scene {
 
         const pack = this.game.registry.packs[0]
         const card = Array.from(pack.cards.values())[0];
-        (window as any).funCard =  this.viewport.addChild(new Card(this, Card.dataFromCardRef({packId: pack.id, cardId: card.id}, this.game)));
+        (window as any).funCard =  this.viewport.addChild(new Card(this, Card.dataFromCardRef({packId: pack.id, cardId: card.id}, this.game, true)));
         
         this.addChild(this.viewport)
 

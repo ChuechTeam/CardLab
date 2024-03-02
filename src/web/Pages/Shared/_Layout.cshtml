@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
     <title>@ViewData["Title"] - CardLab</title>
     <environment include="Development">
+        <link rel="preload"  href="@ViewData["ViteBase"]/src/style.css" as="style"/>
+        <link rel="stylesheet" href="@ViewData["ViteBase"]/src/style.css"/>
         <script type="module" src="@ViewData["ViteBase"]/@@vite/client"></script>
-        <link rel="stylesheet" href="@ViewData["ViteBase"]/src/style.css" asp-append-version="true"/>
     </environment>
     <environment include="Production">
         <link rel="stylesheet" href="~/client/assets/style.css" asp-append-version="true"/>

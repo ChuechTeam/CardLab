@@ -4,7 +4,7 @@
 @inject BasePackRegistry BasePackRegistry
 @{
     var (defUrl, resUrl) = BasePackRegistry.GetPackUrls(HttpContext, BasePack1.PackId)!.Value;
-    var @base =  "ws://" + HttpContext.Request.Host;
+    var @base = "ws://" + HttpContext.Request.Host;
 }
 <style>
     html, body {margin: 0; padding: 0;}
@@ -19,7 +19,9 @@
     };
 </script>
 
-<div id="duel-container"></div>
+<div id="duel-container">
+    <button class="duel-test-fullscreen">FS</button>
+</div>
 
 @section Scripts {
     <environment include="Development">
@@ -28,4 +30,12 @@
     <environment include="Production">
         <script src="~/client/scripts/game.js" type="module" asp-append-version="true"></script>
     </environment>
+    <script>
+        document.querySelector(".duel-test-fullscreen").addEventListener("click", e => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        } else {
+            document.exitFullscreen();
+        }});
+    </script>
 }
