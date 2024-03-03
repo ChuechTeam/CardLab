@@ -230,6 +230,9 @@ export class Card extends Container {
     }
 
     cardPointerDown = (e: FederatedPointerEvent) => {
+        if (this.state.name === "hand" && this.state.subState === "idle") {
+            this.handSwitchHover(e);
+        }
     }
     
     cardPointerMove = (e: FederatedPointerEvent) => {
@@ -237,18 +240,7 @@ export class Card extends Container {
         if ((e.buttons & (1 | 2)) !== 0
             && this.state.name === "hand" 
             && this.state.subState === "idle") {
-            
-            this.state.subState = "hovered";
-            this.position.y -= SELECTED_Y_OFFSET;
-            this.zIndex = SELECTED_Z_INDEX;
-            
-            // Enlarge the hit area to avoid the case where there's a bit of bottom empty space that's not
-            // considered as part of the card
-            this.hitArea = this.bounds.clone().pad(0, 50);
-            
-            this.scene.cardPreviewOverlay.show({ type: this.visual.type, ...this.visual.data } as any);
-            
-            this.startPointerTracking(e, true);
+            this.handSwitchHover(e);
         }
     }
     
@@ -323,7 +315,8 @@ export class Card extends Container {
 
     moveToHand(pos: Point, zIndex: number, flipped: boolean) {
         if (this.state.name === "hand") {
-            // Already in hand.
+            // Already in hand. 
+            // todo: what do if hovering? 
             this.state.zIndex = zIndex;
             this.state.handPos = pos;
             this.state.flipped = flipped;
@@ -343,8 +336,39 @@ export class Card extends Container {
             this.rotation = Math.PI;
         }
     }
+    
+    handSwitchHover(e: FederatedPointerEvent) {
+        if (this.state.name === "hand" && this.state.subState !== "hovered") {
+            this.state.subState = "hovered";
+            this.position.y -= SELECTED_Y_OFFSET;
+            this.zIndex = SELECTED_Z_INDEX;
+
+            // Enlarge the hit area to avoid the case where there's a bit of bottom empty space that's not
+            // considered as part of the card
+            this.hitArea = this.bounds.clone().pad(0, 50);
+
+            this.scene.cardPreviewOverlay.show({ type: this.visual.type, ...this.visual.data } as any);
+
+            this.startPointerTracking(e, true);
+        }
+    }
+    
+    handExitHover() {
+        if (this.state.name === "hand" && this.state.subState === "hovered") {
+            this.state.subState = "idle";
+            this.position = this.state.handPos;
+            this.zIndex = this.state.zIndex;
+            this.hitArea = this.bounds;
+            this.scene.cardPreviewOverlay.hide();
+        }
+    }
 
     private switchState(newState: CardState) {
+        if (this.state.name === "hand") {
+            if (this.state.subState == "hovered") {
+                this.handExitHover();
+            }
+        }
         this.state = newState;
     }
 
