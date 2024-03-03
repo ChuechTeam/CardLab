@@ -1,11 +1,11 @@
 ﻿import type {DuelGame} from "../duel.ts";
 import {Point} from "pixi.js";
+import {GameScene} from "../game/GameScene.ts";
 
-type DuelPlayerIndex = 0 | 1
 // right now there isn't much point in differentiating the two
 export type LocalDuelPlayerState = NetDuelPlayerState
 
-function toLocalIndex(idx: NetDuelPlayerIndex): DuelPlayerIndex {
+function toLocalIndex(idx: NetDuelPlayerIndex): LocalDuelPlayerIndex {
     return idx === "p1" ? 0 : 1
 }
 
@@ -16,21 +16,21 @@ function toLocalPos(pos: NetDuelGridVec): Point {
 export class LocalDuelState {
     players: LocalDuelPlayerState[]
     turn: number
-    whoseTurn: DuelPlayerIndex
+    whoseTurn: LocalDuelPlayerIndex
     units = new Map<DuelUnitId, LocalDuelUnit>()
     cards = new Map<DuelCardId, LocalDuelCard>()
-    
+
     constructor(state?: NetDuelState | null) {
         if (state) {
             this.players = [state.player1, state.player2];
             this.turn = state.turn;
             this.whoseTurn = toLocalIndex(state.whoseTurn);
-            
+
             for (const [id, unit] of Object.entries(state.units)) {
                 const numId = Number(id);
                 this.units.set(numId, new LocalDuelUnit(unit));
             }
-            
+
             for (const hidId of state.hiddenCards) {
                 this.cards.set(hidId, new UnknownLocalDuelCard(hidId));
             }
@@ -42,27 +42,27 @@ export class LocalDuelState {
                     throw new Error(`Unknown card type: ${card.type}`)
                 }
             }
-            
+
         } else {
             this.players = [];
             this.turn = 0;
             this.whoseTurn = 0;
         }
     }
-    
+
     get isEmpty() {
         return this.players.length == 0;
     }
 }
 
-export type LocalDuelCard = 
+export type LocalDuelCard =
     | LocalUnitDuelCard
     | UnknownLocalDuelCard
 
 export class UnknownLocalDuelCard {
     type: "unknown"
     id: number
-    
+
     constructor(id: number) {
         this.type = "unknown"
         this.id = id
@@ -74,7 +74,7 @@ export abstract class KnownLocalDuelCard {
     id: number
     defAssetRef: CardAssetRef
     location: DuelCardLocation
-    
+
     protected constructor(card: NetDuelCard) {
         this.type = card.type;
         this.id = card.id;
@@ -89,7 +89,7 @@ export class LocalUnitDuelCard extends KnownLocalDuelCard {
         attack: number
         health: number
     }
-    
+
     constructor(card: NetUnitDuelCard) {
         super(card);
         if (card.type !== "unit") {
@@ -103,10 +103,10 @@ export class LocalUnitDuelCard extends KnownLocalDuelCard {
 export class LocalDuelUnit {
     id: DuelUnitId
     originRef: CardAssetRef
-    owner: DuelPlayerIndex
+    owner: LocalDuelPlayerIndex
     attributes: NetDuelUnitAttributes
     position: Point
-    
+
     constructor(unit: NetDuelUnit) {
         this.id = unit.id;
         this.originRef = unit.originRef;
@@ -118,14 +118,31 @@ export class LocalDuelUnit {
 
 export class DuelController {
     state: LocalDuelState = new LocalDuelState()
-    
-    constructor(public game: DuelGame) {
+    playerIndex: LocalDuelPlayerIndex
+    scene: GameScene
+
+    constructor(public game: DuelGame, welcomeMsg: Extract<DuelMessage, { type: "duelWelcome" }>) {
+        console.log("DUEL: creating duel controller with msg", welcomeMsg)
+        this.state = new LocalDuelState(welcomeMsg.state);
+
+        if (welcomeMsg.player == "p1") {
+            this.playerIndex = 0;
+        } else {
+            this.playerIndex = 1;
+        }
+
+        this.scene = new GameScene(this.game, this.playerIndex);
     }
     
+    displayGameScene() {
+        if (this.game.scene !== this.scene) {
+            this.game.switchScene(this.scene);
+        }
+    }
+
     receiveMessage(msg: DuelMessage) {
-       if (msg.type === "duelWelcome") {
-           console.log("DUEL: welcome message received", msg)
-           this.state = new LocalDuelState(msg.state);
-       }
+        if (msg.type === "duelWelcome") {
+
+        }
     }
 }

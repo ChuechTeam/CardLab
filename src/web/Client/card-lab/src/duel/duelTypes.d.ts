@@ -22,6 +22,7 @@ declare interface CardAssetRef {
     cardId: number
 }
 
+declare type LocalDuelPlayerIndex = 0 | 1
 declare type NetDuelPlayerIndex = "p1" | "p2"
 declare type DuelUnitId = number
 declare type DuelCardId = number

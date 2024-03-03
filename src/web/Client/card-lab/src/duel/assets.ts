@@ -2,6 +2,7 @@
 import {CardAsset} from "./gamePack.ts";
 import {Assets, Texture} from "pixi.js";
 import cardUpBgUrl from "./assets/card-up-bg.png";
+import cardDownBgUrl from "./assets/card-down-bg.png";
 import attribBgUrl from "./assets/attrib-bg.png";
 
 export type BaseAssets = {
@@ -10,6 +11,7 @@ export type BaseAssets = {
 
 const baseBundle = {
     "cardUpBg": cardUpBgUrl,
+    "cardDownBg": cardDownBgUrl,
     "attribBg": attribBgUrl
 }
 

@@ -3,52 +3,117 @@ import {DuelGame} from "../duel.ts";
 import {Viewport} from "pixi-viewport";
 import * as PIXI from 'pixi.js';
 import {Card} from "./Card.ts";
+import {Hand} from "./Hand.ts";
+import {UnitSlotGrid} from "./UnitSlotGrid.ts";
+import {Graphics} from "pixi.js";
+import {CardPreviewOverlay} from "./CardPreviewOverlay.ts";
 
 export const GAME_WIDTH = 720;
 export const GAME_HEIGHT = 1440;
 
+const HAND_Y = -90;
+
+const VIEWPORT_Y_POS = -30;
+
+const SEP_LINE_WIDTH = 620;
+
 export class GameScene extends Scene {
     viewport: Viewport;
 
-    constructor(game: DuelGame) {
+    myHand: Hand;
+    advHand: Hand;
+    hands: Hand[]; // per player index
+
+    myUnitSlotGrid: UnitSlotGrid;
+    advUnitSlotGrid: UnitSlotGrid | null = null;
+    unitSlotGrids: UnitSlotGrid[]; // per player index
+    
+    cardPreviewOverlay: CardPreviewOverlay;
+
+    cards: Card[] = [];
+
+    constructor(game: DuelGame, public readonly playerIndex: number) {
         super(game);
+
         this.viewport = new Viewport({
             worldWidth: GAME_WIDTH,
             worldHeight: GAME_HEIGHT,
             events: game.app.renderer.events
         })
+        this.viewport.sortableChildren = true
         this.game.app.renderer.on("resize", this.resizeViewport.bind(this));
         this.resizeViewport();
 
-        const funRect = new PIXI.Graphics()
-        funRect.lineStyle({width: 20, color: 0xFF0000, alpha: 1})
-        funRect.drawRect(0, 0, this.viewport.worldWidth, this.viewport.worldHeight)
-        this.viewport.addChild(funRect)
+        // const funRect = new PIXI.Graphics()
+        // funRect.lineStyle({width: 3, color: 0x000000, alpha: 0.35})
+        // funRect.drawRect(0, 0, this.viewport.worldWidth, this.viewport.worldHeight)
+        // this.viewport.addChild(funRect)
 
         const pack = this.game.registry.packs[0]
         const card = Array.from(pack.cards.values())[0];
-        (window as any).funCard =  this.viewport.addChild(new Card(this, Card.dataFromCardRef({packId: pack.id, cardId: card.id}, this.game, true)));
+
+        this.myHand = new Hand(this, false);
+        this.myHand.x = GAME_WIDTH / 2;
+        this.myHand.y = GAME_HEIGHT - HAND_Y;
+
+        for (let i = 0; i < 8; i++) {
+            const spawned = this.spawnCard(new Card(this, Card.dataFromCardRef({
+                packId: pack.id,
+                cardId: card.id
+            }, this.game, true), true))
+
+            this.myHand.addCard(spawned)
+        }
+
+        this.advHand = new Hand(this, true);
+        this.advHand.x = GAME_WIDTH / 2;
+        this.advHand.y = HAND_Y;
+
+        for (let i = 0; i < 4; i++) {
+            const spawned = this.spawnCard(new Card(this, {type: "faceDown"}, false))
+
+            this.advHand.addCard(spawned)
+        }
+
+        this.hands = playerIndex == 0 ? [this.myHand, this.advHand] : [this.advHand, this.myHand];
+
+        this.myUnitSlotGrid = new UnitSlotGrid(this);
+        this.myUnitSlotGrid.x = GAME_WIDTH / 2;
+        this.myUnitSlotGrid.y = GAME_HEIGHT - 500;
+        this.viewport.addChild(this.myUnitSlotGrid);
         
-        this.addChild(this.viewport)
+        const sepLine = new Graphics();
+        sepLine.lineStyle({width: 2, color: 0x000000})
+        sepLine.moveTo(0, 0)
+        sepLine.lineTo(620, 0)
+        sepLine.y = 735;
+        sepLine.x = (GAME_WIDTH - SEP_LINE_WIDTH) / 2;
+        this.viewport.addChild(sepLine)
 
-        document.addEventListener("keydown", e => {
-            if (e.code == "ArrowRight") {
-                this.viewport.x += 10;
-            } else if (e.code == "ArrowLeft") {
-                this.viewport.x -= 10;
-            } else if (e.code == "ArrowUp") {
-                this.viewport.y += 10;
-            } else if (e.code == "ArrowDown") {
-                this.viewport.y -= 10;
-            }
-        });
+        this.advUnitSlotGrid = new UnitSlotGrid(this);
+        this.advUnitSlotGrid.x = GAME_WIDTH / 2;
+        this.advUnitSlotGrid.y = 525;
+        this.viewport.addChild(this.advUnitSlotGrid);
 
-        (window as any).helpMe = this.viewport
+        this.unitSlotGrids = playerIndex == 0 ? [this.myUnitSlotGrid, this.advUnitSlotGrid]
+            : [this.advUnitSlotGrid, this.myUnitSlotGrid];
+        
+        this.cardPreviewOverlay = new CardPreviewOverlay(this)
+        this.viewport.addChild(this.cardPreviewOverlay)
+        
+        this.addChild(this.viewport);
     }
 
     resizeViewport() {
         this.viewport.resize(this.game.app.screen.width, this.game.app.screen.height)
         this.viewport.fitWorld()
         this.viewport.moveCenter(this.viewport.worldWidth / 2, this.viewport.worldHeight / 2)
+        this.viewport.y = VIEWPORT_Y_POS;
+    }
+
+    spawnCard(card: Card) {
+        const c = this.viewport.addChild(card);
+        this.cards.push(c);
+        return c;
     }
 }
