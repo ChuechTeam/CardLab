@@ -3,6 +3,7 @@ import type {GameScene} from "./GameScene.ts";
 import {Card, CardVisualData} from "./Card.ts";
 
 const CARD_HEIGHT_SCREEN_PERCENT = 0.5;
+const CARD_OFFSET_SCREEN_PERCENT = 0.07;
 
 // Should be placed at 0, 0
 export class CardPreviewOverlay extends Container {
@@ -35,6 +36,11 @@ export class CardPreviewOverlay extends Container {
     }
     
     show(vis: CardVisualData) {
+        if (this.active && this.card) {
+            // we're going to replace it with our new card.
+            this.card.destroy();
+        }
+        
         this.visible = true;
         this.active = true;
         
@@ -46,10 +52,11 @@ export class CardPreviewOverlay extends Container {
         const scale = (screen.height * CARD_HEIGHT_SCREEN_PERCENT) / cardSize.y;
         this.card.scale.set(scale);
         
-        const worldCenter = this.scene.viewport.toScreen(0, this.scene.viewport.worldHeight / 2).y;
+        const worldY = this.scene.viewport.toScreen(0, 
+            this.scene.viewport.worldHeight * (0.5 - CARD_OFFSET_SCREEN_PERCENT)).y;
         
         this.card.x = screen.width / 2;
-        this.card.y = worldCenter;
+        this.card.y = worldY;
         
         this.stage.addChild(this.card);
         

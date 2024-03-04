@@ -26,8 +26,6 @@ export class UnitSlotGrid extends Container {
         
         this.eventMode = "none"
         
-        console.log(`Slot width = ${SLOT_WIDTH} ; Slot height = ${SLOT_HEIGHT}`)
-        
         this.pivot.set(GRID_WIDTH / 2, GRID_HEIGHT / 2);
         
         // const debugRect = new Graphics();

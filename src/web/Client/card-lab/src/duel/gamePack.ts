@@ -1,13 +1,15 @@
-﻿export async function loadGamePack(defUrl: string, resUrl: string) {
+﻿import {duelLog} from "./log.ts";
+
+export async function loadGamePack(defUrl: string, resUrl: string) {
     const start = performance.now()
     
-    console.log("DUEL: loading game pack from:", defUrl, resUrl)
+    duelLog("Downloading game pack from:", defUrl, resUrl)
     
     const defProm = fetch(defUrl).then(x => x.json())
     const resProm = fetch(resUrl).then(x => x.blob())
     
     const [def, res] = await Promise.all([defProm, resProm])
-    console.log(`DUEL: game pack loaded in ${performance.now() - start}ms`)
+    duelLog(`Game pack "${def.name}" downloaded in ${(performance.now() - start).toFixed(2)}ms`)
     
     return new DuelGamePack(def as DuelGamePackDef, res)
 }

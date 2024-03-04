@@ -5,7 +5,7 @@ namespace CardLab.Game.BasePacks;
 
 public static class BasePack1
 {
-    public const int PackVersion = 1;
+    public const int PackVersion = 2;
 
     public const string Name = "Base Pack 1";
     
@@ -21,6 +21,13 @@ public static class BasePack1
             Health = 1,
             Cost = 1,
             Description = "Rien de spécial"
-        }, 1, Path.Combine(assetsDir, "Pack1/test.png"))
+        }, 1, Path.Combine(assetsDir, "Pack1/test.png")),
+        (new CardDefinition {
+            Name = "EVIL Stéphane Plaza",
+            Attack = 3,
+            Health = 8,
+            Cost = 9,
+            Description = "À l'apparition, pose tout plein de meubles sur l'arène adverse. Ils explosent au bout d'un tour"
+        }, 2, Path.Combine(assetsDir, "Pack1/plaza.png")),
     ];
 }

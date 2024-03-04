@@ -91,8 +91,9 @@ public sealed class BasePackRegistry(
     public (string defUrl, string resUrl)? GetPackUrls(HttpContext context, Guid id)
     {
         var pack = _loadedPacks.GetValueOrDefault(id);
+        var suffix = "?v=" + pack.Pack.Version;
 
         var b = context.Request.Scheme + "://" + context.Request.Host;
-        return (b + "/" + pack.DefFileRelative, b + "/" + pack.ResFileRelative);
+        return (b + "/" + pack.DefFileRelative + suffix, b + "/" + pack.ResFileRelative + suffix);
     }
 }

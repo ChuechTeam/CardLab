@@ -1,8 +1,7 @@
 import {Scene} from "../scene.ts";
 import {DuelGame} from "../duel.ts";
 import {Viewport} from "pixi-viewport";
-import * as PIXI from 'pixi.js';
-import {Card} from "./Card.ts";
+import {Card, CardInteractionModule} from "./Card.ts";
 import {Hand} from "./Hand.ts";
 import {UnitSlotGrid} from "./UnitSlotGrid.ts";
 import {Graphics} from "pixi.js";
@@ -31,6 +30,8 @@ export class GameScene extends Scene {
     cardPreviewOverlay: CardPreviewOverlay;
 
     cards: Card[] = [];
+    
+    cardInteraction = new CardInteractionModule(this);
 
     constructor(game: DuelGame, public readonly playerIndex: number) {
         super(game);
@@ -50,7 +51,8 @@ export class GameScene extends Scene {
         // this.viewport.addChild(funRect)
 
         const pack = this.game.registry.packs[0]
-        const card = Array.from(pack.cards.values())[0];
+        const cards = Array.from(pack.cards.values())
+        function randCard() { return cards[Math.floor(Math.random() * cards.length)] }
 
         this.myHand = new Hand(this, false);
         this.myHand.x = GAME_WIDTH / 2;
@@ -59,8 +61,8 @@ export class GameScene extends Scene {
         for (let i = 0; i < 8; i++) {
             const spawned = this.spawnCard(new Card(this, Card.dataFromCardRef({
                 packId: pack.id,
-                cardId: card.id
-            }, this.game, true), true))
+                cardId: randCard().id
+            }, this.game, false), true))
 
             this.myHand.addCard(spawned)
         }

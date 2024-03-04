@@ -8,6 +8,7 @@ import {Scene} from "./scene.ts";
 import {WaitingScene} from "./WaitingScene.ts";
 import {DuelController} from "./control/controller.ts";
 import "./pixiExt.ts"; // Make sure our extensions are loaded
+import {overlay as logOverlay} from "./log.ts";
 
 export class DuelGame {
     app: Application
@@ -55,6 +56,11 @@ export class DuelGame {
             if (m.type == "duelWelcome") {
                 this.controller = new DuelController(this, m);
                 this.controller.displayGameScene()
+                
+                // Debug only! hide the logging overlay once we've loaded the game.
+                if (logOverlay) {
+                    logOverlay.hide();
+                }
             } else {
                 console.error("Received message before controller was initialized", m);
             }

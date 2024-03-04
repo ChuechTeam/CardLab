@@ -1,6 +1,7 @@
 ﻿import type {DuelGame} from "../duel.ts";
 import {Point} from "pixi.js";
 import {GameScene} from "../game/GameScene.ts";
+import {duelLog} from "../log.ts";
 
 // right now there isn't much point in differentiating the two
 export type LocalDuelPlayerState = NetDuelPlayerState
@@ -122,7 +123,7 @@ export class DuelController {
     scene: GameScene
 
     constructor(public game: DuelGame, welcomeMsg: Extract<DuelMessage, { type: "duelWelcome" }>) {
-        console.log("DUEL: creating duel controller with msg", welcomeMsg)
+        duelLog("Creating DuelController from welcome message", welcomeMsg)
         this.state = new LocalDuelState(welcomeMsg.state);
 
         if (welcomeMsg.player == "p1") {

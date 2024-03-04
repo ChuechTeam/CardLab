@@ -19,7 +19,7 @@ const HEIGHT = 1440 * 0.3;
 const WIDTH = HEIGHT / 1.392;
 
 const SELECTED_Z_INDEX = 1000;
-const SELECTED_Y_OFFSET = 140;
+const SELECTED_Y_OFFSET = 10;
 
 // Canonical coordinates -> local coordinates
 function cx(x: number) {
@@ -100,7 +100,7 @@ export class Card extends Container {
     pointerTracking: boolean = false
     ptId: number = -1; // Identifier of the pointer
     ptStopOnLeave: boolean = false
-    
+
     bounds: Rectangle
 
     static dataFromCardRef(ref: CardAssetRef, game: DuelGame, testDesc: boolean = false): CardVisualData {
@@ -152,11 +152,11 @@ export class Card extends Container {
             const name = new Text(visData.name, {
                 fill: 0x000000,
                 fontFamily: "Chakra Petch",
-                fontSize: 27
+                fontSize: 24
             });
             name.resolution *= 1.5
             this.addChild(name)
-            this.placeTextCentered(name, new Rectangle(0, 0, cx(78), cy(17)));
+            this.placeTextCentered(name, new Rectangle(0, 0, cx(78), cy(16.5)));
 
             const cost = new Text(visData.cost.toString(), {
                 fill: 0xFFFFFF,
@@ -185,7 +185,7 @@ export class Card extends Container {
             const img = new Sprite(visData.image);
             this.addChild(img);
 
-            img.x = cx(4.5);
+            img.x = cx(4.8);
             img.y = cy(20);
             img.width = cx(90);
             img.height = cy(55);
@@ -234,31 +234,28 @@ export class Card extends Container {
             this.handSwitchHover(e);
         }
     }
-    
+
     cardPointerMove = (e: FederatedPointerEvent) => {
         // Make sure the mouse is clicked (left or right) OR that we're in a touch screen
         if ((e.buttons & (1 | 2)) !== 0
-            && this.state.name === "hand" 
-            && this.state.subState === "idle") {
+            && this.state.name === "hand"
+            && this.state.subState === "idle"
+            && this.scene.cardInteraction.hovering) {
             this.handSwitchHover(e);
         }
     }
-    
+
     ptStarted(worldPos: Point) {
         // todo: add stuff
     }
-    
+
     ptMoved(worldPos: Point) {
         // todo: add stuff
     }
-    
-    ptStopped(worldPos: Point) {
+
+    ptStopped(worldPos: Point, pointerUp: boolean) {
         if (this.state.name === "hand" && this.state.subState === "hovered") {
-            this.state.subState = "idle";
-            this.position = this.state.handPos;
-            this.zIndex = this.state.zIndex;
-            this.hitArea = this.bounds;
-            this.scene.cardPreviewOverlay.hide();
+            this.handExitHover(!pointerUp)
         }
     }
 
@@ -266,33 +263,41 @@ export class Card extends Container {
         if (this.pointerTracking) {
             return
         }
-        
+
         this.pointerTracking = true;
         this.ptId = e.pointerId;
         this.ptStopOnLeave = stopOnLeave;
-        
+
         const stage = this.game.app.stage
         stage.on("pointermove", this.ptHandleStageMove)
         stage.on("pointerup", this.ptHandleStageUp)
         stage.on("pointerupoutside", this.ptHandleStageUp)
-        if (stopOnLeave) { this.on("pointerleave", this.ptHandleStageUp) }
-        
+        if (stopOnLeave) {
+            this.on("pointerleave", this.ptHandleStageLeave)
+        }
+
         this.ptStarted(this.scene.viewport.toWorld(e.global))
     }
 
     ptHandleStageUp = (e: FederatedPointerEvent) => {
         if (e.pointerId === this.ptId) {
-            this.stopPointerTracking(e);
+            this.stopPointerTracking(e, true);
         }
     }
-    
+
+    ptHandleStageLeave = (e: FederatedPointerEvent) => {
+        if (e.pointerId === this.ptId) {
+            this.stopPointerTracking(e, false);
+        }
+    }
+
     ptHandleStageMove = (e: FederatedPointerEvent) => {
         if (e.pointerId === this.ptId) {
             this.ptMoved(this.scene.viewport.toWorld(e.global));
         }
     }
 
-    stopPointerTracking(e: FederatedPointerEvent) {
+    stopPointerTracking(e: FederatedPointerEvent, pointerUp: boolean) {
         if (!this.pointerTracking) {
             return
         }
@@ -304,9 +309,11 @@ export class Card extends Container {
         stage.off("pointermove", this.ptHandleStageMove)
         stage.off("pointerup", this.ptHandleStageUp)
         stage.off("pointerupoutside", this.ptHandleStageUp)
-        if (this.ptStopOnLeave) { this.off("pointerleave", this.ptHandleStageUp) }
-        
-        this.ptStopped(this.scene.viewport.toWorld(e.global))
+        if (this.ptStopOnLeave) {
+            this.off("pointerleave", this.ptHandleStageLeave)
+        }
+
+        this.ptStopped(this.scene.viewport.toWorld(e.global), pointerUp)
     }
 
     /*
@@ -336,37 +343,60 @@ export class Card extends Container {
             this.rotation = Math.PI;
         }
     }
-    
+
     handSwitchHover(e: FederatedPointerEvent) {
         if (this.state.name === "hand" && this.state.subState !== "hovered") {
             this.state.subState = "hovered";
-            this.position.y -= SELECTED_Y_OFFSET;
+            
+            // find an offset large enough so that we can see the entire card
+            // (assuming the card is at the bottom of the screen!)
+            
+            // (viewport space calculations)
+            // y + boundHeight/2 = viewportHeight - offset
+            // <==> y = viewportHeight - offset - boundHeight/2
+            // and then convert into world space
+            
+            const offset = SELECTED_Y_OFFSET;
+            // we're not using toScreen because that functions applies origin offset.
+            // we just want a linear transformation that scales the vector to screen space rather
+            const vpBoundHeight = this.scene.viewport.scale.y * this.bounds.height;
+            const viewportHeight = this.scene.viewport.screenHeight;
+            
+            const vpCardY = viewportHeight - offset - vpBoundHeight/2;
+            const worldCardY = this.scene.viewport.toWorld(0, vpCardY).y;
+            
+            this.position.y = worldCardY;
             this.zIndex = SELECTED_Z_INDEX;
 
             // Enlarge the hit area to avoid the case where there's a bit of bottom empty space that's not
             // considered as part of the card
-            this.hitArea = this.bounds.clone().pad(0, 50);
+            this.hitArea = this.bounds.clone().pad(0, SELECTED_Y_OFFSET + 20);
 
-            this.scene.cardPreviewOverlay.show({ type: this.visual.type, ...this.visual.data } as any);
+            this.scene.cardPreviewOverlay.show({type: this.visual.type, ...this.visual.data} as any);
 
+            this.scene.cardInteraction.hovering = true;
             this.startPointerTracking(e, true);
         }
     }
-    
-    handExitHover() {
+
+    handExitHover(continueSelecting: boolean) {
         if (this.state.name === "hand" && this.state.subState === "hovered") {
             this.state.subState = "idle";
             this.position = this.state.handPos;
             this.zIndex = this.state.zIndex;
             this.hitArea = this.bounds;
             this.scene.cardPreviewOverlay.hide();
+            
+            if (!continueSelecting) {
+                this.scene.cardInteraction.hovering = false;
+            }
         }
     }
 
     private switchState(newState: CardState) {
         if (this.state.name === "hand") {
             if (this.state.subState == "hovered") {
-                this.handExitHover();
+                this.handExitHover(false);
             }
         }
         this.state = newState;
@@ -415,5 +445,15 @@ export class Card extends Container {
 
     toGlobalLength(l: number) {
         return this.toGlobal(new Point(l + this.pivot.x, 0)).x
+    }
+}
+
+
+// This class looks overkill for a simple boolean, but we'll later be able to drag cards around so it
+// kind of makes sense.
+export class CardInteractionModule {
+    hovering: boolean = false;
+
+    constructor(public scene: GameScene) {
     }
 }

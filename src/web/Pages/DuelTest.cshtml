@@ -7,7 +7,7 @@
     var @base = "ws://" + HttpContext.Request.Host;
 }
 <style>
-    html, body {margin: 0; padding: 0;}
+    html, body {margin: 0; padding: 0; touch-action: none;}
 </style>
 <script>
     window.duelTest =
@@ -20,7 +20,11 @@
 </script>
 
 <div id="duel-container">
-    <button class="duel-test-fullscreen">FS</button>
+    <div class="duel-test-buttons">
+        <button class="duel-test-fullscreen">FS</button>
+        <button class="duel-test-log">LOG</button>
+    </div>
+    
 </div>
 
 @section Scripts {
@@ -37,5 +41,9 @@
         } else {
             document.exitFullscreen();
         }});
+        
+        document.querySelector(".duel-test-log").addEventListener("click", e => {
+            window.duelLogOverlay.toggle();
+        });
     </script>
 }

@@ -4,6 +4,7 @@ import {Assets, Texture} from "pixi.js";
 import cardUpBgUrl from "./assets/card-up-bg.png";
 import cardDownBgUrl from "./assets/card-down-bg.png";
 import attribBgUrl from "./assets/attrib-bg.png";
+import {duelLog} from "./log.ts";
 
 export type BaseAssets = {
     [T in keyof typeof baseBundle]: Texture
@@ -17,13 +18,9 @@ const baseBundle = {
 
 export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     const begin = performance.now()
-
+    
     Assets.addBundle("baseBundle", baseBundle)
-    const bundlePromise = Assets.loadBundle("baseBundle")
-        .then(x => {
-            console.log(`DUEL: base bundle loaded`);
-            return x as BaseAssets
-        })
+    const bundlePromise = Assets.loadBundle("baseBundle").then(x => x as BaseAssets)
 
     const assetPromises: Promise<[string, CardAsset, ImageBitmap]>[] = []
     for (const pack of gameRegistry.packs) {
@@ -31,10 +28,11 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
             assetPromises.push(createImageBitmap(card.image).then(img => [pack.id, card, img]))
         }
     }
-    
-    console.log(`DUEL: creating ${assetPromises.length} card bitmaps`)
+
+    duelLog(`Loading assets:
+    - ${assetPromises.length} card bitmaps
+    - ${Object.keys(baseBundle).length} base assets`);
     const cardAssets = await Promise.all(assetPromises)
-    console.log(`DUEL: card bitmaps created`)
 
     const map = {} as Record<string, Record<number, Texture>>
     for (const [packId, card, img] of cardAssets) {
@@ -50,7 +48,7 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     await document.fonts.load("12px Chakra Petch")
     
     const end = performance.now()
-    console.log(`DUEL: assets loaded in ${end - begin}ms`)
+    duelLog(`Assets loaded in ${(end - begin).toFixed(2)}ms`)
 
     return new DuelAssets(baseAssets, map)
 }

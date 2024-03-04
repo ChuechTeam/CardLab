@@ -159,9 +159,16 @@ html {
     max-width: 100vh;
 }
 
-.duel-test-fullscreen {
+.duel-container {
+    position: relative;
+}
+
+.duel-test-buttons {
     position: absolute;
     left: 0;
     bottom: 0;
     z-index: 1000;
+}
+.duel-test-buttons > button {
+    display: inline-block;
 }
