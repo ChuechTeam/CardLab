@@ -6,7 +6,7 @@
     Rectangle,
     Sprite,
     Text,
-    TextMetrics,
+    TextMetrics, TextStyle,
     Texture
 } from "pixi.js";
 import {GameScene} from "./GameScene.ts";
@@ -20,6 +20,14 @@ const WIDTH = HEIGHT / 1.392;
 
 const SELECTED_Z_INDEX = 1000;
 const SELECTED_Y_OFFSET = 10;
+
+const ATTR_TEXT_STYLE = new TextStyle({
+    fill: 0xFFFFFF,
+    fontFamily: "Chakra Petch",
+    fontSize: 38
+});
+
+const COST_TEXT_STYLE = ATTR_TEXT_STYLE;
 
 // Canonical coordinates -> local coordinates
 function cx(x: number) {
@@ -158,11 +166,7 @@ export class Card extends Container {
             this.addChild(name)
             this.placeTextCentered(name, new Rectangle(0, 0, cx(78), cy(16.5)));
 
-            const cost = new Text(visData.cost.toString(), {
-                fill: 0xFFFFFF,
-                fontFamily: "Chakra Petch",
-                fontSize: 38
-            });
+            const cost = new Text(visData.cost.toString(), COST_TEXT_STYLE);
             cost.resolution *= 1.5
             this.addChild(cost)
             this.placeTextCentered(cost, new Rectangle(cx(76), cy(0.5), cx(24), cy(16)));
@@ -421,11 +425,7 @@ export class Card extends Container {
             bg.scale.x *= -1;
         }
 
-        const text = new Text(value.toString(), {
-            fill: 0xFFFFFF,
-            fontFamily: "Chakra Petch",
-            fontSize: 38
-        });
+        const text = new Text(value.toString(), ATTR_TEXT_STYLE);
         text.resolution *= 1.5
         cont.addChild(text)
 
