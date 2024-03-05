@@ -7,7 +7,7 @@
     var @base = "ws://" + HttpContext.Request.Host;
 }
 <style>
-    html, body {margin: 0; padding: 0; touch-action: none;}
+    html, body {margin: 0; padding: 0;}
 </style>
 <script>
     window.duelTest =
@@ -24,7 +24,6 @@
         <button class="duel-test-fullscreen">FS</button>
         <button class="duel-test-log">LOG</button>
     </div>
-    
 </div>
 
 @section Scripts {
@@ -37,7 +36,7 @@
     <script>
         document.querySelector(".duel-test-fullscreen").addEventListener("click", e => {
         if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen();
+            document.getElementById("duel-container").requestFullscreen();
         } else {
             document.exitFullscreen();
         }});
