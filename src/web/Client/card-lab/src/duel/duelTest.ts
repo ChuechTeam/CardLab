@@ -1,5 +1,5 @@
 ﻿import {loadGamePack} from "./gamePack.ts";
-import {DuelGame} from "./duel.ts";
+import {createDuel, DuelGame} from "./duel.ts";
 import {DuelGameRegistry} from "./gameRegistry.ts";
 import {loadDuelAssets} from "./assets.ts";
 import {DuelMessaging} from "./messaging.ts";
@@ -39,6 +39,6 @@ async function runDuelTest(container: HTMLElement, params: DuelTestParam) {
     const registry = new DuelGameRegistry([gamePack])
     const assets = await loadDuelAssets(registry)
     
-    const game = new DuelGame(container, registry, assets, new DuelMessaging(params.socketUrl));
+    const game = await createDuel(container, registry, assets, new DuelMessaging(params.socketUrl));
     (window as any).duelGame = game
 }

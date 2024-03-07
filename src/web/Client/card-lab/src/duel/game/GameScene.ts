@@ -32,6 +32,8 @@ export class GameScene extends Scene {
     cards: Card[] = [];
     
     cardInteraction = new CardInteractionModule(this);
+    
+    viewportResizeObs: ResizeObserver
 
     constructor(game: DuelGame, public readonly playerIndex: number) {
         super(game);
@@ -42,9 +44,10 @@ export class GameScene extends Scene {
             events: game.app.renderer.events
         })
         this.viewport.sortableChildren = true
-        this.game.app.renderer.on("resize", this.resizeViewport.bind(this));
+        // we're forced to use a resize observer here.
+        this.viewportResizeObs = new ResizeObserver(this.resizeViewport.bind(this))
+        this.viewportResizeObs.observe(this.game.app.canvas)
         this.resizeViewport();
-
         // const funRect = new PIXI.Graphics()
         // funRect.lineStyle({width: 3, color: 0x000000, alpha: 0.35})
         // funRect.drawRect(0, 0, this.viewport.worldWidth, this.viewport.worldHeight)
@@ -84,10 +87,10 @@ export class GameScene extends Scene {
         this.myUnitSlotGrid.y = GAME_HEIGHT - 500;
         this.viewport.addChild(this.myUnitSlotGrid);
         
-        const sepLine = new Graphics();
-        sepLine.lineStyle({width: 2, color: 0x000000})
-        sepLine.moveTo(0, 0)
-        sepLine.lineTo(620, 0)
+        const sepLine = new Graphics()
+            .moveTo(0, 0)
+            .lineTo(620, 0)
+            .stroke({ width: 2, color: 0x000000  });
         sepLine.y = 735;
         sepLine.x = (GAME_WIDTH - SEP_LINE_WIDTH) / 2;
         this.viewport.addChild(sepLine)
@@ -117,5 +120,9 @@ export class GameScene extends Scene {
         const c = this.viewport.addChild(card);
         this.cards.push(c);
         return c;
+    }
+    
+    end() {
+        this.viewportResizeObs.disconnect();
     }
 }

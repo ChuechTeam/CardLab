@@ -157,6 +157,7 @@ html {
 #duel-container {
     position: relative;
     touch-action: none;
+    user-select: none;
 }
 
 .duel-test-buttons {

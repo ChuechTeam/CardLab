@@ -1,6 +1,6 @@
 ﻿import {DuelGameRegistry} from "./gameRegistry.ts";
 import {CardAsset} from "./gamePack.ts";
-import {Assets, Texture} from "pixi.js";
+import {Assets, BitmapFont, Texture} from "pixi.js";
 import cardUpBgUrl from "./assets/card-up-bg.png";
 import cardDownBgUrl from "./assets/card-down-bg.png";
 import attribBgUrl from "./assets/attrib-bg.png";
@@ -46,6 +46,16 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     
     // this requires the style.css file to be loaded in the page! 
     await document.fonts.load("12px Chakra Petch")
+    BitmapFont.install({
+        name: "ChakraPetchDigits",
+        chars: "0123456789!.,;",
+        style: {
+            fontSize: 38,
+            fill: 0xffffff,
+            fontFamily: "Chakra Petch"
+        },
+        resolution: 3
+    });
     
     const end = performance.now()
     duelLog(`Assets loaded in ${(end - begin).toFixed(2)}ms`)

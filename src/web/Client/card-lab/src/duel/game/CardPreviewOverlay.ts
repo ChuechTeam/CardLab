@@ -24,9 +24,9 @@ export class CardPreviewOverlay extends Container {
         this.stage = scene.game.app.stage;
         
         // extend a grey pixel into INFINITY
-        this.background = new Graphics();
-        this.background.beginFill(0x000000, 0.5);
-        this.background.drawRect(0, 0, 1, 1);
+        this.background = new Graphics()
+            .rect(0, 0, 1, 1)
+            .fill({color: 0x000000, alpha: 0.5});
         this.background.scale.set(100000, 100000);
         // Put it far enough just in case the camera moves
         this.background.position.set(-10000, -10000);

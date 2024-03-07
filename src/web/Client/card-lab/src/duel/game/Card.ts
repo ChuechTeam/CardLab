@@ -1,16 +1,18 @@
 ﻿import {
     Container,
     FederatedPointerEvent,
-    Graphics, IHitArea,
+    Graphics,
     Point,
     Rectangle,
     Sprite,
     Text,
-    TextMetrics, TextStyle,
-    Texture
+    Texture,
+    Ticker,
+    TextStyle, BitmapText, AbstractText
 } from "pixi.js";
 import {GameScene} from "./GameScene.ts";
 import {DuelGame} from "../duel.ts";
+import {duelLog, duelLogDebug} from "../log.ts";
 
 // Game height: 1440
 // Canonical card size: 100x140 (wxh), used in illustrator
@@ -23,11 +25,17 @@ const SELECTED_Y_OFFSET = 10;
 
 const ATTR_TEXT_STYLE = new TextStyle({
     fill: 0xFFFFFF,
-    fontFamily: "Chakra Petch",
+    fontFamily: "ChakraPetchDigits",
     fontSize: 38
 });
 
 const COST_TEXT_STYLE = ATTR_TEXT_STYLE;
+
+const NAME_STYLE_DEFAULT = new TextStyle({
+    fill: 0x000000,
+    fontFamily: "Chakra Petch",
+    fontSize: 24
+});
 
 // Canonical coordinates -> local coordinates
 function cx(x: number) {
@@ -41,7 +49,7 @@ function cy(y: number) {
 type AttribComponents = {
     cont: Container,
     bg: Sprite,
-    text: Text
+    text: AbstractText
 }
 
 type FaceDownVisuals = {
@@ -62,7 +70,7 @@ type UnitVisuals = {
     }
     components: {
         name: Text,
-        cost: Text,
+        cost: AbstractText,
         description: Text,
         image: Sprite,
         attack: AttribComponents
@@ -134,6 +142,8 @@ export class Card extends Container {
 
     constructor(public scene: GameScene, visData: CardVisualData, public readonly interactable: boolean) {
         super();
+        
+        const ts = performance.now();
 
         this.game = scene.game
 
@@ -155,34 +165,41 @@ export class Card extends Container {
             this.eventMode = "none"
         }
 
+        const resolution = this.game.app.renderer.resolution
+
         if (visData.type == "unit") {
             // todo: reduce font size to fit large names
-            const name = new Text(visData.name, {
-                fill: 0x000000,
-                fontFamily: "Chakra Petch",
-                fontSize: 24
+            const name = new Text({
+                text: visData.name,
+                style: NAME_STYLE_DEFAULT,
+                resolution: resolution * 1.5
             });
-            name.resolution *= 1.5
             this.addChild(name)
             this.placeTextCentered(name, new Rectangle(0, 0, cx(78), cy(16.5)));
 
-            const cost = new Text(visData.cost.toString(), COST_TEXT_STYLE);
-            cost.resolution *= 1.5
+            const cost = new BitmapText({
+                text: visData.cost.toString(),
+                style: COST_TEXT_STYLE,
+                resolution: resolution * 1.5
+            });
             this.addChild(cost)
             this.placeTextCentered(cost, new Rectangle(cx(76), cy(0.5), cx(24), cy(16)));
 
             const attack = this.createAttribute(visData.attack, cx(4), cy(118), true);
             const health = this.createAttribute(visData.health, cx(73), cy(118), false);
 
-            const desc = new Text(visData.description, {
-                fill: 0x000000,
-                wordWrap: true,
-                wordWrapWidth: this.toGlobalLength(cx(92)),
-                align: "center",
-                fontFamily: "Chakra Petch",
-                fontSize: 12,
+            const desc = new Text({
+                text: visData.description,
+                style: {
+                    fill: 0x000000,
+                    wordWrap: true,
+                    wordWrapWidth: this.toGlobalLength(cx(92)),
+                    align: "center",
+                    fontFamily: "Chakra Petch",
+                    fontSize: 12
+                },
+                resolution: resolution * 2
             });
-            desc.resolution *= 2;
             this.addChild(desc);
             this.placeTextCentered(desc, new Rectangle(cx(4), cy(78), cx(92), cy(37)));
 
@@ -195,13 +212,12 @@ export class Card extends Container {
             img.height = cy(55);
 
             const bord = new Graphics()
+                .rect(0, 0, img.width, img.height)
+                .stroke({width: 1, color: 0x000000});
             this.addChild(bord)
 
             bord.x = img.x;
             bord.y = img.y;
-
-            bord.lineStyle(1, 0x000000)
-            bord.drawRect(0, 0, img.width, img.height)
 
             this.visual = {
                 type: "unit",
@@ -223,13 +239,17 @@ export class Card extends Container {
         } else {
             this.visual = {type: "faceDown", data: {}, components: {}};
         }
+        
+        const te = performance.now();
+        
+        duelLogDebug("Card created in " + (te - ts).toFixed(2) + "ms");
     }
 
     /*
      * Various event handlers (tick, pointer)
      */
 
-    tick = (dt: number) => {
+    tick = (t: Ticker) => {
         // todo: some movement animations
     }
 
@@ -351,24 +371,24 @@ export class Card extends Container {
     handSwitchHover(e: FederatedPointerEvent) {
         if (this.state.name === "hand" && this.state.subState !== "hovered") {
             this.state.subState = "hovered";
-            
+
             // find an offset large enough so that we can see the entire card
             // (assuming the card is at the bottom of the screen!)
-            
+
             // (viewport space calculations)
             // y + boundHeight/2 = viewportHeight - offset
             // <==> y = viewportHeight - offset - boundHeight/2
             // and then convert into world space
-            
+
             const offset = SELECTED_Y_OFFSET;
             // we're not using toScreen because that functions applies origin offset.
             // we just want a linear transformation that scales the vector to screen space rather
             const vpBoundHeight = this.scene.viewport.scale.y * this.bounds.height;
             const viewportHeight = this.scene.viewport.screenHeight;
-            
-            const vpCardY = viewportHeight - offset - vpBoundHeight/2;
+
+            const vpCardY = viewportHeight - offset - vpBoundHeight / 2;
             const worldCardY = this.scene.viewport.toWorld(0, vpCardY).y;
-            
+
             this.position.y = worldCardY;
             this.zIndex = SELECTED_Z_INDEX;
 
@@ -390,7 +410,7 @@ export class Card extends Container {
             this.zIndex = this.state.zIndex;
             this.hitArea = this.bounds;
             this.scene.cardPreviewOverlay.hide();
-            
+
             if (!continueSelecting) {
                 this.scene.cardInteraction.hovering = false;
             }
@@ -425,20 +445,23 @@ export class Card extends Container {
             bg.scale.x *= -1;
         }
 
-        const text = new Text(value.toString(), ATTR_TEXT_STYLE);
-        text.resolution *= 1.5
+        const text = new BitmapText({
+            text: value.toString(),
+            style: ATTR_TEXT_STYLE,
+            resolution: this.game.app.renderer.resolution * 1.5
+        });
         cont.addChild(text)
 
         // we have to adjust the Y coordinate here a little because ehh i don't know it's not centered
         // to my taste you know
-        const bounds = cont.getLocalBounds();
+        const bounds = cont.getLocalBounds().rectangle;
         bounds.y -= 1.3;
         this.placeTextCentered(text, bounds);
 
         return {cont, bg, text}
     }
 
-    placeTextCentered(text: Text, rect: Rectangle) {
+    placeTextCentered(text: AbstractText, rect: Rectangle) {
         text.x = rect.x + (rect.width - text.width) / 2;
         text.y = rect.y + (rect.height - text.height) / 2;
     }

@@ -35,10 +35,9 @@ export class UnitSlotGrid extends Container {
 
         for (let y = 0; y < UNITS_NUM_Y; y++) {
             for (let x = 0; x < UNITS_NUM_X; x++) {
-                const slot = new Graphics();
-                slot.beginFill(0xD9D9D9)
-                slot.drawRect(0, 0, SLOT_WIDTH, SLOT_HEIGHT)
-                slot.endFill()
+                const slot = new Graphics()
+                    .rect(0, 0, SLOT_WIDTH, SLOT_HEIGHT)
+                    .fill(0xD9D9D9);
                 slot.position.set(x * (SLOT_WIDTH + SPACING_X), y * (SLOT_HEIGHT + SPACING_Y))
                 this.addChild(slot)
                 this.slots.push(slot)
