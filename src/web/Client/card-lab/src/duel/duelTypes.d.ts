@@ -105,6 +105,26 @@ declare type NetDuelTarget = {
     player: NetDuelPlayerIndex
 }
 
+declare type NetDuelPropositions = {
+    card: NetDuelCardPropositions[],
+    unit: NetDuelUnitPropositions[]
+}
+
+declare type DuelCardRequirement = "none" | "singleChoice"
+
+declare type NetDuelCardPropositions = {
+    cardId: number,
+    requirement: DuelCardRequirement,
+    allowedSlots: NetPlayerPair<NetDuelGridVec[]>
+    allowedCores: NetPlayerPair<boolean>
+}
+
+declare type NetDuelUnitPropositions = {
+    unitId: number,
+    allowedUnits: DuelUnitId[],
+    allowedCores: NetPlayerPair<boolean>
+}
+
 /**
  * Deltas
  */
@@ -154,6 +174,10 @@ declare type NetDuelDelta =
     player: NetDuelPlayerIndex
 } | NetDuelDeltaScopeBase<"deathScopeDelta">
 
+// that's a bit hacky but whatever
+declare type NetDuelScopeDelta = Extract<NetDuelDelta, { state: "start" | "end" }>
+
+declare type NetDuelDeltaOf<T extends NetDuelDelta["type"]> = Extract<NetDuelDelta, { type: T }>
 
 /**
  * Messages
@@ -164,14 +188,17 @@ declare type DuelMessageBase<T> = { type: T };
 declare type DuelMessage =
     | DuelMessageBase<"duelWelcome"> & {
     state: NetDuelState,
-    propositions: any, // todo
+    propositions: NetDuelPropositions,
     iteration: number,
     player: NetDuelPlayerIndex
 } | DuelMessageBase<"duelMutated"> & {
+    deltas: NetDuelDelta[],
     state: NetDuelState,
-    propositions: any, // todo
+    propositions: NetDuelPropositions,
     iteration: number,
 } | DuelMessageBase<"duelRequestFailed"> & {
     requestId: int,
     reason: string
 }
+
+declare type DuelMessageOf<T extends DuelMessage["type"]> = Extract<DuelMessage, { type: T }>

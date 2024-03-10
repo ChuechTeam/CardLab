@@ -77,7 +77,7 @@ export class DuelLogOverlay extends HTMLElement {
     bottom: 0;
     top: 0;
     overflow: scroll;
-    z-index: 1;
+    z-index: 100;
     background-color: rgba(0, 0, 0, 0.55);
 }
 #logs {

@@ -8,11 +8,12 @@
     Text,
     Texture,
     Ticker,
-    TextStyle, BitmapText, AbstractText
+    TextStyle, BitmapText, AbstractText, updateTransformAndChildren
 } from "pixi.js";
 import {GameScene} from "./GameScene.ts";
 import {DuelGame} from "../duel.ts";
 import {duelLog, duelLogDebug} from "../log.ts";
+import {placeInRectCenter} from "../util.ts";
 
 // Game height: 1440
 // Canonical card size: 100x140 (wxh), used in illustrator
@@ -142,106 +143,35 @@ export class Card extends Container {
 
     constructor(public scene: GameScene, visData: CardVisualData, public readonly interactable: boolean) {
         super();
-        
+
         const ts = performance.now();
 
         this.game = scene.game
 
-        this.bg = new Sprite(visData.type == "faceDown" ?
-            this.game.assets.base.cardDownBg :
-            this.game.assets.base.cardUpBg);
-        this.bg.height = HEIGHT;
-        this.bg.width = WIDTH;
+        this.bg = new Sprite();
         this.addChild(this.bg);
 
         // Make sure the card's pivot is at the center for easy positioning
         this.pivot = new Point(WIDTH / 2, HEIGHT / 2);
-        this.bounds = new Rectangle(0, 0, this.bg.width, this.bg.height);
+        this.bounds = new Rectangle(0, 0, WIDTH, HEIGHT);
 
         if (interactable) {
             this.eventMode = "static"
             this.hitArea = this.bounds;
+
+            this.on("pointerdown", this.cardPointerDown)
+            this.on("pointermove", this.cardPointerMove)
         } else {
             this.eventMode = "none"
         }
 
-        const resolution = this.game.app.renderer.resolution
+        this.visual = this.replaceVisuals(visData);
 
-        if (visData.type == "unit") {
-            // todo: reduce font size to fit large names
-            const name = new Text({
-                text: visData.name,
-                style: NAME_STYLE_DEFAULT,
-                resolution: resolution * 1.5
-            });
-            this.addChild(name)
-            this.placeTextCentered(name, new Rectangle(0, 0, cx(78), cy(16.5)));
+        this.on("added", () => this.game.app.ticker.add(this.tick))
+        this.on("removed", () => this.game.app.ticker.remove(this.tick))
 
-            const cost = new BitmapText({
-                text: visData.cost.toString(),
-                style: COST_TEXT_STYLE,
-                resolution: resolution * 1.5
-            });
-            this.addChild(cost)
-            this.placeTextCentered(cost, new Rectangle(cx(76), cy(0.5), cx(24), cy(16)));
-
-            const attack = this.createAttribute(visData.attack, cx(4), cy(118), true);
-            const health = this.createAttribute(visData.health, cx(73), cy(118), false);
-
-            const desc = new Text({
-                text: visData.description,
-                style: {
-                    fill: 0x000000,
-                    wordWrap: true,
-                    wordWrapWidth: this.toGlobalLength(cx(92)),
-                    align: "center",
-                    fontFamily: "Chakra Petch",
-                    fontSize: 12
-                },
-                resolution: resolution * 2
-            });
-            this.addChild(desc);
-            this.placeTextCentered(desc, new Rectangle(cx(4), cy(78), cx(92), cy(37)));
-
-            const img = new Sprite(visData.image);
-            this.addChild(img);
-
-            img.x = cx(4.8);
-            img.y = cy(20);
-            img.width = cx(90);
-            img.height = cy(55);
-
-            const bord = new Graphics()
-                .rect(0, 0, img.width, img.height)
-                .stroke({width: 1, color: 0x000000});
-            this.addChild(bord)
-
-            bord.x = img.x;
-            bord.y = img.y;
-
-            this.visual = {
-                type: "unit",
-                components: {
-                    name,
-                    cost,
-                    attack,
-                    health,
-                    description: desc,
-                    image: img
-                },
-                data: visData
-            }
-
-            this.on("pointerdown", this.cardPointerDown)
-            this.on("pointermove", this.cardPointerMove)
-            this.on("added", () => this.game.app.ticker.add(this.tick))
-            this.on("removed", () => this.game.app.ticker.remove(this.tick))
-        } else {
-            this.visual = {type: "faceDown", data: {}, components: {}};
-        }
-        
         const te = performance.now();
-        
+
         duelLogDebug("Card created in " + (te - ts).toFixed(2) + "ms");
     }
 
@@ -297,7 +227,7 @@ export class Card extends Container {
         stage.on("pointerup", this.ptHandleStageUp)
         stage.on("pointerupoutside", this.ptHandleStageUp)
         if (stopOnLeave) {
-            this.on("pointerleave", this.ptHandleStageLeave)
+            this.on("pointerleave", this.ptHandleCardLeave)
         }
 
         this.ptStarted(this.scene.viewport.toWorld(e.global))
@@ -309,7 +239,7 @@ export class Card extends Container {
         }
     }
 
-    ptHandleStageLeave = (e: FederatedPointerEvent) => {
+    ptHandleCardLeave = (e: FederatedPointerEvent) => {
         if (e.pointerId === this.ptId) {
             this.stopPointerTracking(e, false);
         }
@@ -334,7 +264,7 @@ export class Card extends Container {
         stage.off("pointerup", this.ptHandleStageUp)
         stage.off("pointerupoutside", this.ptHandleStageUp)
         if (this.ptStopOnLeave) {
-            this.off("pointerleave", this.ptHandleStageLeave)
+            this.off("pointerleave", this.ptHandleCardLeave)
         }
 
         this.ptStopped(this.scene.viewport.toWorld(e.global), pointerUp)
@@ -382,8 +312,8 @@ export class Card extends Container {
 
             const offset = SELECTED_Y_OFFSET;
             // we're not using toScreen because that functions applies origin offset.
-            // we just want a linear transformation that scales the vector to screen space rather
-            const vpBoundHeight = this.scene.viewport.scale.y * this.bounds.height;
+            // Instead, we use the Y scale from the world transform matrix (assuming it is not rotated).
+            const vpBoundHeight = this.worldTransform.d * this.bounds.height;
             const viewportHeight = this.scene.viewport.screenHeight;
 
             const vpCardY = viewportHeight - offset - vpBoundHeight / 2;
@@ -430,6 +360,98 @@ export class Card extends Container {
      * Visual stuff 
      */
 
+    private dismountVisuals() {
+        for (const c of this.children) {
+            if (c !== this.bg) {
+                c.destroy();
+                this.removeChild(c);
+            }
+        }
+    }
+
+    // Dismount all visual components and rebuilds all the components using the visual data.
+    // Only used when changing the card type, or when creating the card.
+    private replaceVisuals(data: CardVisualData): CardVisuals {
+        this.dismountVisuals();
+
+        // Update the background first
+        this.bg.texture = data.type == "faceDown" ?
+            this.game.assets.base.cardDownBg :
+            this.game.assets.base.cardUpBg;
+
+        this.bg.height = HEIGHT;
+        this.bg.width = WIDTH;
+        
+        const resolution = this.game.app.renderer.resolution
+        if (data.type == "unit") {
+            // todo: reduce font size to fit large names
+            const name = new Text({
+                text: data.name,
+                style: NAME_STYLE_DEFAULT,
+                resolution: resolution * 1.5
+            });
+            this.addChild(name)
+            placeInRectCenter(name, new Rectangle(0, 0, cx(78), cy(16.5)));
+
+            const cost = new BitmapText({
+                text: data.cost.toString(),
+                style: COST_TEXT_STYLE,
+                resolution: resolution * 1.5
+            });
+            this.addChild(cost)
+            placeInRectCenter(cost, new Rectangle(cx(76), cy(0.5), cx(24), cy(16)));
+
+            const attack = this.createAttribute(data.attack, cx(4), cy(118), true);
+            const health = this.createAttribute(data.health, cx(73), cy(118), false);
+
+            const desc = new Text({
+                text: data.description,
+                style: {
+                    fill: 0x000000,
+                    wordWrap: true,
+                    wordWrapWidth: cx(92),
+                    align: "center",
+                    fontFamily: "Chakra Petch",
+                    fontSize: 13
+                },
+                resolution: resolution * 1.5
+            });
+            this.addChild(desc);
+            placeInRectCenter(desc, new Rectangle(cx(4), cy(78), cx(92), cy(37)));
+
+            const img = new Sprite(data.image);
+            this.addChild(img);
+
+            img.x = cx(4.8);
+            img.y = cy(20);
+            img.width = cx(90);
+            img.height = cy(55);
+
+            const bord = new Graphics()
+                .rect(0, 0, img.width, img.height)
+                .stroke({width: 1, color: 0x000000});
+            this.addChild(bord)
+
+            bord.x = img.x;
+            bord.y = img.y;
+
+            return {
+                type: "unit",
+                components: {
+                    name,
+                    cost,
+                    attack,
+                    health,
+                    description: desc,
+                    image: img
+                },
+                data: data
+            }
+        } else {
+            return {type: "faceDown", data: {}, components: {}};
+        }
+    }
+
     createAttribute(value: number, x: number, y: number, reversed: boolean): AttribComponents {
         const cont = new Container();
         this.addChild(cont)
@@ -456,18 +478,9 @@ export class Card extends Container {
         // to my taste you know
         const bounds = cont.getLocalBounds().rectangle;
         bounds.y -= 1.3;
-        this.placeTextCentered(text, bounds);
+        placeInRectCenter(text, bounds);
 
         return {cont, bg, text}
-    }
-
-    placeTextCentered(text: AbstractText, rect: Rectangle) {
-        text.x = rect.x + (rect.width - text.width) / 2;
-        text.y = rect.y + (rect.height - text.height) / 2;
-    }
-
-    toGlobalLength(l: number) {
-        return this.toGlobal(new Point(l + this.pivot.x, 0)).x
     }
 }
 

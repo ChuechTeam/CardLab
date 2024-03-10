@@ -1,8 +1,8 @@
 ﻿import {Container, Graphics} from "pixi.js";
 import {GameScene} from "./GameScene.ts";
 
-const GRID_WIDTH = 680;
-const GRID_HEIGHT = 310;
+export const GRID_WIDTH = 680;
+export const GRID_HEIGHT = 310;
 
 // For now, those are constants. We might make this configurable in the future
 const UNITS_NUM_X = 4

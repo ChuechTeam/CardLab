@@ -1,19 +1,41 @@
 ﻿import {DuelGameRegistry} from "./gameRegistry.ts";
 import {CardAsset} from "./gamePack.ts";
-import {Assets, BitmapFont, Texture} from "pixi.js";
+import {Assets, BitmapFont, GraphicsContext, Texture} from "pixi.js";
 import cardUpBgUrl from "./assets/card-up-bg.png";
 import cardDownBgUrl from "./assets/card-down-bg.png";
 import attribBgUrl from "./assets/attrib-bg.png";
+import healthIconUrl from "./assets/health-icon.svg";
+import boardCoreUrl from "./assets/board-core.png";
+import largeAttrBg from "./assets/large-attr-bg.svg";
+import verticalGradientUrl from "./assets/vertical-gradient.png";
 import {duelLog} from "./log.ts";
 
+type BaseBundleType = typeof baseBundle;
+
+type BaseAssetType<T extends keyof BaseBundleType> 
+    = BaseBundleType[T] extends ReturnType<typeof svgAsset> ? GraphicsContext : Texture;
+
 export type BaseAssets = {
-    [T in keyof typeof baseBundle]: Texture
+    [T in keyof typeof baseBundle]: BaseAssetType<T> 
+}
+
+function svgAsset(url: string) {
+    return {
+        src: url,
+        data: {
+            parseAsGraphicsContext: true
+        }
+    }
 }
 
 const baseBundle = {
     "cardUpBg": cardUpBgUrl,
     "cardDownBg": cardDownBgUrl,
-    "attribBg": attribBgUrl
+    "attribBg": attribBgUrl,
+    "boardCore": boardCoreUrl,
+    "verticalGradient": verticalGradientUrl,
+    "healthIcon": svgAsset(healthIconUrl),
+    "largeAttrBg": svgAsset(largeAttrBg)
 }
 
 export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
@@ -48,13 +70,13 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     await document.fonts.load("12px Chakra Petch")
     BitmapFont.install({
         name: "ChakraPetchDigits",
-        chars: "0123456789!.,;",
+        chars: "0123456789!.,;/",
         style: {
-            fontSize: 38,
+            fontSize: 120,
             fill: 0xffffff,
             fontFamily: "Chakra Petch"
         },
-        resolution: 3
+        resolution: 1
     });
     
     const end = performance.now()

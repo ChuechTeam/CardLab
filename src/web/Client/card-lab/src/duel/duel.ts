@@ -1,4 +1,4 @@
-﻿import {Application, BitmapText} from 'pixi.js';
+﻿import {Application, ApplicationOptions} from 'pixi.js';
 import * as PIXI from 'pixi.js';
 import {DuelGameRegistry} from "./gameRegistry.ts";
 import {DuelAssets} from "./assets.ts";
@@ -6,25 +6,57 @@ import {DuelMessaging} from "./messaging.ts";
 import {Scene} from "./scene.ts";
 import {WaitingScene} from "./WaitingScene.ts";
 import {DuelController} from "./control/controller.ts";
-import "./pixiExt.ts"; // Make sure our extensions are loaded
-import {overlay as logOverlay} from "./log.ts";
+import {duelLog, overlay as logOverlay} from "./log.ts";
+import "pixi.js/math-extras";
+
+function qualitySettings(): Partial<ApplicationOptions> {
+    // Allow forcing the use of WebGL for testing purposes.
+    const preference = localStorage.getItem("forceWebGL") === "true" ? "webgl" : undefined;
+    if (preference !== undefined) {
+        duelLog("Quality settings: WebGL forced by localStorage");
+    }
+    
+    // Provide settings for known and supported mobile devices.
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        // Antialiasing is very expensive on my Android device.
+        // ...Which is odd, it has a Mali GPU which should support free MSAA.
+        // Anyway, since phone screens usually have a high pixel density, 
+        // the effect from AA seems very limited, and rendering at a high resolution seems
+        // to do the trick. Further testing should be done with various devices.
+        const resolution = Math.min(window.devicePixelRatio, 2);
+        duelLog(`Quality settings: Mobile (aa=false, resolution=${resolution})`);
+        return {
+            antialias: false,
+            resolution: resolution,
+            preference
+        };
+    } else {
+        // On desktop or unknown devices, we can afford to be a bit more generous.
+        duelLog(`Quality settings: Desktop/Unknown (aa=true, resolution=${window.devicePixelRatio})`);
+        return {
+            antialias: true,
+            resolution: window.devicePixelRatio,
+            preference
+        };
+    }
+}
 
 export async function createDuel(parent: HTMLElement,
                                  registry: DuelGameRegistry,
                                  assets: DuelAssets,
                                  messaging: DuelMessaging) {
+    
     const app = new Application();
     await app.init({
         backgroundColor: 0xffffff,
-        antialias: true,
-        resolution: Math.min(window.devicePixelRatio, 2),
+        ...qualitySettings(),
         eventMode: "passive",
         eventFeatures: {
             move: true,
             click: true
         },
         width: window.visualViewport!.width,
-        height: window.visualViewport!.height,
+        height: window.visualViewport!.height
     });
     parent.appendChild(app.canvas)
     app.canvas.style.display = "block";
@@ -37,7 +69,7 @@ export class DuelGame {
     scene: Scene | null = null;
     controller: DuelController | null = null;
 
-    fpsCounter: BitmapText
+    testTimings: HTMLElement | null = null;
 
     constructor(app: Application,
                 public registry: DuelGameRegistry,
@@ -56,15 +88,24 @@ export class DuelGame {
         this.messaging.onMessageReceived = this.receiveMessage.bind(this);
         this.messaging.readyToReceive();
 
-        this.fpsCounter = new BitmapText({text: "0", style: {fontFamily: "ChakraPetchDigits", fontSize: 24,
-            fill: 0x000000}});
-        this.fpsCounter.tint = 0x0033AA;
-        this.fpsCounter.x = 8
-        this.fpsCounter.y = 8
-        
-        this.app.ticker.add(t => this.fpsCounter.text = Math.round(t.FPS).toString())
-        
-        this.app.stage.addChild(this.fpsCounter);
+        this.testTimings = app.canvas.parentElement!.querySelector(".duel-test-timings");
+
+        if (this.testTimings) {
+            this.app.renderer.runners.postrender.add(this);
+        }
+    }
+
+    fpsSamples = [] as number[];
+    
+    postrender() {
+        if (this.testTimings) {
+            this.fpsSamples.push(this.app.ticker.deltaMS);
+            if (this.fpsSamples.length > 5) {
+                this.fpsSamples.shift();
+            }
+            const avg = this.fpsSamples.reduce((a, b) => a + b, 0) / this.fpsSamples.length;
+            this.testTimings!.textContent = (((1000)/avg).toFixed(0) + "FPS ("+ avg.toFixed(2) + "ms)");
+        }
     }
 
     receiveMessage(m: DuelMessage) {
@@ -101,5 +142,7 @@ export class DuelGame {
         this.app.renderer.resize(window.visualViewport!.width, window.visualViewport!.height);
 
         this.app.stage.hitArea = this.app.screen;
+        
+        duelLog(`Resized to: ${this.app.canvas.width} ${this.app.canvas.height}`);
     }
 }

@@ -167,3 +167,19 @@ html {
     z-index: 1000;
     display: flex;
 }
+
+.duel-test-timings {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    z-index: 10;
+    background-color: #0b589f;
+    border-radius: 2px;
+    
+    padding: 8px;
+    color: white;
+    font-weight: bold;
+    font-size: 0.8em;
+    
+    white-space: pre-wrap;
+}

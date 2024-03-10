@@ -30,7 +30,7 @@ export class Hand extends Container {
     // todo: physics-based animation instead of teleport
     repositionCards() {
         if (this.cards.length == 1) {
-            this.cards[0].position = new Point(this.position.x, this.position.y)
+            this.cards[0].moveToHand(new Point(this.position.x, this.position.y), HAND_CARD_Z, this.flipped);
             return
         }
 

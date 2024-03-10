@@ -16,7 +16,6 @@
 
     <ItemGroup>
         <Folder Include="Client\card-lab\public\"/>
-        <Folder Include="Client\card-lab\src\duel\assets\" />
         <Folder Include="Game\BasePacks\Assets\" />
         <Folder Include="wwwroot\basePacks\" />
     </ItemGroup>
