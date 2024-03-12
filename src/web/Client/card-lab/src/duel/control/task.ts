@@ -1,6 +1,7 @@
 ﻿import {duelLogError} from "../log.ts";
 import {DuelGame} from "../duel.ts";
 import {GameScene} from "../game/GameScene.ts";
+import {Ticker, TickerCallback} from "pixi.js";
 
 // A game task is an action that can complete either:
 // - instantly; or
@@ -15,9 +16,24 @@ import {GameScene} from "../game/GameScene.ts";
 // Game tasks all start at the end of a frame tick. (Should this be changed? I don't know, it's handy)
 //
 // You can compare them to Unity's coroutines, which are very similar.
-export abstract class GameTask {
+export class GameTask {
     #state: GameTaskState = GameTaskState.PENDING;
-    #onComplete: (() => void) | null = null;
+    #onComplete: (() => any) | null = null;
+    #onFail: ((e: Error) => any) | null = null;
+    #subTask: GameTask | null = null
+
+    constructor(runner?: (task: GameTask) => Promise<any> | void) {
+        if (runner) {
+            this.run = () => {
+                const r = runner(this);
+                if (r instanceof Promise) {
+                    r.then(() => this.complete()).catch(e => this.fail(e));
+                } else {
+                    this.complete();
+                }
+            }
+        }
+    }
 
     get state() {
         return this.#state;
@@ -29,15 +45,15 @@ export abstract class GameTask {
         }
 
         this.#state = GameTaskState.RUNNING;
-        this.run();
+        try {
+            this.run();
+        } catch (e) {
+            duelLogError(`Game task ${this.name} failed during run:`, e);
+            this.#state = GameTaskState.FAILED;
+        }
     }
-    
-    // Called by DuelController if the task is running.
-    tick(scene: GameScene) {}
 
-    protected run() {
-        this.complete();
-    }
+    protected run() {}
 
     protected complete() {
         this.#state = GameTaskState.COMPLETE;
@@ -47,21 +63,71 @@ export abstract class GameTask {
         }
     }
 
-    then(onComplete: () => void) {
-        if (this.#state === GameTaskState.COMPLETE || this.#state === GameTaskState.FAILED) {
+    protected fail(e: Error) {
+        this.#state = GameTaskState.FAILED;
+        if (this.#onFail !== null) {
+            this.#onFail(e);
+            this.#onFail = null;
+        }
+    }
+
+    // The tick function is always called at the very end of the frame.
+    protected tick(ticker: Ticker, scene: GameScene) {
+    }
+
+    // Called by the DuelController
+    runTick(ticker: Ticker, scene: GameScene) {
+        if (this.#subTask) {
+            this.#subTask.runTick(ticker, scene)
+        }
+        if (this.state === GameTaskState.RUNNING) {
+            this.tick(ticker, scene)
+        }
+    }
+
+    registerCallbacks(onComplete: () => any, onReject: (e: Error) => any) {
+        if (this.#state === GameTaskState.COMPLETE) {
             onComplete();
+            return;
+        } else if (this.#state === GameTaskState.FAILED) {
+            onReject(new Error("Task failed."));
             return;
         }
 
-        if (this.#onComplete !== null) {
+        if (this.#onComplete === null) {
             this.#onComplete = onComplete;
+            this.#onFail = onReject;
         } else {
             duelLogError("Cannot await/then a game task twice.")
         }
+    }
 
-        if (this.#state !== GameTaskState.RUNNING) {
-            this.start();
+    compose(task: GameTask): Promise<void> {
+        if (this.#subTask) {
+            throw new Error("Cannot await two game tasks simultaneously.");
         }
+
+        this.#subTask = task;
+        return new Promise((resolve, reject) => {
+            task.registerCallbacks(() => {
+                this.#subTask = null;
+                // todo: complete on next tick to avoid timing surprises?
+                resolve();
+            }, e => {
+                this.#subTask = null;
+                // todo: complete on next tick to avoid timing surprises?
+                reject(e);
+            })
+            task.start()
+        });
+    }
+
+    get name() {
+        return this.constructor.name;
+    }
+    
+    toString() {
+        return this.name;
     }
 }
 

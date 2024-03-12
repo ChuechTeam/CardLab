@@ -78,7 +78,8 @@ export class DuelGame {
         this.app = app;
         (window as any).PIXI = PIXI;
 
-        window.addEventListener("resize", () => this.resizeToWindow())
+        // window.addEventListener("resize", () => this.resizeToWindow())
+        window.visualViewport!.addEventListener("resize", () => this.resizeToWindow())
         this.resizeToWindow();
 
         // Make the stage react to pointer events so children can listen to global move events

@@ -149,7 +149,7 @@ declare type NetDuelDelta =
 } | NetDuelDeltaBase<"updateBoardAttribs"> & {
     changes: { unitId: DuelUnitId, newAttribs: NetDuelUnitAttributes }[]
     coreHealths: NetPlayerPair<number | null>
-} | NetDuelDeltaBase<"updateEnergyDelta"> & {
+} | NetDuelDeltaBase<"updateEnergy"> & {
     player: NetDuelPlayerIndex,
     newEnergy: number,
     newMaxEnergy: number
@@ -163,16 +163,16 @@ declare type NetDuelDelta =
     context: "played" | "discarded" | "drawn" | "other"
 } | NetDuelDeltaScopeBase<"unitAttackScope"> & {
     unitId: DuelUnitId, target: NetDuelTarget
-} | NetDuelDeltaScopeBase<"unitTriggerScopeDelta"> & {
+} | NetDuelDeltaScopeBase<"unitTriggerScope"> & {
     unitId: DuelUnitId
-} | NetDuelDeltaScopeBase<"cardPlayScopeDelta"> & {
+} | NetDuelDeltaScopeBase<"cardPlayScope"> & {
     cardId: DuelCardId,
     player: NetDuelPlayerIndex
-} | NetDuelDeltaScopeBase<"cardDrawScopeDelta"> & {
+} | NetDuelDeltaScopeBase<"cardDrawScope"> & {
     player: NetDuelPlayerIndex
-} | NetDuelDeltaScopeBase<"cardDiscardScopeDelta"> & {
+} | NetDuelDeltaScopeBase<"cardDiscardScope"> & {
     player: NetDuelPlayerIndex
-} | NetDuelDeltaScopeBase<"deathScopeDelta">
+} | NetDuelDeltaScopeBase<"deathScope">
 
 // that's a bit hacky but whatever
 declare type NetDuelScopeDelta = Extract<NetDuelDelta, { state: "start" | "end" }>

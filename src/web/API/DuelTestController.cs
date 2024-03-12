@@ -177,6 +177,14 @@ public class DuelTestController(
         duel.SwitchToPlaying();
         return Ok();
     }
+    
+    [HttpPost("reset")]
+    public IActionResult Reset()
+    {
+        globalDuelTest.Reset();
+        return Ok();
+    }
+
 
     public record PlayUnitInput(int CardId, DuelGridVec Place);
     [HttpPost("p{playerIndex:int}/play-unit")]

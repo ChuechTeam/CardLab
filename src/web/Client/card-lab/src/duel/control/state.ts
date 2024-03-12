@@ -5,11 +5,11 @@ import {Card} from "../game/Card.ts";
 export type LocalDuelPlayerState = NetDuelPlayerState
 export type LocalPlayerPair<T> = [T, T]
 
-function toLocalIndex(idx: NetDuelPlayerIndex): LocalDuelPlayerIndex {
+export function toLocalIndex(idx: NetDuelPlayerIndex): LocalDuelPlayerIndex {
     return idx === "p1" ? 0 : 1
 }
 
-function toLocalPos(pos: NetDuelGridVec): Point {
+export function toLocalPos(pos: NetDuelGridVec): Point {
     return new Point(pos.x, pos.y)
 }
 
@@ -55,6 +55,28 @@ export class LocalDuelState {
             }
         }
     }
+    
+    updateTurn(turn: number, whoseTurn: NetDuelPlayerIndex) {
+        this.turn = turn;
+        this.whoseTurn = toLocalIndex(whoseTurn);
+    }
+    
+    revealCards(cards: NetDuelCard[]) {
+        for (const card of cards) {
+            const locCard = new LocalUnitDuelCard(card,
+                this.cards.get(card.id)?.avatar ?? null);
+            this.cards.set(card.id, locCard)
+        }
+    }
+    
+    hideCards(cards: DuelCardId[]) {
+        for (const id of cards) {
+            const card = this.cards.get(id);
+            if (card && !(card instanceof UnknownLocalDuelCard)) {
+                this.cards.set(id, new UnknownLocalDuelCard(id, card.avatar));
+            }
+        }
+    }
 }
 
 export type LocalDuelCard =
@@ -65,7 +87,7 @@ export class UnknownLocalDuelCard {
     type: "unknown"
     id: number
 
-    constructor(id: number) {
+    constructor(id: number, public avatar: Card | null = null) {
         this.type = "unknown"
         this.id = id
     }
@@ -77,9 +99,7 @@ export abstract class KnownLocalDuelCard {
     defAssetRef: CardAssetRef
     location: DuelCardLocation
 
-    avatar: Card | null = null
-
-    protected constructor(card: NetDuelCard) {
+    protected constructor(card: NetDuelCard, public avatar: Card | null = null) {
         this.type = card.type;
         this.id = card.id;
         this.defAssetRef = card.baseDefRef;
@@ -94,8 +114,8 @@ export class LocalUnitDuelCard extends KnownLocalDuelCard {
         health: number
     }
 
-    constructor(card: NetUnitDuelCard) {
-        super(card);
+    constructor(card: NetUnitDuelCard, avatar: Card | null = null) {
+        super(card, avatar);
         if (card.type !== "unit") {
             throw new Error("Invalid card type")
         }

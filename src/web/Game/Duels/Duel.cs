@@ -8,7 +8,7 @@ using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace CardLab.Game.Duels;
 
-public sealed partial class Duel
+public sealed partial class Duel : IDisposable
 {
     public DuelState State { get; private set; }
 
@@ -377,6 +377,15 @@ public sealed partial class Duel
         {
             throw new ArgumentException($"Invalid player (player={player}).", nameof(player));
         }
+    }
+
+    
+    // dirty, just for testing
+    public void Dispose()
+    {
+        State.Status = DuelStatus.Ended;
+        P1Socket.StopConnection(P1Socket.ConnectionId);
+        P2Socket.StopConnection(P2Socket.ConnectionId);
     }
 }
 

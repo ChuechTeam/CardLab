@@ -131,7 +131,7 @@ public sealed record UnitDuelCard : DuelCard
 
     public override UnitDuelCard TakeSnapshot()
     {
-        return new UnitDuelCard(this)
+        return this with
         {
             AppliedModifiers = AppliedModifiers.ToList(),
             Traits = Traits.ToList()
