@@ -1,7 +1,14 @@
-﻿import {duelLogError} from "../log.ts";
+﻿import {duelLog, duelLogDebug, duelLogError} from "../log.ts";
 import {DuelGame} from "../duel.ts";
 import {GameScene} from "../game/GameScene.ts";
 import {Ticker, TickerCallback} from "pixi.js";
+
+export enum GameTaskState {
+    PENDING,
+    RUNNING,
+    COMPLETE,
+    FAILED
+}
 
 // A game task is an action that can complete either:
 // - instantly; or
@@ -11,129 +18,159 @@ import {Ticker, TickerCallback} from "pixi.js";
 // They're supposed to be run sequentially, although they can trigger asynchronous animations in the background,
 // which should NOT change the state of avatars, and should only be used for visual effects.
 // (Example: a unit can play an animation to be destroyed, but its state should become "destroyed", not "destroying".)
-// Game tasks can also in turn call other game tasks, but multiple tasks cannot run simultaneously.
-//
-// Game tasks all start at the end of a frame tick. (Should this be changed? I don't know, it's handy)
+// Multiple tasks can run simultaneously if desired.
 //
 // You can compare them to Unity's coroutines, which are very similar.
 export class GameTask {
-    #state: GameTaskState = GameTaskState.PENDING;
-    #onComplete: (() => any) | null = null;
-    #onFail: ((e: Error) => any) | null = null;
-    #subTask: GameTask | null = null
+    state: GameTaskState = GameTaskState.PENDING;
+    runningGenerator: Generator<GameTask> | null = null;
+    failure: Error | null = null; // Not null when state = FAILED.
 
-    constructor(runner?: (task: GameTask) => Promise<any> | void) {
-        if (runner) {
-            this.run = () => {
-                const r = runner(this);
-                if (r instanceof Promise) {
-                    r.then(() => this.complete()).catch(e => this.fail(e));
+    // The task to notify when this task completes (or fails).
+    taskWaitingForMe: GameTask | null = null;
+    // The task who created this task. Null when this is the root task.
+    parent: GameTask | null = null;
+    // All subtasks running within this task. Tasks are removed once they complete or fail.
+    children: GameTask[] = [];
+
+    name: string | null = null // The debug name of the task.
+    meta: any = null // Some whatever object for debugging. (usually the node from the tree)
+
+    constructor(name?: string, runFunc?: (task: GameTask) => Generator<GameTask> | GameTask | any) {
+        if (runFunc != null) {
+            this.run = function* () {
+                const result = runFunc(this);
+                if (result != null) {
+                    if (result instanceof GameTask) {
+                        yield result;
+                    } else {
+                        yield* result;
+                    }
+                }
+            };
+        }
+        if (name != null) {
+            this.name = name;
+        }
+    }
+
+    start(parent: GameTask | null) {
+        if (this.state !== GameTaskState.PENDING) {
+            throw new Error("Cannot start a game while not in PENDING state.");
+        }
+
+        duelLog(`Starting task ${this}`, this.meta)
+
+        this.state = GameTaskState.RUNNING;
+        if (parent) {
+            this.parent = parent;
+            parent.children.push(this);
+        }
+        try {
+            const gen = this.run();
+            if (gen) {
+                this.runningGenerator = gen;
+                this.continueExecution();
+            } else {
+                // Not using a generator, uses complete or fail.
+                this.runningGenerator = null;
+            }
+        } catch (e) {
+            // If someone throws something that is not an error, they're a psychopath.
+            this.fail(e as Error);
+        }
+    }
+
+    run(): Generator<GameTask> | void {
+    }
+
+    tick(ticker: Ticker) {
+    }
+
+    runTick(ticker: Ticker) {
+        const tasksCopy = [...this.children]
+        for (const task of tasksCopy) {
+            task.runTick(ticker);
+        }
+
+        if (this.state === GameTaskState.RUNNING) {
+            try {
+                this.tick(ticker);
+            } catch (e) {
+                duelLogError(`Error in task ${this} tick: ${(e as Error).message}`);
+                this.fail(e as Error);
+            }
+        }
+    }
+
+    continueExecution() {
+        if (this.runningGenerator === null) {
+            throw new Error("Task is not running a generator.");
+        }
+
+        const result = this.runningGenerator.next();
+        if (result.done) {
+            this.complete();
+            return;
+        } else {
+            const task = result.value;
+            if (task.state === GameTaskState.PENDING) {
+                task.start(this);
+            }
+
+            if (task.state === GameTaskState.COMPLETE) {
+                this.continueExecution();
+            } else if (task.state === GameTaskState.FAILED) {
+                this.fail(task.failure!);
+            } else {
+                if (task.taskWaitingForMe === null) {
+                    task.taskWaitingForMe = this;
                 } else {
-                    this.complete();
+                    this.fail(new Error(`A task cannot be waited for twice: ${task}`))
                 }
             }
         }
     }
 
-    get state() {
-        return this.#state;
+    fail(e: Error) {
+        this.failure = e;
+        this.state = GameTaskState.FAILED;
+
+        duelLogError(`Task ${this} failed: ${e.message}`, this.meta);
+
+        if (this.taskWaitingForMe) {
+            this.taskWaitingForMe.fail(new Error(`Child task ${this} failed: ${e.message}.`, {cause: e}));
+        }
+        this.parent?.clearTaskChild(this)
     }
 
-    start() {
-        if (this.#state !== GameTaskState.PENDING) {
-            duelLogError("Cannot start a game task twice.")
+    complete() {
+        if (this.state !== GameTaskState.RUNNING) {
+            throw new Error("Cannot complete a task that is not running.");
+        }
+        if (this.children.length !== 0) {
+            for (const child of this.children) {
+                if (child.state === GameTaskState.RUNNING) {
+                    throw new Error("Cannot complete a task while it has subtasks still running.");
+                }
+            }
         }
 
-        this.#state = GameTaskState.RUNNING;
-        try {
-            this.run();
-        } catch (e) {
-            duelLogError(`Game task ${this.name} failed during run:`, e);
-            this.#state = GameTaskState.FAILED;
+        duelLog(`Completed task ${this}`, this.meta)
+
+        this.state = GameTaskState.COMPLETE;
+
+        if (this.taskWaitingForMe) {
+            this.taskWaitingForMe.continueExecution();
         }
+        this.parent?.clearTaskChild(this)
     }
 
-    protected run() {}
-
-    protected complete() {
-        this.#state = GameTaskState.COMPLETE;
-        if (this.#onComplete !== null) {
-            this.#onComplete();
-            this.#onComplete = null;
-        }
+    clearTaskChild(t: GameTask) {
+        this.children.splice(this.children.indexOf(t), 1);
     }
 
-    protected fail(e: Error) {
-        this.#state = GameTaskState.FAILED;
-        if (this.#onFail !== null) {
-            this.#onFail(e);
-            this.#onFail = null;
-        }
-    }
-
-    // The tick function is always called at the very end of the frame.
-    protected tick(ticker: Ticker, scene: GameScene) {
-    }
-
-    // Called by the DuelController
-    runTick(ticker: Ticker, scene: GameScene) {
-        if (this.#subTask) {
-            this.#subTask.runTick(ticker, scene)
-        }
-        if (this.state === GameTaskState.RUNNING) {
-            this.tick(ticker, scene)
-        }
-    }
-
-    registerCallbacks(onComplete: () => any, onReject: (e: Error) => any) {
-        if (this.#state === GameTaskState.COMPLETE) {
-            onComplete();
-            return;
-        } else if (this.#state === GameTaskState.FAILED) {
-            onReject(new Error("Task failed."));
-            return;
-        }
-
-        if (this.#onComplete === null) {
-            this.#onComplete = onComplete;
-            this.#onFail = onReject;
-        } else {
-            duelLogError("Cannot await/then a game task twice.")
-        }
-    }
-
-    compose(task: GameTask): Promise<void> {
-        if (this.#subTask) {
-            throw new Error("Cannot await two game tasks simultaneously.");
-        }
-
-        this.#subTask = task;
-        return new Promise((resolve, reject) => {
-            task.registerCallbacks(() => {
-                this.#subTask = null;
-                // todo: complete on next tick to avoid timing surprises?
-                resolve();
-            }, e => {
-                this.#subTask = null;
-                // todo: complete on next tick to avoid timing surprises?
-                reject(e);
-            })
-            task.start()
-        });
-    }
-
-    get name() {
-        return this.constructor.name;
-    }
-    
     toString() {
-        return this.name;
+        return this.name ?? this.constructor.name;
     }
-}
-
-export enum GameTaskState {
-    PENDING,
-    RUNNING,
-    COMPLETE,
-    FAILED
 }

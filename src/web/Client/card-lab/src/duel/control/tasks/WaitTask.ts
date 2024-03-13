@@ -1,5 +1,5 @@
-import {GameTask} from "./task.ts";
-import {GameScene} from "../game/GameScene.ts";
+import {GameTask} from "src/duel/control/task.ts";
+import {GameScene} from "src/duel/game/GameScene.ts";
 import {Ticker} from "pixi.js";
 
 export class WaitTask extends GameTask {
@@ -9,7 +9,7 @@ export class WaitTask extends GameTask {
         this.remaining = duration
     }
     
-    tick(ticker: Ticker, scene: GameScene) {
+    tick(ticker: Ticker) {
         this.remaining -= ticker.deltaMS/1000;
         if (this.remaining < 0) {
             this.complete();

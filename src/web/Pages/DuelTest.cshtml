@@ -24,6 +24,7 @@
     <div class="duel-test-buttons">
         <button class="duel-test-fullscreen">FS</button>
         <button class="duel-test-log">LOG</button>
+        <button class="duel-test-reset">RESET</button>
     </div>
 </div>
 
@@ -44,6 +45,11 @@
         
         document.querySelector(".duel-test-log").addEventListener("click", e => {
             window.duelLogOverlay.toggle();
+        });
+        
+        document.querySelector(".duel-test-reset").addEventListener("click", async e => {
+            await fetch(new URL("api/duel-test/reset", location.origin), { method: "POST" });
+            location.reload();
         });
     </script>
 }

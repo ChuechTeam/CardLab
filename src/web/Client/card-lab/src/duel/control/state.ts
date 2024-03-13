@@ -130,6 +130,7 @@ export class LocalDuelUnit {
     owner: LocalDuelPlayerIndex
     attributes: NetDuelUnitAttributes
     position: Point
+    alive: boolean = true // dead units are removed on at the start of the next mutation
 
     constructor(unit: NetDuelUnit) {
         this.id = unit.id;

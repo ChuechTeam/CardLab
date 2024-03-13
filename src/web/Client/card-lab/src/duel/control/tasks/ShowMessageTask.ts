@@ -1,5 +1,5 @@
-import {GameTask} from "./task.ts";
-import {GameScene} from "../game/GameScene.ts";
+import {GameTask} from "../task.ts";
+import {GameScene} from "../../game/GameScene.ts";
 import {Ticker} from "pixi.js";
 
 export class ShowMessageTask extends GameTask {
@@ -17,7 +17,7 @@ export class ShowMessageTask extends GameTask {
         this.scene.messageBanner.show(this.message, this.duration);
     }
 
-    tick(ticker: Ticker, scene: GameScene) {
+    tick(ticker: Ticker) {
         this.remaining -= ticker.deltaMS/1000;
         if (this.remaining < 0) {
             this.complete();

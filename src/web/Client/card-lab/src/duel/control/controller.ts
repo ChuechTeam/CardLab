@@ -3,17 +3,38 @@ import {GameScene} from "../game/GameScene.ts";
 import {duelLog, duelLogError} from "../log.ts";
 import {LocalDuelPropositions, LocalDuelState, toLocalIndex} from "./state.ts";
 import {GameTask, GameTaskState} from "./task.ts";
-import {Ticker} from "pixi.js";
-import {ShowMessageTask} from "./ShowMessageTask.ts";
+import {Ticker, UPDATE_PRIORITY} from "pixi.js";
+import {ShowMessageTask} from "./tasks/ShowMessageTask.ts";
+import {DefaultScopeTask} from "src/duel/control/tasks/DefaultScopeTask.ts";
 
 function isScopeDelta(d: NetDuelDelta): d is NetDuelScopeDelta {
     return 'state' in d; // HMMMM I'm sure this is gonna blow up someday
 }
 
+type NetDeltaLeaf = Exclude<NetDuelDelta, NetDuelScopeDelta>;
+
 type DeltaFuncMap = {
-    [T in NetDuelDelta["type"]]?:
-    (delta: NetDuelDeltaOf<T>, scopeStack: NetDuelScopeDelta[]) => GameTask | null
+    [T in NetDeltaLeaf["type"]]?: (delta: NetDuelDeltaOf<T>) => GameTask | null
 }
+type ScopeFuncMap = {
+    [T in NetDuelScopeDelta["type"]]?: (node: ScopeMutationNode<T>) => GameTask
+}
+
+type LeafMutationNode = {
+    isLeaf: true,
+    delta: Exclude<NetDuelDelta, NetDuelScopeDelta>
+}
+
+type ScopeMutationNode<T = NetDuelScopeDelta | null> = {
+    isLeaf: false,
+    scope: T // null if root node
+    preparationNodes: MutationNode[], // todo in server
+    childNodes: MutationNode[],
+}
+
+type MutationNode =
+    | LeafMutationNode
+    | ScopeMutationNode
 
 // The duel controller "plays" the game by sequentially applying game state deltas from the server.
 // Each delta can be applied instantly or over time, depending on the task used.
@@ -36,14 +57,7 @@ export class DuelController {
 
     // The state of the ongoing mutation: applying deltas sequentially, and running their related game tasks.
     mut: {
-        taskQueue: GameTask[]
-        runningTasks: GameTask[]
-        simultaneousGroup: string | null;
-        // The pending deltas to apply, excluding the one running (includes scopes).
-        // The array is actually the list of deltas, but reversed, so we can pop deltas from the end.
-        // deltaQueue: NetDuelDelta[]
-        // The stack of all active scopes.
-        // scopeStack: NetDuelScopeDelta[]
+        runningTask: GameTask
         nextIteration: number
     } | null = null
 
@@ -73,7 +87,7 @@ export class DuelController {
             this.setupScene();
         }
 
-        this.game.app.ticker.add(this.tick, this);
+        this.game.app.ticker.add(this.tick, this, UPDATE_PRIORITY.LOW);
     }
 
     displayGameScene() {
@@ -93,12 +107,7 @@ export class DuelController {
 
     tick(ticker: Ticker) {
         if (this.mut !== null) {
-            // Queue the mutation update in a microtask so we're guaranteed
-            // that the game tasks run at the very end of the tick.
-            // This is necessary for consistency as async/await always produce
-            // delayed responses with microtasks, even when the task is effectively
-            // synchronous.
-            queueMicrotask(() => this.playMutation(ticker));
+            this.playMutation(ticker);
         }
     }
 
@@ -108,42 +117,56 @@ export class DuelController {
             return;
         } else {
             duelLog(`Starting mutation to iteration ${m.iteration} with ${m.deltas.length} deltas`)
-            const deltaQueue = [...m.deltas].reverse();
-            const scopeStack = [] as NetDuelScopeDelta[];
-            const taskList = [] as GameTask[];
+
+            const tree = this.buildMutationTree(m);
+            const task = this.applyScope(tree);
+
+            console.log("Tree: ", tree);
+            console.log("Task: ", task);
+            
             this.mut = {
-                taskQueue: [],
-                runningTasks: [],
-                simultaneousGroup: null,
+                runningTask: task,
                 nextIteration: m.iteration
             };
-
-            while (deltaQueue.length > 0) {
-                const delta = deltaQueue.pop()!;
-                if (isScopeDelta(delta)) {
-                    if (delta.state === "start") {
-                        scopeStack.push(delta);
-                    } else {
-                        scopeStack.pop();
-                    }
-                    continue;
-                }
-
-                const task = this.applyDelta(delta, scopeStack);
-                if (task !== null) {
-                    if (Array.isArray(task)) {
-                        duelLog(`Delta ${delta.type} produced tasks: ${task}`)
-                        taskList.push(...task);
-                    } else {
-                        duelLog(`Delta ${delta.type} produced task: ${task}`)
-                        taskList.push(task);
-                    }
-                }
-                duelLog(`Delta ${delta.type} produced no task`)
-            }
-            this.mut.taskQueue = taskList.reverse();
-            // The mutation will be played in the next tick.
         }
+    }
+
+    buildMutationTree(m: DuelMessageOf<"duelMutated">): ScopeMutationNode<null> {
+        let i = 0;
+
+        function next(): NetDuelDelta | null {
+            if (i >= m.deltas.length) {
+                return null;
+            }
+            return m.deltas[i++];
+        }
+
+        function parseScope<T extends NetDuelScopeDelta | null>(d: T): ScopeMutationNode<T> {
+            const node: ScopeMutationNode<T> = {isLeaf: false, scope: d, preparationNodes: [], childNodes: []};
+            let nextDelta = next();
+            while (nextDelta != null && (!isScopeDelta(nextDelta) || nextDelta.state !== "end")) {
+                node.childNodes.push(parse(nextDelta));
+                nextDelta = next();
+            }
+            if (nextDelta === null && d !== null) {
+                throw new Error(`Unclosed scope ${d?.type}`);
+            }
+            return node;
+        }
+
+        function parseLeaf(d: Exclude<NetDuelDelta, NetDuelScopeDelta>): LeafMutationNode {
+            return {isLeaf: true, delta: d};
+        }
+
+        function parse(d: NetDuelDelta): MutationNode {
+            if (isScopeDelta(d)) {
+                return parseScope(d);
+            } else {
+                return parseLeaf(d);
+            }
+        }
+
+        return parseScope(null);
     }
 
     playMutation(ticker: Ticker) {
@@ -151,39 +174,14 @@ export class DuelController {
             return;
         }
 
-        for (let i = 0; i < this.mut.runningTasks.length; i++) {
-            const task = this.mut.runningTasks[i];
-            task.runTick(ticker, this.scene);
-            if (task.state !== GameTaskState.RUNNING) {
-                this.mut.runningTasks.splice(i, 1);
-                i--;
-            }
-            if (task.state === GameTaskState.COMPLETE) {
-                duelLog(`Task ${task} completed deferred.`);
-            } else if (task.state === GameTaskState.FAILED) {
-                duelLogError(`Task ${task} failed deferred!`);
-            }
+        const task = this.mut.runningTask;
+        if (task.state === GameTaskState.PENDING) {
+            task.start(null);
+        } else if (task.state === GameTaskState.RUNNING) {
+            task.runTick(ticker);
         }
 
-        while (this.mut.taskQueue.length > 0) {
-            const task = this.mut.taskQueue[this.mut.taskQueue.length - 1];
-            // TODO: Check simultaneous groups
-            if (this.mut.runningTasks.length === 0) { // If should run task
-                this.mut.taskQueue.pop();
-                task.start();
-                if (task.state === GameTaskState.RUNNING) {
-                    this.mut.runningTasks.push(task);
-                } else if (task.state === GameTaskState.COMPLETE) {
-                    duelLog(`Task ${task} completed instantly.`);
-                } else if (task.state === GameTaskState.FAILED) {
-                    duelLogError(`Task ${task} failed instantly!`);
-                }
-            } else {
-                break;
-            }
-        }
-
-        if (this.mut.taskQueue.length === 0) {
+        if (task.state === GameTaskState.COMPLETE) {
             // end mutation
             this.clientIteration = this.mut.nextIteration;
             this.mut = null;
@@ -191,10 +189,37 @@ export class DuelController {
                 const next = this.mutationQueue.shift()!;
                 this.startMutation(next);
             }
+        } else if (task.state === GameTaskState.FAILED) {
+            // todo: panic?? reset to latest known state?
+            duelLogError(`Mutation task failed!`, task);
         }
     }
 
-    applyDelta(delta: NetDuelDelta, scopeStack: NetDuelScopeDelta[]): GameTask[] | GameTask | null {
+    applyNode(node: MutationNode): GameTask | null {
+        let t: GameTask | null;
+        if (node.isLeaf) {
+            t = this.applyDelta(node.delta);
+        } else {
+            t = this.applyScope(node);
+        }
+        if (t) {
+            t.meta = node
+        }
+        return t;
+    }
+
+    applyScope(node: ScopeMutationNode): GameTask {
+        if (node.scope && node.scope.type in this.scopeFuncs) {
+            return this.scopeFuncs[node.scope.type]!(node as any);
+        }
+
+        // Default implementation.
+        const preparationTasks = node.preparationNodes.map(n => this.applyNode(n));
+        const childTasks = node.childNodes.map(n => this.applyNode(n));
+        return new DefaultScopeTask(node.scope?.type ?? "root", preparationTasks, childTasks);
+    }
+
+    applyDelta(delta: NetDeltaLeaf): GameTask | null {
         const type = delta.type;
         if (!(type in this.deltaFuncs)) {
             duelLogError(`Don't know what to do with this delta (${type})!`, delta);
@@ -202,28 +227,27 @@ export class DuelController {
         }
 
         const f = this.deltaFuncs[type]!;
-        return f(delta as any, scopeStack);
+        return f(delta as any);
     }
 
     deltaFuncs: DeltaFuncMap = {
         "switchTurn": delta => {
             this.state.updateTurn(delta.newTurn, delta.whoPlays);
-            return new GameTask(async t => {
+            return new GameTask("SwitchTurn",() => {
                 this.scene.showTurnIndicator(this.state.whoseTurn);
-                await t.compose(new ShowMessageTask(this.scene,
-                    `Tour de J${this.state.whoseTurn + 1}`, 1.5))
+                return new ShowMessageTask(this.scene, `Tour de J${this.state.whoseTurn + 1}`, 1.5)
             });
         },
         "switchStatus": delta => {
             this.state.status = delta.status;
-            return new GameTask(() => this.scene.messageBanner.hide())
+            return new GameTask("SwitchStatus",() => this.scene.messageBanner.hide())
         },
         "updateEnergy": delta => {
             const idx = toLocalIndex(delta.player);
             const p = this.state.players[idx]
             p.energy = delta.newEnergy
             p.maxEnergy = delta.newMaxEnergy
-            return new GameTask(() =>
+            return new GameTask("UpdateEnergy", () =>
                 this.scene.energyCounters[idx].update(delta.newEnergy, delta.newMaxEnergy))
         },
         "revealCards": delta => {
@@ -233,6 +257,8 @@ export class DuelController {
             return null;
         }
     }
+
+    scopeFuncs: ScopeFuncMap = {}
 
     // Removes all created avatars (units and cards) from the scene.
     tearDownScene() {
