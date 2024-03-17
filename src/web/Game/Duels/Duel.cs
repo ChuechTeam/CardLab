@@ -19,6 +19,7 @@ public sealed partial class Duel : IDisposable
     //public DuelStatus Status { get; private set; } = DuelStatus.AwaitingConnection;
     public PlayerIndex? Winner { get; private set; } = null;
     public DuelSettings Settings { get; }
+    public DuelAttributes Attributes { get; }
 
     public UserSocket P1Socket { get; }
     public UserSocket P2Socket { get; }
@@ -27,7 +28,7 @@ public sealed partial class Duel : IDisposable
 
     private readonly Random _rand = new();
 
-    private readonly object _lock = new();
+    public readonly object Lock = new();
 
     private int _unitIdSeq = 1;
     private int _cardIdSeq = 1;
@@ -35,18 +36,20 @@ public sealed partial class Duel : IDisposable
 
     private readonly ILogger _logger;
 
+    public DuelMessageRouting Routing { get; }
+
     // TODO: Timer
 
     public Duel(DuelSettings settings, ILogger logger, UserSocket? p1Socket = null, UserSocket? p2Socket = null)
     {
         _logger = logger;
         Settings = settings;
+        Attributes = new DuelAttributes(settings);
         State = MakeStartState();
 
-        P1Socket = p1Socket ?? new UserSocket();
-        P2Socket = p2Socket ?? new UserSocket();
-
-        _logger.LogTrace("Hello from duel!");
+        Routing = new DuelMessageRouting(this);
+        P1Socket = p1Socket ?? new UserSocket { ReceiveHandler = msg => Routing.ReceiveMessage(PlayerIndex.P1, msg) };
+        P2Socket = p2Socket ?? new UserSocket { ReceiveHandler = msg => Routing.ReceiveMessage(PlayerIndex.P2, msg) };
 
         // todo: obvious validations (deck size, etc.)
     }
@@ -55,7 +58,7 @@ public sealed partial class Duel : IDisposable
     {
         CheckPlayer(who);
 
-        lock (_lock)
+        lock (Lock)
         {
             _ready[who] = true;
 
@@ -68,9 +71,9 @@ public sealed partial class Duel : IDisposable
 
     public void SwitchToPlaying()
     {
-        lock (_lock)
+        lock (Lock)
         {
-            if (State.Status != DuelStatus.ChoosingCards && State.Status != DuelStatus.AwaitingConnection)
+            if (State.Status != DuelStatus.AwaitingConnection)
             {
                 throw new InvalidOperationException("Can't switch to playing from this status");
             }
@@ -80,8 +83,8 @@ public sealed partial class Duel : IDisposable
             // {
             //     throw new InvalidOperationException("Both players must be ready");
             // }
-            
-            RunMutation(m => m.ApplyAct(new ActGameStartRandom()));
+
+            RunMutation(m => m.ApplyFrag(new ActGameStartRandom()));
         }
     }
 
@@ -89,28 +92,25 @@ public sealed partial class Duel : IDisposable
     {
         CheckPlayer(player);
 
-        lock (_lock)
+        lock (Lock)
         {
             if (State.Status != DuelStatus.Playing)
             {
                 return Result.Fail<Unit>("Pas encore en jeu.");
             }
 
-            var state = State;
-            var playerState = state.GetPlayer(player);
-            var card = State.FindCard(playerState.Hand.FirstOrDefault(c => c == cardId));
-            if (card is not UnitDuelCard unitCard)
+            if (State.WhoseTurn != player)
             {
-                return Result.Fail<Unit>("Carte invalide.");
+                return Result.Fail<Unit>("Ce n'est pas votre tour.");
             }
-            
-            var act = new ActPlayUnitCard(player, unitCard, placement);
-            if (!act.CanDo(this))
+
+            var act = new ActPlayUnitCard(player, cardId, placement);
+            if (!act.Verify(this))
             {
                 return Result.Fail("Action impossible.");
             }
 
-            RunMutation(m => m.ApplyAct(act));
+            RunMutation(m => m.ApplyFrag(act));
 
             return Result.Success();
         }
@@ -118,7 +118,7 @@ public sealed partial class Duel : IDisposable
 
     public Result<Unit> EndTurn(PlayerIndex? currentPlayer)
     {
-        lock (_lock)
+        lock (Lock)
         {
             if (State.Status != DuelStatus.Playing)
             {
@@ -130,39 +130,33 @@ public sealed partial class Duel : IDisposable
                 return Result.Fail<Unit>("Ce n'est pas votre tour.");
             }
 
-            RunMutation(x => ApplyAct(x, new ActNextTurn()));
+            RunMutation(x => x.ApplyFrag(new ActNextTurn()));
 
             return Result.Success();
         }
     }
 
-    public Result<Unit> UseUnitAttack(PlayerIndex player, int unitId, DuelTarget target)
+    public Result<Unit> UseUnitAttack(PlayerIndex player, int unitId, int targetId)
     {
-        lock (_lock)
+        lock (Lock)
         {
             if (State.Status != DuelStatus.Playing)
             {
                 return Result.Fail<Unit>("Pas encore en jeu.");
             }
 
-            var unit = State.FindUnit(unitId);
-            if (unit == null || unit.Owner != player)
-            {
-                return Result.Fail<Unit>("Unité invalide.");
-            }
-
-            var act = new ActUseUnitAttack(unit, target);
-            if (!act.CanDo(this))
+            var act = new ActUseUnitAttack(player, unitId, targetId);
+            if (!act.Verify(this))
             {
                 return Result.Fail<Unit>("Action impossible.");
             }
 
-            RunMutation(x => ApplyAct(x, act));
+            RunMutation(x => x.ApplyFrag(act));
 
             return Result.Success();
         }
     }
-    
+
     private DuelState MakeStartState()
     {
         var cardDb = new Dictionary<int, DuelCard>();
@@ -179,9 +173,13 @@ public sealed partial class Duel : IDisposable
 
             return new DuelPlayerState
             {
-                CoreHealth = Settings.MaxCoreHealth,
-                Energy = 0,
-                MaxEnergy = 0,
+                Id = DuelIdentifiers.Create(DuelEntityType.Player, (int)whoIdx),
+                Attribs = new DuelAttributeSet
+                {
+                    [Attributes.CoreHealth] = Settings.MaxCoreHealth,
+                    [Attributes.Energy] = 0,
+                    [Attributes.MaxEnergy] = 0
+                },
                 Deck = cards.Select(x => x.Id).ToList(),
                 Units = new int?[Settings.UnitsX * Settings.UnitsY]
             };
@@ -202,6 +200,8 @@ public sealed partial class Duel : IDisposable
      */
     private void SubmitMutation(DuelMutation mut)
     {
+        mut.FlushPendingAttrDeltas();
+        
         if (mut.Deltas.Count == 0)
         {
             return;
@@ -228,6 +228,12 @@ public sealed partial class Duel : IDisposable
     /**
      * Messaging
      */
+    public void SendMessage(PlayerIndex player, DuelMessage message)
+    {
+        var socket = player == PlayerIndex.P1 ? P1Socket : P2Socket;
+        socket.SendMessage(message);
+    }
+
     private void BroadcastMessage(DuelMessage message)
     {
         P1Socket.SendMessage(message);
@@ -242,7 +248,7 @@ public sealed partial class Duel : IDisposable
 
     public DuelWelcomeMessage MakeWelcomeMessage(PlayerIndex playerIndex)
     {
-        lock (_lock)
+        lock (Lock)
         {
             return new DuelWelcomeMessage(
                 Sanitize(State, playerIndex),
@@ -263,13 +269,13 @@ public sealed partial class Duel : IDisposable
         {
             return new UnitDuelCard
             {
-                Id = _cardIdSeq++,
+                Id = DuelIdentifiers.Create(DuelEntityType.Card, _cardIdSeq++),
                 BaseDefRef = c,
-                Cost = def.Cost,
-                Stats = new DuelCardStats
+                Attribs = new DuelAttributeSet
                 {
-                    Attack = def.Attack,
-                    Health = def.Health
+                    [Attributes.Attack] = def.Attack,
+                    [Attributes.Health] = def.Health,
+                    [Attributes.Cost] = def.Cost
                 },
                 Traits = def.Traits.ToList()
             };
@@ -286,22 +292,20 @@ public sealed partial class Duel : IDisposable
         // of the unit.
         return new DuelUnit
         {
-            Id = _unitIdSeq++,
+            Id = DuelIdentifiers.Create(DuelEntityType.Unit, _unitIdSeq++),
             OriginRef = card.BaseDefRef,
-            OriginStats = card.Stats,
-            OriginTraits = card.Traits.ToImmutableArray(),
+            OriginStats = card.Attribs, // todo: clone
+            OriginTraits = [..card.Traits],
             Owner = owner,
-            Attribs =
-                new DuelUnitAttribs
-                {
-                    Attack = card.Stats.Attack,
-                    CurHealth = card.Stats.Health,
-                    MaxHealth = card.Stats.Health,
-                    Traits = card.Traits,
-                    ActionsLeft = 0,
-                    InactionTurns = 1,
-                    ActionsPerTurn = 1 // soon: function of traits
-                }
+            Attribs = new DuelAttributeSet
+            {
+                [Attributes.Attack] = card.Attribs[Attributes.Attack],
+                [Attributes.Health] = card.Attribs[Attributes.Health],
+                [Attributes.MaxHealth] = card.Attribs[Attributes.Health],
+                [Attributes.ActionsLeft] = 0,
+                [Attributes.InactionTurns] = 1,
+                [Attributes.ActionsPerTurn] = 1
+            }
         };
         // todo: apply traits that modify actionsleft/inactionturns
     }
@@ -379,7 +383,7 @@ public sealed partial class Duel : IDisposable
         }
     }
 
-    
+
     // dirty, just for testing
     public void Dispose()
     {
@@ -407,7 +411,6 @@ public sealed record DuelSettings
 public enum DuelStatus
 {
     AwaitingConnection,
-    ChoosingCards,
     Playing,
     Ended
 }
@@ -416,8 +419,42 @@ public class DuelMutation(Duel duel, DuelState state)
 {
     public List<DuelStateDelta> Deltas { get; init; } = [];
 
+    private readonly Dictionary<int, Dictionary<string, object>> _pendingAttrChanges = new();
+
+    // We have to make an exception for attributes because else it's going to be a nightmare
+    // Throws when the attribute isn't present.
+    // Returns true when the attribute changed.
+    public bool SetAttributeBaseValue(IEntity entity, DuelAttributeDefinition def, int value, out int newVal)
+    {
+        var attribs = entity.Attribs;
+        var prev = attribs[def];
+        attribs.SetBaseValue(def, value, out newVal);
+        if (prev != newVal)
+        {
+            if (!_pendingAttrChanges.ContainsKey(entity.Id))
+            {
+                _pendingAttrChanges.Add(entity.Id, new Dictionary<string, object>());
+            }
+
+            if (!_pendingAttrChanges[entity.Id].TryAdd(def.Key, newVal))
+            {
+                _pendingAttrChanges[entity.Id][def.Key] = newVal;
+            }
+
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    // todo: Modifier stuff
+
     public Result<Unit> Apply(DuelStateDelta delta)
     {
+        FlushPendingAttrDeltas();
+        
         var res = delta.Apply(duel, state);
 
         if (res.Succeeded)
@@ -428,13 +465,24 @@ public class DuelMutation(Duel duel, DuelState state)
         return res;
     }
 
-    public T ApplyFrag<T>(DuelFragment2<T> f)
+    public void FlushPendingAttrDeltas()
     {
-        return duel.ApplyFrag2(this, f);
+        if (_pendingAttrChanges.Count != 0)
+        {
+            foreach (var (key, value) in _pendingAttrChanges)
+            {
+                Deltas.Add(new UpdateEntityAttribsDelta
+                {
+                    EntityId = key,
+                    Attribs = value
+                });
+            }
+        }
+        _pendingAttrChanges.Clear();
     }
 
-    public void ApplyAct(DuelAction act)
+    public DuelFragmentResult ApplyFrag(DuelFragment f)
     {
-        duel.ApplyAct(this, act);
+        return duel.ApplyFrag2(this, f);
     }
 }

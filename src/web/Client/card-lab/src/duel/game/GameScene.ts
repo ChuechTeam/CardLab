@@ -3,14 +3,15 @@ import {DuelGame} from "../duel.ts";
 import {Viewport} from "pixi-viewport";
 import {Card, CardInteractionModule} from "./Card.ts";
 import {Hand} from "./Hand.ts";
-import {GRID_HEIGHT, UnitSlotGrid} from "./UnitSlotGrid.ts";
-import {Graphics} from "pixi.js";
+import {GRID_HEIGHT, UNITS_NUM_X, UNITS_NUM_Y, UnitSlotGrid} from "./UnitSlotGrid.ts";
+import {Graphics, Point} from "pixi.js";
 import {CardPreviewOverlay} from "./CardPreviewOverlay.ts";
 import {Core} from "./Core.ts";
 import {EnergyCounter} from "./EnergyCounter.ts";
 import {TurnButton} from "./TurnButton.ts";
 import {TurnIndicator} from "./TurnIndicator.ts";
 import {MessageBanner} from "./MessageBanner.ts";
+import {Unit} from "src/duel/game/Unit.ts";
 
 export const GAME_WIDTH = 720;
 export const GAME_HEIGHT = 1440;
@@ -53,7 +54,8 @@ export class GameScene extends Scene {
     cardPreviewOverlay: CardPreviewOverlay;
     messageBanner: MessageBanner;
 
-    cards: Card[] = [];
+    cards = new Map<DuelCardId, Card>();
+    units = new Map<DuelUnitId, Unit>();
 
     cardInteraction = new CardInteractionModule(this);
 
@@ -79,11 +81,11 @@ export class GameScene extends Scene {
         // funRect.drawRect(0, 0, this.viewport.worldWidth, this.viewport.worldHeight)
         // this.viewport.addChild(funRect)
 
-        this.myHand = new Hand(this, false);
+        this.myHand = new Hand(this, playerIndex == 0 ? 0 : 1, false);
         this.myHand.x = GAME_WIDTH / 2;
         this.myHand.y = GAME_HEIGHT - HAND_Y;
 
-        this.advHand = new Hand(this, true);
+        this.advHand = new Hand(this, playerIndex == 0 ? 1 : 0, true);
         this.advHand.x = GAME_WIDTH / 2;
         this.advHand.y = HAND_Y;
 
@@ -164,8 +166,7 @@ export class GameScene extends Scene {
 
         if (this.debugScene) {
             this.messageBanner.show(
-                "Salut tout le monde voilà un message vraiment long qui va disparaître dans 20 secondes alors faites vite" +
-                " avant que le temps ne s'écoule !!", 20);
+                "Salut tout le monde !!", 20);
         }
 
         this.unitSlotGrids = playerIndex == 0 ? [this.myUnitSlotGrid, this.advUnitSlotGrid]
@@ -175,7 +176,7 @@ export class GameScene extends Scene {
         this.viewport.addChild(this.cardPreviewOverlay)
 
         if (debugScene) {
-            this.spawnDebugCards()
+            this.spawnDebugEntities()
         }
 
         this.addChild(this.viewport);
@@ -188,22 +189,29 @@ export class GameScene extends Scene {
         this.viewport.y = VIEWPORT_Y_POS;
     }
 
-    spawnCard(card: Card) {
+    spawnCard(id: DuelCardId, card: Card) {
+        if (this.cards.has(id)) {
+            throw new Error("Duplicate id.");
+        }
         const c = this.viewport.addChild(card);
-        this.cards.push(c);
-        card.on("destroy", () => this.cards.splice(this.cards.indexOf(c), 1));
-        
+        this.cards.set(id, c);
+        card.on("destroyed", () => this.cards.delete(id));
+
         // by default, put it in an out-of-screen place.
         c.x = -9999;
         c.y = -9999;
         return c;
     }
 
+    spawnUnit(id: DuelUnitId, unit: Unit) {
+
+    }
+
     end() {
         this.viewportResizeObs.disconnect();
     }
 
-    spawnDebugCards() {
+    spawnDebugEntities() {
         const pack = this.game.registry.packs[0]
         const cards = Array.from(pack.cards.values())
 
@@ -212,7 +220,7 @@ export class GameScene extends Scene {
         }
 
         for (let i = 0; i < 8; i++) {
-            const spawned = this.spawnCard(new Card(this, Card.dataFromCardRef({
+            const spawned = this.spawnCard(i, new Card(this, Card.dataFromCardRef({
                 packId: pack.id,
                 cardId: randCard().id
             }, this.game, false), true))
@@ -221,12 +229,30 @@ export class GameScene extends Scene {
         }
 
         for (let i = 0; i < 4; i++) {
-            const spawned = this.spawnCard(new Card(this, {type: "faceDown"}, false))
+            const spawned = this.spawnCard(1024 + i, new Card(this, {type: "faceDown"}, false))
 
             this.advHand.addCard(spawned)
         }
+
+        for (let i = 0; i < UNITS_NUM_Y; i++) {
+            for (let j = 0; j < UNITS_NUM_X; j++) {
+                const slots = [this.myUnitSlotGrid.slotAt(j, i), this.advUnitSlotGrid.slotAt(j, i)]
+                for (const slot of slots) {
+                    const card = randCard();
+                    const unit = new Unit(this, {
+                        image: this.game.assets.getCardTexture({packId: pack.id, cardId: card.id})!,
+                        attack: card.definition.attack,
+                        health: card.definition.health
+                    }, slot.width, slot.height);
+                    unit.position = this.viewport.toWorld(slot.toGlobal(new Point(0, 0))).add(
+                        new Point(slot.width / 2, slot.height / 2)
+                    );
+                    this.viewport.addChild(unit);
+                }
+            }
+        }
     }
-    
+
     showTurnIndicator(idx: 0 | 1) {
         this.turnIndicators[idx].show()
         this.turnIndicators[1 - idx].hide()

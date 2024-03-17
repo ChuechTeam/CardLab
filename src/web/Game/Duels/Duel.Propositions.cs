@@ -22,16 +22,16 @@ public sealed partial class Duel
             var card = State.Cards[id];
             switch (card)
             {
-                case UnitDuelCard unitCard:
-                    var acceptableSlots = ImmutableArray.CreateBuilder<DuelGridVec>();
+                case UnitDuelCard:
+                    var acceptableSlots = ImmutableArray.CreateBuilder<DuelArenaPosition>();
                     for (var x = 0; x < Settings.UnitsX; x++)
                     {
                         for (var y = 0; y < Settings.UnitsY; y++)
                         {
                             var vec = new DuelGridVec(x, y);
-                            if (new ActPlayUnitCard(player, unitCard, vec).CanDo(this))
+                            if (new ActPlayUnitCard(player, id, vec).Verify(this))
                             {
-                                acceptableSlots.Add(vec);
+                                acceptableSlots.Add(new DuelArenaPosition(player, vec));
                             }
                         }
                     }
@@ -40,16 +40,13 @@ public sealed partial class Duel
                     {
                         break;
                     }
-
-                    var pair = new PlayerPair<ImmutableArray<DuelGridVec>>(ImmutableArray<DuelGridVec>.Empty);
-                    pair[player] = acceptableSlots.ToImmutable();
                     
                     cardProps.Add(new DuelCardProposition
                     {
                         CardId = id,
-                        Requirement = CardRequirement.SingleChoice,
-                        AllowedSlots = pair,
-                        AllowedCores = new(false)
+                        Requirement = CardRequirement.SingleSlot,
+                        AllowedSlots = acceptableSlots.ToImmutable(),
+                        AllowedEntities = ImmutableArray<int>.Empty
                     });
                     break;
                 default:
@@ -61,28 +58,28 @@ public sealed partial class Duel
         var unitProps = ImmutableArray.CreateBuilder<DuelUnitProposition>();
         foreach (var id in ps.ExistingUnits)
         {
-            var unit = State.Units[id];
-            
-            var acceptableUnits = ImmutableArray.CreateBuilder<int>();
+            var okEntities = ImmutableArray.CreateBuilder<int>();
             // for now we only accept attacking enemy units of course
             
             // top 10 binary hack
             foreach (var otherId in State.Players[~(int)player & 1].ExistingUnits)
             {
-                if (new ActUseUnitAttack(unit, new UnitDuelTarget(otherId)).CanDo(this))
+                if (new ActUseUnitAttack(player, id, otherId).Verify(this))
                 {
-                    acceptableUnits.Add(otherId);
+                    okEntities.Add(otherId);
                 }
             }
 
-            // but we accept attacking our core too. go figure.
-            var acceptableCores = new PlayerPair<bool>(false)
+            if (new ActUseUnitAttack(player, id, DuelIdentifiers.Player1).Verify(this))
             {
-                [0] = new ActUseUnitAttack(unit, new CoreDuelTarget(PlayerIndex.P1)).CanDo(this),
-                [1] = new ActUseUnitAttack(unit, new CoreDuelTarget(PlayerIndex.P1)).CanDo(this)
-            };
+                okEntities.Add(DuelIdentifiers.Player1);
+            }
+            if (new ActUseUnitAttack(player, id, DuelIdentifiers.Player2).Verify(this))
+            {
+                okEntities.Add(DuelIdentifiers.Player2);
+            }
             
-            if (acceptableUnits.Count == 0 && !acceptableCores[0] && !acceptableCores[1])
+            if (okEntities.Count == 0)
             {
                 continue;
             }
@@ -90,8 +87,7 @@ public sealed partial class Duel
             unitProps.Add(new DuelUnitProposition
             {
                 UnitId = id,
-                AllowedUnits = acceptableUnits.ToImmutable(),
-                AllowedCores = acceptableCores
+                AllowedEntities = okEntities.ToImmutable()
             });
         }
         
@@ -116,20 +112,19 @@ public readonly record struct DuelCardProposition
     
     public required CardRequirement Requirement { get; init; }
     
-    public required PlayerPair<ImmutableArray<DuelGridVec>> AllowedSlots { get; init; }
-    public required PlayerPair<bool> AllowedCores { get; init; }
+    public required ImmutableArray<int> AllowedEntities { get; init; }
+    public required ImmutableArray<DuelArenaPosition> AllowedSlots { get; init; }
 }
 
 public readonly record struct DuelUnitProposition
 {
     public required int UnitId { get; init; }
     
-    public required ImmutableArray<int> AllowedUnits { get; init; }
-    public required PlayerPair<bool> AllowedCores { get; init; }
+    public required ImmutableArray<int> AllowedEntities { get; init; }
 }
 
 public enum CardRequirement
 {
-    SingleChoice,
+    SingleSlot,
     None
 }

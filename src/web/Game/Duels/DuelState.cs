@@ -52,6 +52,29 @@ public sealed record DuelState
         return Units.GetValueOrDefault(id);
     }
 
+    public IEntity? FindEntity(int id)
+    {
+        if (DuelIdentifiers.TryExtractType(id, out var type))
+        {
+            return type switch
+            {
+                DuelEntityType.Card => FindCard(id),
+                DuelEntityType.Unit => FindUnit(id),
+                DuelEntityType.Player => id switch
+                {
+                    DuelIdentifiers.Player1 => Player1,
+                    DuelIdentifiers.Player2 => Player2,
+                    _ => null
+                },
+                _ => null // invalid type
+            };
+        }
+        else
+        {
+            return null;
+        }
+    }
+
     [InlineArray(2)]
     public struct PlayerArray
     {
@@ -59,11 +82,31 @@ public sealed record DuelState
     }
 }
 
-public sealed record DuelPlayerState
+public interface IEntity
 {
-    public required int CoreHealth { get; set; }
-    public required int Energy { get; set; }
-    public required int MaxEnergy { get; set; }
+    public int Id { get; }
+    // True when it doesn't appear in any list.
+    public bool Eliminated { get; }
+    
+    public DuelAttributeSet Attribs { get; }
+}
+
+public enum DuelEntityType : byte
+{
+    Player = 0,
+    Card = 1,
+    Unit = 2,
+    Modifier = 3, // todo!
+}
+
+public sealed record DuelPlayerState : IEntity
+{
+    public PlayerIndex Index => (PlayerIndex) (Id >> 4);
+    public required int Id { get; init; }
+
+    [JsonIgnore] public bool Eliminated => false;
+
+    public required DuelAttributeSet Attribs { get; init; }
     
     public List<int> Hand { get; init; } = new();
     public List<int> Deck { get; init; } = new();
@@ -77,20 +120,17 @@ public sealed record DuelPlayerState
     [JsonIgnore] public IEnumerable<int> ExistingUnits => Units.Select(x => x ?? -1).Where(x => x != -1);
 }
 
-public record struct DuelCardStats
-{
-    public required int Health { get; set; }
-    public required int Attack { get; set; }
-}
-
 // Represents a card in the hand or in a deck.
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(UnitDuelCard), typeDiscriminator: "unit")]
-public abstract record DuelCard
+public abstract record DuelCard : IEntity
 {
     public required int Id { get; init; }
 
-    public required int Cost { get; set; }
+    // Requires cost.
+    public required DuelAttributeSet Attribs { get; set; }
+    
+    [JsonIgnore] public bool Eliminated => false;
 
     // public field looks like a crime here but i'm becoming crazy anyway i have other issues
     [JsonIgnore] public PlayerPair<bool> Revealed;
@@ -116,11 +156,6 @@ public enum DuelCardLocation
 
 public sealed record UnitDuelCard : DuelCard
 {
-    // Ignore this for now, as it's tricky to send to the client without sending a ton of data...
-    // Plus that's not very critical, we don't yet have user-friendly strings for them. 
-    [JsonIgnore] public List<(int id, UnitDuelCardModifier mod)> AppliedModifiers { get; init; } = new();
-
-    public required DuelCardStats Stats { get; set; }
     public required List<CardTrait> Traits { get; set; }
 
     // That's a cool idea we'll implement later.
@@ -133,33 +168,21 @@ public sealed record UnitDuelCard : DuelCard
     {
         return this with
         {
-            AppliedModifiers = AppliedModifiers.ToList(),
             Traits = Traits.ToList()
         };
     }
 }
 
-public abstract class UnitDuelCardModifier
-{
-    public virtual DuelCardStats ModifyStats(DuelCardStats stats) => stats;
-
-    public virtual void ModifyTraits(List<CardTrait> traits)
-    {
-    }
-}
-
-public sealed record DuelUnit
+public sealed record DuelUnit : IEntity
 {
     public required int Id { get; init; }
 
     public required QualCardRef OriginRef { get; init; }
 
-    public required DuelCardStats OriginStats { get; init; }
+    public required DuelAttributeSet OriginStats { get; init; }
     public required ImmutableArray<CardTrait> OriginTraits { get; init; }
-
-    [JsonIgnore] public List<(int id, DuelUnitModifier mod)> AppliedModifiers { get; init; } = [];
-
-    public required DuelUnitAttribs Attribs { get; set; }
+    
+    public required DuelAttributeSet Attribs { get; set; }
 
     public DuelGridVec Position { get; set; } = new(0, 0);
     
@@ -167,13 +190,14 @@ public sealed record DuelUnit
     
     // Internal variables. Can be set outside of deltas.
     
-    [JsonIgnore] public DuelSource? LastDamageSource { get; set; } = null;
+    [JsonIgnore] public int? LastDamageSourceId { get; set; } = null;
+    [JsonIgnore] public bool Eliminated { get; set; } = false;
+    [JsonIgnore] public bool DeathPending { get; set; } = false;
 
     public DuelUnit Snapshot()
     {
         return new DuelUnit(this)
         {
-            AppliedModifiers = AppliedModifiers.ToList(),
             Attribs = Attribs.Snapshot()
         };
     }
@@ -212,29 +236,4 @@ public record struct DuelGridVec(int X, int Y)
     }
 }
 
-public record struct DuelUnitAttribs()
-{
-    public required int Attack { get; set; }
-    public required int CurHealth { get; set; }
-    public required int MaxHealth { get; set; }
-
-    public required int InactionTurns { get; set; }
-    public required int ActionsLeft { get; set; }
-    public required int ActionsPerTurn { get; set; }
-
-    public List<CardTrait> Traits { get; set; } = new();
-
-    public DuelUnitAttribs Snapshot()
-    {
-        var copy = this;
-        copy.Traits = Traits.ToList();
-        return copy;
-    }
-}
-
-public abstract class DuelUnitModifier
-{
-    public virtual void ModifyAttribs(ref DuelUnitAttribs attrs)
-    {
-    }
-}
+public record struct DuelArenaPosition(PlayerIndex Player, DuelGridVec Vec);

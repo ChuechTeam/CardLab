@@ -9,7 +9,11 @@ namespace CardLab.Game.Communication;
 [JsonDerivedType(typeof(WelcomeMessage), "welcome")]
 [JsonDerivedType(typeof(DuelWelcomeMessage), "duelWelcome")]
 [JsonDerivedType(typeof(DuelMutatedMessage), "duelMutated")]
-[JsonDerivedType(typeof(DuelRequestFailed), "duelRequestFailed")]
+[JsonDerivedType(typeof(DuelRequestFailedMessage), "duelRequestFailed")]
+[JsonDerivedType(typeof(DuelRequestAckMessage), "duelRequestAck")]
+[JsonDerivedType(typeof(DuelEndTurnMessage), "duelEndTurn")]
+[JsonDerivedType(typeof(DuelUseCardPropositionMessage), "duelUseCardProposition")]
+[JsonDerivedType(typeof(DuelUseUnitPropositionMessage), "duelUseUnitProposition")]
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 public abstract record LabMessage;
 

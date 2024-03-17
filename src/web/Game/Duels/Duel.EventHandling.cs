@@ -2,34 +2,25 @@
 
 namespace CardLab.Game.Duels;
 
-// Event handling: where we handle stuff named events.
-// HandleX methods occurs inside fragments, and can only queue actions to be executed after the fragment is done.
+// Event handling: where we handle stuff named events (surprising!).
+// Pre-fragment handlers run fragments directly, during the preparation phase.
+// During & post-fragment handlers only add fragments to the queue.
 
 public sealed partial class Duel
 {
-    /**
-     * Event handling
-     */
-    private void HandlePreFragment(DuelMutation mut, IDuelFragment2 fragment)
+    private void HandlePreFragment(DuelMutation mut, DuelFragment fragment)
     {
         _logger.LogTrace("Applying fragment start: {Frag}", fragment);
         // todo
     }
 
-    private void HandlePostFragment<T>(DuelMutation mut, IDuelFragment2<T> fragment, T ret)
+    private void HandlePostFragment(DuelMutation mut, DuelFragment fragment)
     {
         _logger.LogTrace("Applying fragment end: {Frag}", fragment);
         // todo
     }
-
-    // private ImmutableArray<DuelAction> HandleDeltaApplied(DuelFragment fragment, DuelStateDelta delta)
-    // {
-    //     return ImmutableArray<DuelAction>.Empty;
-    // }
-
-    // Fragment event handlers only add actions to the queue.
-
-    private void HandlePostHurt(IDuelFragment2 frag, DuelSource source, DuelTarget target, int hp)
+    
+    private void HandlePostHurt(DuelFragment frag, IEntity source, IEntity target, int hp)
     {
         _logger.LogTrace("""
                          EVENT: PostHurt
@@ -40,9 +31,8 @@ public sealed partial class Duel
                          """, frag, source, target, hp);
         // todo
     }
-
-    // core death is a special case
-    private void HandlePostDeath(IDuelFragment2 frag, DuelSource? source, DuelUnit target)
+    
+    private void HandlePostDeath(DuelFragment frag, IEntity? source, IEntity target)
     {
         _logger.LogTrace("""
                          EVENT: PostDeath
@@ -51,5 +41,18 @@ public sealed partial class Duel
                          to {Target}
                          """, frag, source?.ToString() ?? "<NONE>", target);
         // todo
+    }
+
+    private void HandlePostAttributeChange(DuelFragment frag, IEntity entity, DuelAttributeDefinition attribute,
+        int prevValue, int newValue)
+    {
+        _logger.LogTrace("""
+                         EVENT: PostAttributeChange
+                         in fragment {Frag}
+                         to {Entity}
+                         attr {Attribute}
+                         from {PrevValue}
+                         to {NewValue}
+                         """, frag, entity, attribute, prevValue, newValue);
     }
 }

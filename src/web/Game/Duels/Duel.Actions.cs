@@ -2,112 +2,107 @@
 
 namespace CardLab.Game.Duels;
 
-// Actions are functions running fragments sequentially, initiated by a player, a card, or a unit.
+// Actions are fragments that initiate a mutation.
+// They're the root fragment of the tree, basically.
+// Some of them can be initiated by players, others by the game itself, but never inside a mutation.
+// todo: add error messages
 
 public sealed partial class Duel
 {
-    private sealed class ActPlayUnitCard(PlayerIndex player, UnitDuelCard card, DuelGridVec placementVec)
-        : SeqDuelAction
+    private sealed class ActPlayUnitCard(PlayerIndex player, int cardId, DuelGridVec placementVec)
+        : DuelAction
     {
-        public override ScopeDelta? Scope { get; } = new CardPlayScopeDelta(card.Id, player);
+        public override ScopeDelta? Scope { get; } = new CardPlayScopeDelta(cardId, player);
 
-        protected override ImmutableArray<(DuelFragment2<bool> frag, bool required)> GetFragments(Duel duel)
+        protected override bool Verify()
         {
-            return
-            [
-                (new FragUseCard(card.Id, player), true),
-                (new FragPlaceUnit(player, duel.MakeUnit(card, player), placementVec), true)
-            ];
+            if (State.WhoseTurn != player)
+            {
+                return false;
+            }
+            
+            return new FragUseCard(cardId, player).Verify(Duel) &&
+                   new FragSpawnUnit(player, cardId, placementVec).Verify(Duel);
+        }
+
+        protected override bool Run()
+        {
+            if (ApplyFrag(new FragUseCard(cardId, player)) != DuelFragmentResult.Success)
+            {
+                return false;
+            }
+
+            if (ApplyFrag(new FragSpawnUnit(player, cardId, placementVec)) != DuelFragmentResult.Success)
+            {
+                return false;
+            }
+
+            return true;
         }
     }
 
     private sealed class ActNextTurn : DuelAction
     {
-        // right now we ignore failures... what should we do when the deck is empty?
-        public override void Run(Duel duel, DuelMutation mut)
+        protected override bool Run()
         {
-            var nextPlayer = duel.State.WhoseTurn == PlayerIndex.P1 ? PlayerIndex.P2 : PlayerIndex.P1;
-
-            mut.ApplyFrag(new FragSwitchTurn(nextPlayer));
-            mut.ApplyFrag(new FragDrawDeckCards(nextPlayer, 1));
+            var nextPlayer = State.WhoseTurn == PlayerIndex.P1 ? PlayerIndex.P2 : PlayerIndex.P1;
+            ApplyFrag(new FragSwitchTurn(nextPlayer));
+            ApplyFrag(new FragDrawDeckCards(nextPlayer, 1));
+            return true;
         }
     }
 
     private sealed class ActGameStartRandom : DuelAction
     {
-        public override void Run(Duel duel, DuelMutation mut)
+        protected override bool Run()
         {
-            var randomGuy = (PlayerIndex)duel._rand.Next(0, 2);
+            var randomGuy = (PlayerIndex)Duel._rand.Next(0, 2);
 
-            mut.ApplyFrag(new FragSwitchToPlay());
-            mut.ApplyFrag(new FragDrawDeckCards(PlayerIndex.P1, duel.Settings.StartCards));
-            mut.ApplyFrag(new FragDrawDeckCards(PlayerIndex.P2, duel.Settings.StartCards));
-            mut.ApplyFrag(new FragSwitchTurn(randomGuy));
+            ApplyFrag(new FragSwitchToPlay());
+            ApplyFrag(new FragDrawDeckCards(PlayerIndex.P1, Duel.Settings.StartCards));
+            ApplyFrag(new FragDrawDeckCards(PlayerIndex.P2, Duel.Settings.StartCards));
+            ApplyFrag(new FragSwitchTurn(randomGuy));
+
+            return true;
         }
     }
 
-    private sealed class ActUseUnitAttack(DuelUnit unit, DuelTarget target) : SeqDuelAction
+    private sealed class ActUseUnitAttack(PlayerIndex initiator, int unitId, int targetId) : DuelAction
     {
-        protected override ImmutableArray<(DuelFragment2<bool> frag, bool required)> GetFragments(Duel duel)
+        protected override bool Verify()
         {
-            return
-            [
-                (new FragAttackUnit(unit.Id, target), true),
-                (new FragUnitConsumeAction(unit.Id), true)
-            ];
-        }
-    }
-
-    public void ApplyAct(DuelMutation mut, DuelAction action)
-    {
-        _logger.LogTrace("Applying action start: {Act}", action);
-
-        if (action.Scope is not null)
-        {
-            mut.Apply(action.Scope with { State = ScopeDelta.ScopeState.Start }).ThrowIfFailed();
-        }
-
-        action.Run(this, mut);
-
-        if (action.Scope is not null)
-        {
-            mut.Apply(action.Scope with { State = ScopeDelta.ScopeState.End }).ThrowIfFailed();
-        }
-
-        _logger.LogTrace("Applying action end: {Act}", action);
-    }
-}
-
-public abstract class DuelAction
-{
-    public virtual ScopeDelta? Scope => null;
-
-    public abstract void Run(Duel duel, DuelMutation mut);
-
-    public virtual bool CanDo(Duel duel) => true;
-}
-
-public abstract class SeqDuelAction : DuelAction
-{
-    protected abstract ImmutableArray<(DuelFragment2<bool> frag, bool required)> GetFragments(Duel duel);
-
-    public override void Run(Duel duel, DuelMutation mut)
-    {
-        var frags = GetFragments(duel);
-        foreach (var f in frags)
-        {
-            var res = mut.ApplyFrag(f.frag);
-            if (!res && f.required)
+            if (State.WhoseTurn != initiator)
             {
-                break;
+                return false;
             }
+            
+            if (State.FindUnit(unitId) is not { } unit
+                || unit.Owner != initiator)
+            {
+                return false;
+            }
+            
+            return new FragAttackUnit(unitId, targetId).Verify(Duel) &&
+                   new FragUnitConsumeAction(unitId).Verify(Duel);
+        }
+
+        protected override bool Run()
+        {
+            if (ApplyFrag(new FragAttackUnit(unitId, targetId)) != DuelFragmentResult.Success)
+            {
+                return false;
+            }
+
+            if (ApplyFrag(new FragUnitConsumeAction(unitId)) != DuelFragmentResult.Success)
+            {
+                return false;
+            }
+
+            return true;
         }
     }
+}
 
-    public override bool CanDo(Duel duel)
-    {
-        var frags = GetFragments(duel);
-
-        return frags.All(x => x.required && x.frag.Verify(duel));
-    }
+public abstract class DuelAction : DuelFragment
+{
 }

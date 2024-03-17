@@ -6,7 +6,7 @@ import {DuelMessaging} from "./messaging.ts";
 import {Scene} from "./scene.ts";
 import {WaitingScene} from "./WaitingScene.ts";
 import {DuelController} from "./control/controller.ts";
-import {duelLog, overlay as logOverlay} from "./log.ts";
+import {duelLog, duelLogError, overlay as logOverlay} from "./log.ts";
 import "pixi.js/math-extras";
 
 function qualitySettings(): Partial<ApplicationOptions> {
@@ -122,7 +122,7 @@ export class DuelGame {
                     logOverlay.hide();
                 }
             } else {
-                console.error("Received message before controller was initialized", m);
+                duelLogError(`Received message ${m.type} before controller was initialized`, m);
             }
         }
     }

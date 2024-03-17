@@ -13,24 +13,36 @@ const HAND_CARD_Z = 100;
 export class Hand extends Container {
     cards: Card[] = [];
 
-    constructor(public scene: GameScene, public readonly flipped: boolean) {
+    constructor(public scene: GameScene, public readonly playerIndex: number, public readonly flipped: boolean) {
         super();
     }
 
-    addCard(card: Card) {
+    addCard(card: Card, reposition = true) {
         if (this.cards.includes(card)) {
             return
         }
 
         // Cards are always added to the left for now
         this.cards.splice(0, 0, card);
+        if (reposition) {
+            this.repositionCards();
+        }
+    }
+
+    cardGone(card: Card) {
+        const idx = this.cards.indexOf(card);
+        if (idx == -1) {
+            return
+        }
+        
+        this.cards.splice(idx, 1);
         this.repositionCards();
     }
 
     // todo: physics-based animation instead of teleport
     repositionCards() {
         if (this.cards.length == 1) {
-            this.cards[0].moveToHand(new Point(this.position.x, this.position.y), HAND_CARD_Z, this.flipped);
+            this.cards[0].moveToHand(new Point(this.position.x, this.position.y), HAND_CARD_Z, this.flipped, this);
             return
         }
 
@@ -43,7 +55,7 @@ export class Hand extends Container {
         for (let i = 0; i < this.cards.length; i++) {
             const card = this.cards[i];
             const pos = this.toWorld(new Point(xStart + xInc * i, 0))
-            card.moveToHand(pos, HAND_CARD_Z - i, this.flipped);
+            card.moveToHand(pos, HAND_CARD_Z - i, this.flipped, this);
         }
     }
 

@@ -102,10 +102,11 @@ public class DuelTestController(
                     }
 
                     // TODO: Do something with the message one day?? maybe??
-                    receiveTask = webSocket.ReceiveAsync(new ArraySegment<byte>(readBuffer), token);
                     try
                     {
-                        var mess = JsonSerializer.Deserialize<LabMessage>(readBuffer, jsonOpt.Value.SerializerOptions);
+                        var mess = JsonSerializer.Deserialize<LabMessage>(
+                            new ArraySegment<byte>(readBuffer, 0, res.Count), 
+                            jsonOpt.Value.SerializerOptions);
                         if (mess is not null)
                         {
                             userSocket.ReceiveHandler?.Invoke(mess);
@@ -115,6 +116,8 @@ public class DuelTestController(
                     {
                         logger.LogWarning("Json deserialization failed in WebSocket message: {Error}", e);
                     }
+
+                    receiveTask = webSocket.ReceiveAsync(new ArraySegment<byte>(readBuffer), token);
                 }
                 else if (task == sendTask)
                 {
@@ -153,7 +156,7 @@ public class DuelTestController(
             }
         }
     }
-    
+
     [HttpGet("state")]
     public IActionResult GetDuelState()
     {
@@ -174,10 +177,11 @@ public class DuelTestController(
         {
             return BadRequest();
         }
+
         duel.SwitchToPlaying();
         return Ok();
     }
-    
+
     [HttpPost("reset")]
     public IActionResult Reset()
     {
@@ -187,6 +191,7 @@ public class DuelTestController(
 
 
     public record PlayUnitInput(int CardId, DuelGridVec Place);
+
     [HttpPost("p{playerIndex:int}/play-unit")]
     public IActionResult PlayUnit(int playerIndex, [FromBody] PlayUnitInput message)
     {
@@ -195,11 +200,12 @@ public class DuelTestController(
         {
             return BadRequest();
         }
+
         var res = duel.PlayUnitCard((PlayerIndex)playerIndex, message.CardId, message.Place);
         return res.FailedWith(out var m) ? Conflict(m) : Ok();
     }
-    
-    public record UseUnitAttackInput(int UnitId, DuelTarget Target);
+
+    public record UseUnitAttackInput(int UnitId, int TargetId);
 
     [HttpPost("p{playerIndex:int}/use-unit-attack")]
     public IActionResult UseUnitAttack(int playerIndex, [FromBody] UseUnitAttackInput message)
@@ -209,10 +215,11 @@ public class DuelTestController(
         {
             return BadRequest();
         }
-        var res = duel.UseUnitAttack((PlayerIndex)playerIndex, message.UnitId, message.Target);
+
+        var res = duel.UseUnitAttack((PlayerIndex)playerIndex, message.UnitId, message.TargetId);
         return res.FailedWith(out var m) ? Conflict(m) : Ok();
     }
-    
+
     [HttpPost("p{playerIndex:int}/end-turn")]
     public IActionResult EndTurn(int playerIndex)
     {
@@ -221,6 +228,7 @@ public class DuelTestController(
         {
             return BadRequest();
         }
+
         var res = duel.EndTurn((PlayerIndex)playerIndex);
         return res.FailedWith(out var m) ? Conflict(m) : Ok();
     }

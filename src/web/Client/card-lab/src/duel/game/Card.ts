@@ -8,12 +8,15 @@
     Text,
     Texture,
     Ticker,
-    TextStyle, BitmapText, AbstractText, updateTransformAndChildren
+    TextStyle,
+    BitmapText, 
+    AbstractText
 } from "pixi.js";
 import {GameScene} from "./GameScene.ts";
 import {DuelGame} from "../duel.ts";
 import {duelLog, duelLogDebug} from "../log.ts";
 import {placeInRectCenter} from "../util.ts";
+import type {Hand} from "src/duel/game/Hand.ts";
 
 // Game height: 1440
 // Canonical card size: 100x140 (wxh), used in illustrator
@@ -94,6 +97,7 @@ type HandCardState = {
     name: "hand";
     zIndex: number
     handPos: Point // will also be used to introduce animation later
+    hand: Hand // well, the hand...
     flipped: boolean
     subState: "idle" | "hovered"
 }
@@ -168,7 +172,10 @@ export class Card extends Container {
         this.visual = this.replaceVisuals(visData);
 
         this.on("added", () => this.game.app.ticker.add(this.tick))
-        this.on("removed", () => this.game.app.ticker.remove(this.tick))
+        this.on("destroyed", () => {
+            this.game.app.ticker.remove(this.tick);
+            this.switchState({ name: "idle" });
+        })
 
         const te = performance.now();
 
@@ -274,7 +281,7 @@ export class Card extends Container {
      * State management
      */
 
-    moveToHand(pos: Point, zIndex: number, flipped: boolean) {
+    moveToHand(pos: Point, zIndex: number, flipped: boolean, hand: Hand) {
         if (this.state.name === "hand") {
             // Already in hand. 
             // todo: what do if hovering? 
@@ -288,6 +295,7 @@ export class Card extends Container {
                 zIndex,
                 handPos: pos,
                 flipped,
+                hand,
                 subState: "idle"
             });
         }
@@ -297,8 +305,18 @@ export class Card extends Container {
             this.rotation = Math.PI;
         }
     }
+    
+    switchToIdle() {
+        this.switchState({ name: "idle" })
+    }
+    
+    private handExit() {
+        if (this.state.name === "hand") {
+            this.state.hand.cardGone(this);
+        }
+    }
 
-    handSwitchHover(e: FederatedPointerEvent) {
+    private handSwitchHover(e: FederatedPointerEvent) {
         if (this.state.name === "hand" && this.state.subState !== "hovered") {
             this.state.subState = "hovered";
 
@@ -333,7 +351,7 @@ export class Card extends Container {
         }
     }
 
-    handExitHover(continueSelecting: boolean) {
+    private handExitHover(continueSelecting: boolean) {
         if (this.state.name === "hand" && this.state.subState === "hovered") {
             this.state.subState = "idle";
             this.position = this.state.handPos;
@@ -352,6 +370,7 @@ export class Card extends Container {
             if (this.state.subState == "hovered") {
                 this.handExitHover(false);
             }
+            this.handExit();
         }
         this.state = newState;
     }
@@ -371,7 +390,7 @@ export class Card extends Container {
 
     // Dismount all visual components and rebuilds all the components using the visual data.
     // Only used when changing the card type, or when creating the card.
-    private replaceVisuals(data: CardVisualData): CardVisuals {
+    replaceVisuals(data: CardVisualData): CardVisuals {
         this.dismountVisuals();
 
         // Update the background first
@@ -460,6 +479,7 @@ export class Card extends Container {
 
         const bg = new Sprite(this.game.assets.base.attribBg);
         cont.addChild(bg);
+        bg.tint = 0x000000;
         bg.height = cy(16);
         bg.scale.set(bg.scale.y)
         if (reversed) {

@@ -5,8 +5,8 @@ export const GRID_WIDTH = 680;
 export const GRID_HEIGHT = 310;
 
 // For now, those are constants. We might make this configurable in the future
-const UNITS_NUM_X = 4
-const UNITS_NUM_Y = 2
+export const UNITS_NUM_X = 4
+export const UNITS_NUM_Y = 2
 
 const SPACING_X = 20
 const SPACING_Y = 50
@@ -43,5 +43,21 @@ export class UnitSlotGrid extends Container {
                 this.slots.push(slot)
             }
         }
+    }
+    
+    slotAt(x: number, y: number): Graphics {
+        return this.slots[x + y * UNITS_NUM_X]
+    }
+}
+
+export class UnitSlot extends Container {
+    background: Graphics;
+    
+    constructor(public scene: GameScene) {
+        super();
+        
+        this.background = new Graphics()
+            .rect(0, 0, SLOT_WIDTH, SLOT_HEIGHT)
+            .fill(0xD9D9D9)
     }
 }

@@ -1,16 +1,24 @@
 ﻿import {Point} from "pixi.js";
 import {Card} from "../game/Card.ts";
+import {duelLogError} from "src/duel/log.ts";
 
-// right now there isn't much point in differentiating the two
-export type LocalDuelPlayerState = NetDuelPlayerState
 export type LocalPlayerPair<T> = [T, T]
+export type LocalDuelArenaPosition = { player: LocalDuelPlayerIndex, vec: Point }
+export type LocalEntity
+    = LocalDuelUnit
+    | LocalDuelCard
+    | LocalDuelPlayerState
 
 export function toLocalIndex(idx: NetDuelPlayerIndex): LocalDuelPlayerIndex {
     return idx === "p1" ? 0 : 1
 }
 
-export function toLocalPos(pos: NetDuelGridVec): Point {
-    return new Point(pos.x, pos.y)
+export function toLocalVec(vec: NetDuelGridVec): Point {
+    return new Point(vec.x, vec.y)
+}
+
+export function toLocalPos(pos: NetDuelArenaPosition): LocalDuelArenaPosition {
+    return {player: toLocalIndex(pos.player), vec: toLocalVec(pos.vec)}
 }
 
 // i just spent 10 whole minutes figuring out typescript's type system to make this work
@@ -24,6 +32,25 @@ function toLocalPlayerPair<T>(pair: NetPlayerPair<T>, transform?: (v: T) => any)
     }
 }
 
+export function toLocalCard(net: NetDuelCard): LocalDuelCard {
+    if (net.type === "unit") {
+        return new LocalUnitDuelCard(net)
+    } else {
+        throw new Error(`Unknown card type: ${net.type}`)
+    }
+}
+
+export function stateSnapshot<T>(state: T): T {
+    return structuredClone(state);
+}
+
+export enum DuelEntityType {
+    PLAYER = 0,
+    CARD = 1,
+    UNIT = 2,
+    MODIFIER = 3
+}
+
 export class LocalDuelState {
     players: LocalDuelPlayerState[]
     turn: number
@@ -33,7 +60,7 @@ export class LocalDuelState {
     status: DuelStatus
 
     constructor(state: NetDuelState) {
-        this.players = [state.player1, state.player2];
+        this.players = [state.player1, state.player2].map(x => new LocalDuelPlayerState(x));
         this.turn = state.turn;
         this.whoseTurn = toLocalIndex(state.whoseTurn);
         this.status = state.status;
@@ -55,27 +82,99 @@ export class LocalDuelState {
             }
         }
     }
-    
+
+    findEntity(id: number): LocalEntity | undefined {
+        const type = id & 0b1111;
+        if (type === DuelEntityType.UNIT) {
+            return this.units.get(id);
+        } else if (type === DuelEntityType.CARD) {
+            return this.cards.get(id);
+        } else if (type === DuelEntityType.PLAYER) {
+            return this.players[id >> 4];
+        } else {
+            return undefined;
+        }
+    }
+
     updateTurn(turn: number, whoseTurn: NetDuelPlayerIndex) {
         this.turn = turn;
         this.whoseTurn = toLocalIndex(whoseTurn);
     }
-    
+
     revealCards(cards: NetDuelCard[]) {
         for (const card of cards) {
-            const locCard = new LocalUnitDuelCard(card,
-                this.cards.get(card.id)?.avatar ?? null);
+            const locCard = toLocalCard(card);
             this.cards.set(card.id, locCard)
         }
     }
-    
+
     hideCards(cards: DuelCardId[]) {
         for (const id of cards) {
             const card = this.cards.get(id);
             if (card && !(card instanceof UnknownLocalDuelCard)) {
-                this.cards.set(id, new UnknownLocalDuelCard(id, card.avatar));
+                this.cards.set(id, new UnknownLocalDuelCard(id));
             }
         }
+    }
+
+    moveCard(cardId: DuelCardId, location: DuelCardLocation, index: number | null) {
+        const card = this.cards.get(cardId);
+        if (card && card.type !== "unknown") {
+            const prev = card.location;
+            const list = this.locToArray(prev);
+            if (list) {
+                list.splice(list.indexOf(cardId), 1)
+            }
+            card.location = location;
+            this.locToArray(location)?.splice(index ?? 0, 0, cardId)
+        }
+    }
+
+    updateAttribs(entityId: number, attribs: NetAttributeSet) {
+        const entity = this.findEntity(entityId);
+        if (entity === undefined) {
+            throw new Error(`Entity not found: ${entityId}`)
+        }
+        
+        // Merge attributes into the entity.
+        Object.assign(entity.attribs, attribs)
+        
+        return entity;
+    }
+
+    locToArray(location: DuelCardLocation): DuelCardId[] | null {
+        switch (location) {
+            case "deckP1":
+                return this.players[0].deck
+            case "deckP2":
+                return this.players[1].deck
+            case "handP1":
+                return this.players[0].hand
+            case "handP2":
+                return this.players[1].hand
+            case "discarded":
+                return null
+            case "temp":
+                return null
+        }
+    }
+}
+
+export class LocalDuelPlayerState {
+    index: number
+    attribs: NetDuelPlayerAttributes;
+    deck: DuelCardId[];
+    hand: DuelCardId[];
+    units: DuelUnitId[];
+    id: number;
+    
+    constructor(state: NetDuelPlayerState) {
+        this.index = toLocalIndex(state.index)
+        this.attribs = state.attribs;
+        this.deck = state.deck;
+        this.hand = state.hand;
+        this.id = state.id;
+        this.units = state.units;
     }
 }
 
@@ -86,8 +185,9 @@ export type LocalDuelCard =
 export class UnknownLocalDuelCard {
     type: "unknown"
     id: number
+    attribs: NetAttributeSet = {} // just for convenience, never actually updated
 
-    constructor(id: number, public avatar: Card | null = null) {
+    constructor(id: number) {
         this.type = "unknown"
         this.id = id
     }
@@ -99,7 +199,7 @@ export abstract class KnownLocalDuelCard {
     defAssetRef: CardAssetRef
     location: DuelCardLocation
 
-    protected constructor(card: NetDuelCard, public avatar: Card | null = null) {
+    protected constructor(card: NetDuelCard) {
         this.type = card.type;
         this.id = card.id;
         this.defAssetRef = card.baseDefRef;
@@ -109,18 +209,15 @@ export abstract class KnownLocalDuelCard {
 
 export class LocalUnitDuelCard extends KnownLocalDuelCard {
     type: "unit"
-    stats: {
-        attack: number
-        health: number
-    }
+    attribs: NetUnitDuelCard["attribs"]
 
-    constructor(card: NetUnitDuelCard, avatar: Card | null = null) {
-        super(card, avatar);
+    constructor(card: NetUnitDuelCard) {
+        super(card);
         if (card.type !== "unit") {
             throw new Error("Invalid card type")
         }
         this.type = "unit";
-        this.stats = card.stats;
+        this.attribs = card.attribs;
     }
 }
 
@@ -128,7 +225,7 @@ export class LocalDuelUnit {
     id: DuelUnitId
     originRef: CardAssetRef
     owner: LocalDuelPlayerIndex
-    attributes: NetDuelUnitAttributes
+    attribs: NetDuelUnitAttributes
     position: Point
     alive: boolean = true // dead units are removed on at the start of the next mutation
 
@@ -136,8 +233,8 @@ export class LocalDuelUnit {
         this.id = unit.id;
         this.originRef = unit.originRef;
         this.owner = toLocalIndex(unit.owner);
-        this.attributes = unit.attribs;
-        this.position = toLocalPos(unit.position);
+        this.attribs = unit.attribs;
+        this.position = toLocalVec(unit.position);
     }
 }
 
@@ -158,25 +255,23 @@ export class LocalDuelPropositions {
 export class LocalDuelCardPropositions {
     cardId: DuelCardId
     requirement: DuelCardRequirement
-    allowedSlots: LocalPlayerPair<Point[]>
-    allowedCores: LocalPlayerPair<boolean>
+    allowedSlots: LocalDuelArenaPosition[]
+    allowedEntities: number[]
 
     constructor(props: NetDuelCardPropositions) {
         this.cardId = props.cardId
         this.requirement = props.requirement
-        this.allowedSlots = toLocalPlayerPair(props.allowedSlots, x => x.map(toLocalPos))
-        this.allowedCores = toLocalPlayerPair(props.allowedCores)
+        this.allowedSlots = props.allowedSlots.map(toLocalPos);
+        this.allowedEntities = props.allowedEntities
     }
 }
 
 export class LocalDuelUnitPropositions {
     unitId: DuelUnitId
-    allowedUnits: DuelUnitId[]
-    allowedCores: LocalPlayerPair<boolean>
+    allowedEntities: number[]
 
     constructor(props: NetDuelUnitPropositions) {
         this.unitId = props.unitId;
-        this.allowedUnits = props.allowedUnits;
-        this.allowedCores = toLocalPlayerPair(props.allowedCores);
+        this.allowedEntities = props.allowedEntities;
     }
 }

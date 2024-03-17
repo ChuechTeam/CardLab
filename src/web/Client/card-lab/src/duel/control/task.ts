@@ -108,12 +108,12 @@ export class GameTask {
             throw new Error("Task is not running a generator.");
         }
 
-        const result = this.runningGenerator.next();
-        if (result.done) {
+        const nextTask = this.runningGenerator.next();
+        if (nextTask.done) {
             this.complete();
             return;
         } else {
-            const task = result.value;
+            const task = nextTask.value;
             if (task.state === GameTaskState.PENDING) {
                 task.start(this);
             }
