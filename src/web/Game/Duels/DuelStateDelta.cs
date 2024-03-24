@@ -67,23 +67,21 @@ public sealed record PlaceUnitDelta : DuelStateDelta
 {
     public required PlayerIndex Player { get; init; }
     [JsonIgnore] public required DuelUnit Unit { get; init; }
-    public required DuelGridVec Position { get; init; }
+    public required DuelArenaPosition Position { get; init; }
 
     // set in apply for the client
     [JsonPropertyName("unit")] public DuelUnit SnapshotUnit { get; set; } = null!;
 
     public override Result<Unit> Apply(Duel duel, DuelState state)
     {
-        SnapshotUnit = Unit.Snapshot();
-
         // todo: validate position somehow
-        if (!Position.Valid(duel))
+        if (!Position.Vec.Valid(duel))
         {
             return Result.Fail("invalid position");
         }
 
-        var playerSt = state.GetPlayer(Player);
-        var index = Position.ToIndex(duel);
+        var playerSt = state.GetPlayer(Position.Player);
+        var index = Position.Vec.ToIndex(duel);
         if (playerSt.Units[index] != null)
         {
             return Result.Fail("position already occupied");
@@ -92,6 +90,8 @@ public sealed record PlaceUnitDelta : DuelStateDelta
         state.Units.Add(Unit.Id, Unit);
         playerSt.Units[index] = Unit.Id;
         Unit.Position = Position;
+        
+        SnapshotUnit = Unit.Snapshot();
 
         return Result.Success();
     }

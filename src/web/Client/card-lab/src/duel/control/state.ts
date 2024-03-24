@@ -21,6 +21,10 @@ export function toLocalPos(pos: NetDuelArenaPosition): LocalDuelArenaPosition {
     return {player: toLocalIndex(pos.player), vec: toLocalVec(pos.vec)}
 }
 
+export function toNetPos(pos: LocalDuelArenaPosition): NetDuelArenaPosition {
+    return {player: pos.player === 0 ? "p1" : "p2", vec: {x: pos.vec.x, y: pos.vec.y}}
+}
+
 // i just spent 10 whole minutes figuring out typescript's type system to make this work
 function toLocalPlayerPair<T>(pair: NetPlayerPair<T>): LocalPlayerPair<T>
 function toLocalPlayerPair<T, U>(pair: NetPlayerPair<T>, transform: (v: T) => U): LocalPlayerPair<U>
@@ -129,6 +133,10 @@ export class LocalDuelState {
             this.locToArray(location)?.splice(index ?? 0, 0, cardId)
         }
     }
+    
+    createUnit(unit: NetDuelUnit) {
+        this.units.set(unit.id, new LocalDuelUnit(unit));
+    }
 
     updateAttribs(entityId: number, attribs: NetAttributeSet) {
         const entity = this.findEntity(entityId);
@@ -226,7 +234,7 @@ export class LocalDuelUnit {
     originRef: CardAssetRef
     owner: LocalDuelPlayerIndex
     attribs: NetDuelUnitAttributes
-    position: Point
+    position: LocalDuelArenaPosition
     alive: boolean = true // dead units are removed on at the start of the next mutation
 
     constructor(unit: NetDuelUnit) {
@@ -234,7 +242,7 @@ export class LocalDuelUnit {
         this.originRef = unit.originRef;
         this.owner = toLocalIndex(unit.owner);
         this.attribs = unit.attribs;
-        this.position = toLocalVec(unit.position);
+        this.position = toLocalPos(unit.position);
     }
 }
 

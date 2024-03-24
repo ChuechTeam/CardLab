@@ -1,10 +1,10 @@
 import {Scene} from "../scene.ts";
 import {DuelGame} from "../duel.ts";
 import {Viewport} from "pixi-viewport";
-import {Card, CardInteractionModule} from "./Card.ts";
+import {Card} from "./Card.ts";
 import {Hand} from "./Hand.ts";
-import {GRID_HEIGHT, UNITS_NUM_X, UNITS_NUM_Y, UnitSlotGrid} from "./UnitSlotGrid.ts";
-import {Graphics, Point} from "pixi.js";
+import {GRID_HEIGHT, UNITS_NUM_X, UNITS_NUM_Y, UnitSlot, UnitSlotGrid} from "./UnitSlotGrid.ts";
+import {ContainerEvents, EventEmitter, Graphics} from "pixi.js";
 import {CardPreviewOverlay} from "./CardPreviewOverlay.ts";
 import {Core} from "./Core.ts";
 import {EnergyCounter} from "./EnergyCounter.ts";
@@ -12,6 +12,7 @@ import {TurnButton} from "./TurnButton.ts";
 import {TurnIndicator} from "./TurnIndicator.ts";
 import {MessageBanner} from "./MessageBanner.ts";
 import {Unit} from "src/duel/game/Unit.ts";
+import {InteractionModule} from "src/duel/game/InteractionModule.ts";
 
 export const GAME_WIDTH = 720;
 export const GAME_HEIGHT = 1440;
@@ -25,8 +26,10 @@ const SEP_LINE_WIDTH = 620;
 // The Y position, relative to the hand, of the player info/control zone, 
 // containing the core, energy, buttons, etc.
 const PLAYER_ZONE_BASELINE = 320;
-
-export class GameScene extends Scene {
+type AnyEvent = {
+    [K: ({} & string) | ({} & symbol)]: any;
+};
+export class GameScene extends Scene implements EventEmitter<ContainerEvents & AnyEvent & { a: [] }> {
     viewport: Viewport;
 
     myHand: Hand;
@@ -57,7 +60,7 @@ export class GameScene extends Scene {
     cards = new Map<DuelCardId, Card>();
     units = new Map<DuelUnitId, Unit>();
 
-    cardInteraction = new CardInteractionModule(this);
+    interaction = new InteractionModule(this);
 
     private viewportResizeObs: ResizeObserver
 
@@ -141,12 +144,12 @@ export class GameScene extends Scene {
         const myGridY = GAME_HEIGHT - 540;
         const gridSpacing = 80;
 
-        this.myUnitSlotGrid = new UnitSlotGrid(this);
+        this.myUnitSlotGrid = new UnitSlotGrid(this, this.playerIndex, false);
         this.myUnitSlotGrid.x = GAME_WIDTH / 2;
         this.myUnitSlotGrid.y = myGridY;
         this.viewport.addChild(this.myUnitSlotGrid);
 
-        this.advUnitSlotGrid = new UnitSlotGrid(this);
+        this.advUnitSlotGrid = new UnitSlotGrid(this, 1 - this.playerIndex, true);
         this.advUnitSlotGrid.x = GAME_WIDTH / 2;
         this.advUnitSlotGrid.y = myGridY - GRID_HEIGHT - gridSpacing;
         this.viewport.addChild(this.advUnitSlotGrid);
@@ -195,6 +198,7 @@ export class GameScene extends Scene {
         }
         const c = this.viewport.addChild(card);
         this.cards.set(id, c);
+        card.id = id;
         card.on("destroyed", () => this.cards.delete(id));
 
         // by default, put it in an out-of-screen place.
@@ -204,7 +208,17 @@ export class GameScene extends Scene {
     }
 
     spawnUnit(id: DuelUnitId, unit: Unit) {
+        if (this.units.has(id)) {
+            throw new Error("Duplicate id.");
+        }
+        const u = this.viewport.addChild(unit);
+        this.units.set(id, u);
+        unit.on("destroyed", () => this.units.delete(id));
 
+        // by default, put it in an out-of-screen place.
+        u.x = -9999;
+        u.y = -9999;
+        return u;
     }
 
     end() {
@@ -224,6 +238,7 @@ export class GameScene extends Scene {
                 packId: pack.id,
                 cardId: randCard().id
             }, this.game, false), true))
+            spawned.updatePropositions({ allowedSlots: [] } as any); // quite the hack
 
             this.myHand.addCard(spawned)
         }
@@ -244,9 +259,7 @@ export class GameScene extends Scene {
                         attack: card.definition.attack,
                         health: card.definition.health
                     }, slot.width, slot.height);
-                    unit.position = this.viewport.toWorld(slot.toGlobal(new Point(0, 0))).add(
-                        new Point(slot.width / 2, slot.height / 2)
-                    );
+                    unit.position = slot.worldPos;
                     this.viewport.addChild(unit);
                 }
             }
@@ -256,5 +269,9 @@ export class GameScene extends Scene {
     showTurnIndicator(idx: 0 | 1) {
         this.turnIndicators[idx].show()
         this.turnIndicators[1 - idx].hide()
+    }
+    
+    unregisterCardEarly(card: Card) {
+        this.cards.delete(card.id);
     }
 }

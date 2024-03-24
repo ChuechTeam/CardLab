@@ -94,12 +94,12 @@ declare type NetDuelUnit = NetEntity<NetDuelUnitAttributes> & {
     originStats: NetUnitDuelCard["attribs"]
     owner: NetDuelPlayerIndex
     attribs: NetDuelUnitAttributes
-    position: NetDuelGridVec
+    position: NetDuelArenaPosition
 }
 
 declare type NetDuelUnitAttributes = NetAttributeSet & {
     attack: number,
-    curHealth: number,
+    health: number,
     maxHealth: number,
     inactionTurns: number,
     actionsLeft: number,
@@ -207,7 +207,7 @@ declare type DuelMessage =
     header: DuelRequestHeader,
     cardId: DuelCardId,
     chosenSlots: NetDuelArenaPosition[],
-    chosenCores: NetPlayerPair<boolean>
+    chosenEntities: number[]
 }
 
 declare type DuelRequestMessage = Extract<DuelMessage, { header: DuelRequestHeader }>

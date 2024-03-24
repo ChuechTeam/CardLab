@@ -8,6 +8,7 @@ import {WaitingScene} from "./WaitingScene.ts";
 import {DuelController} from "./control/controller.ts";
 import {duelLog, duelLogError, overlay as logOverlay} from "./log.ts";
 import "pixi.js/math-extras";
+import {registerUtilMixins} from "src/duel/util.ts";
 
 function qualitySettings(): Partial<ApplicationOptions> {
     // Allow forcing the use of WebGL for testing purposes.
@@ -77,6 +78,8 @@ export class DuelGame {
                 public messaging: DuelMessaging) {
         this.app = app;
         (window as any).PIXI = PIXI;
+        
+        registerUtilMixins();
 
         // window.addEventListener("resize", () => this.resizeToWindow())
         window.visualViewport!.addEventListener("resize", () => this.resizeToWindow())
@@ -89,11 +92,20 @@ export class DuelGame {
         this.messaging.onMessageReceived = this.receiveMessage.bind(this);
         this.messaging.readyToReceive();
 
+        // Development/Debug stuff
         this.testTimings = app.canvas.parentElement!.querySelector(".duel-test-timings");
 
         if (this.testTimings) {
             this.app.renderer.runners.postrender.add(this);
         }
+
+        (window as any).__PIXI_DEVTOOLS__ = {
+            pixi: PIXI,
+            app: app,
+        };
+        Object.defineProperty(window, "duelScene", {
+            get: () => this.scene
+        });
     }
 
     fpsSamples = [] as number[];

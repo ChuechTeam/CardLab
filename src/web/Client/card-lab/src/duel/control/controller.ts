@@ -1,7 +1,14 @@
 ﻿import type {DuelGame} from "../duel.ts";
 import {GameScene} from "../game/GameScene.ts";
-import {duelLog, duelLogError} from "../log.ts";
-import {LocalDuelPlayerState, LocalDuelPropositions, LocalDuelState, stateSnapshot, toLocalIndex} from "./state.ts";
+import {duelLog, duelLogError, duelLogWarn} from "../log.ts";
+import {
+    LocalDuelArenaPosition,
+    LocalDuelPlayerState,
+    LocalDuelPropositions,
+    LocalDuelState, LocalDuelUnit,
+    stateSnapshot,
+    toLocalIndex, toNetPos
+} from "./state.ts";
 import {GameTask, GameTaskState} from "./task.ts";
 import {Ticker, UPDATE_PRIORITY} from "pixi.js";
 import {ShowMessageTask} from "./tasks/ShowMessageTask.ts";
@@ -12,6 +19,8 @@ import {MoveCardsTask} from "src/duel/control/tasks/MoveCardsTask.ts";
 import {RequestResult} from "src/duel/messaging.ts";
 import {TurnButtonState} from "src/duel/game/TurnButton.ts";
 import {UpdatePlayerAttribsTask} from "src/duel/control/tasks/UpdatePlayerAttribsTask.ts";
+import {PlaceUnitTask} from "src/duel/control/tasks/PlaceUnitTask.ts";
+import {UpdateUnitAttribsTask} from "src/duel/control/tasks/UpdateUnitAttribsTask.ts";
 
 function isScopeDelta(d: NetDuelDelta): d is NetDuelScopeDelta {
     return 'isScope' in d;
@@ -73,8 +82,6 @@ export class DuelController {
     // We could apply those instantly if the client is too late.
     mutationQueue: DuelMessageOf<"duelMutated">[] = []
 
-    pendingRequest: DuelRequestMessage | null = null
-
     constructor(public game: DuelGame, welcomeMsg: DuelMessageOf<"duelWelcome">) {
         duelLog("Creating DuelController from welcome message", welcomeMsg)
         this.state = new LocalDuelState(welcomeMsg.state);
@@ -92,7 +99,7 @@ export class DuelController {
         const params = new URLSearchParams(location.search);
         const debugScene = params.has("debugScene") || params.has("d");
         this.scene = new GameScene(this.game, this.playerIndex, debugScene);
-        this.avatars = new GameAvatars(this.scene);
+        this.avatars = new GameAvatars(this.scene, this);
         if (!debugScene) {
             this.setupScene();
         }
@@ -131,9 +138,13 @@ export class DuelController {
 
             const tree = this.buildMutationTree(m);
             const task = this.applyScope(tree);
+            this.propositions = new LocalDuelPropositions(m.propositions);
+
+            this.scene.interaction.block();
 
             console.log("Tree: ", tree);
             console.log("Task: ", task);
+            console.log("Propositions: ", this.propositions);
 
             this.mut = {
                 runningTask: task,
@@ -206,6 +217,10 @@ export class DuelController {
             if (this.mutationQueue.length > 0) {
                 const next = this.mutationQueue.shift()!;
                 this.startMutation(next);
+            } else {
+                // Mutations ended, we can let the player play the game (shocking!)
+                this.updateScenePropositions();
+                this.scene.interaction.unblock();
             }
         } else if (task.state === GameTaskState.FAILED) {
             // todo: panic?? reset to latest known state?
@@ -267,7 +282,10 @@ export class DuelController {
             const entity = this.state.updateAttribs(delta.entityId, delta.attribs);
             if (entity instanceof LocalDuelPlayerState) {
                 return new UpdatePlayerAttribsTask(entity.index, delta.attribs as any, this.avatars);
-            } else {
+            } else if (entity instanceof LocalDuelUnit) {
+                return new UpdateUnitAttribsTask(entity.id, delta.attribs as any, this.avatars);
+            }
+            else {
                 duelLogError(`Can't yet update attributes for entity ${entity.constructor.name}`, delta);
                 return null;
             }
@@ -284,6 +302,10 @@ export class DuelController {
             const changes = delta.changes
                 .map(c => ({...c, cardSnapshot: stateSnapshot(this.state.cards.get(c.cardId)!)}));
             return new MoveCardsTask(changes, this.avatars);
+        },
+        "placeUnit": delta => {
+            this.state.createUnit(delta.unit);
+            return new PlaceUnitTask(delta.unit, this.avatars);
         }
     }
 
@@ -291,7 +313,6 @@ export class DuelController {
 
     // Removes all created avatars (units and cards) from the scene, and resets any temporary state.
     tearDownScene() {
-        // todo!
         duelLog("Tearing down scene");
 
         const cards = [...this.avatars.cards.values()]
@@ -305,6 +326,12 @@ export class DuelController {
         }
 
         this.scene.cardPreviewOverlay.hide();
+        
+        for (const grid of this.scene.unitSlotGrids) {
+            for (const slot of grid.slots) {
+                slot.empty();
+            }
+        }
     }
 
     // Builds the scene from the current state, including units, cards, and UI elements.
@@ -327,10 +354,17 @@ export class DuelController {
             for (const cardId of [...player.hand].reverse()) {
                 const cardState = this.state.cards.get(cardId)!;
                 const cardAv = this.avatars.spawnCard(cardState);
+                cardAv.updatePropositions(this.propositions.card.get(cardId));
                 this.scene.hands[i].addCard(cardAv, false);
             }
         }
         this.scene.hands.forEach(x => x.repositionCards());
+
+        for (let unit of this.state.units.values()) {
+            const avatar = this.avatars.spawnUnit(unit);
+            const slot = this.avatars.findSlot(unit.position);
+            avatar.spawnOn(slot);
+        }
 
         this.scene.turnButton.switchState(
             this.canEndTurn ? TurnButtonState.AVAILABLE : TurnButtonState.OPPONENT_TURN);
@@ -347,45 +381,71 @@ export class DuelController {
         this.setupScene();
     }
 
-    async endTurn(): Promise<RequestResult> {
-        if (!this.canSendRequest) {
-            // maybe queue later?
-            throw new Error("Can't send a request right now.");
+    updateScenePropositions() {
+        for (const [id, card] of this.avatars.cards.entries()) {
+            card.updatePropositions(this.propositions.card.get(id));
         }
+        // todo: unit
+    }
+
+    /**
+     * Requests
+     */
+
+    private makeHeader(id: number) {
+        return {requestId: id, iteration: this.serverIteration};
+    }
+
+    endTurn(): Promise<RequestResult> {
         if (!this.canEndTurn) {
             throw new Error("Can't end turn right now.");
         }
 
         const [msg, prom] = this.game.messaging.sendRequest(
-            id => ({type: "duelEndTurn", header: {requestId: id, iteration: this.serverIteration},}));
-        try {
-            this.requestStart(msg);
-            return await prom;
-        } finally {
-            this.requestEnd(msg);
-        }
+            id => ({type: "duelEndTurn", header: this.makeHeader(id)}));
+
+        return prom;
     }
 
     get canEndTurn() {
         return this.state.whoseTurn === this.playerIndex;
     }
 
-    get canSendRequest() {
-        return this.pendingRequest === null && this.clientIteration === this.serverIteration;
-    }
-
-    requestStart(req: DuelRequestMessage) {
-        if (this.pendingRequest !== null) {
-            throw new Error("Request already pending.");
+    useCardProposition(cardId: DuelCardId,
+                       slots: LocalDuelArenaPosition[],
+                       entities: number[] = []): Promise<RequestResult> {
+        if (!this.canUseCardProposition(cardId, slots, entities)) {
+            throw new Error("Invalid card proposition parameters.");
         }
-        this.pendingRequest = req;
+
+        const [msg, prom] = this.game.messaging.sendRequest(
+            id => ({
+                type: "duelUseCardProposition",
+                header: this.makeHeader(id),
+                cardId,
+                chosenSlots: slots.map(toNetPos),
+                chosenEntities: entities
+            }));
+
+        return prom;
     }
 
-    requestEnd(req: DuelRequestMessage | null) {
-        if (this.pendingRequest !== null
-            && (req === null || this.pendingRequest.header.requestId === req.header.requestId)) {
-            this.pendingRequest = null;
-            // do some more stuff...
+    canUseCardProposition(cardId: DuelCardId,
+                          slots: LocalDuelArenaPosition[],
+                          entities: number[] = []) {
+        const prop = this.propositions.card.get(cardId);
+        if (prop === undefined) {
+            return false;
+        }
+
+        switch (prop.requirement) {
+            case "none":
+                return slots.length === 0 && entities.length === 0;
+            case "singleSlot":
+                return slots.length === 1 && entities.length === 0
+                    && slots.every(a => prop.allowedSlots.some(
+                        b => a.player === b.player && a.vec.equals(b.vec)
+                    ));
         }
     }
 }

@@ -26,7 +26,7 @@ export class MoveCardsTask extends GameTask {
             
             if (c.newLocation === "discarded") {
                 if (avatar !== undefined) {
-                    avatar.destroy(); // todo: destroy animation
+                    avatar.queueDestroy();
                 }
             } else if (c.newLocation === "deckP1" || c.newLocation === "deckP2") {
                 if (avatar !== undefined) {

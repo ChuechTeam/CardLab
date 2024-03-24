@@ -27,7 +27,7 @@ public record DuelUseCardPropositionMessage(
     DuelRequestHeader Header,
     int CardId,
     ImmutableArray<DuelArenaPosition> ChosenSlots,
-    PlayerPair<bool> ChosenCores) : DuelMessage;
+    ImmutableArray<int> ChosenEntities) : DuelMessage;
 
 public record DuelUseUnitPropositionMessage(
     DuelRequestHeader Header,

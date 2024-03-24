@@ -17,13 +17,12 @@ export class Hand extends Container {
         super();
     }
 
-    addCard(card: Card, reposition = true) {
+    addCard(card: Card, reposition = true, idx=0) {
         if (this.cards.includes(card)) {
             return
         }
-
-        // Cards are always added to the left for now
-        this.cards.splice(0, 0, card);
+        
+        this.cards.splice(idx, 0, card);
         if (reposition) {
             this.repositionCards();
         }

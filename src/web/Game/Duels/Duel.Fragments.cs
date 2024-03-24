@@ -53,16 +53,16 @@ public sealed partial class Duel
         }
     }
 
-    public sealed class FragSpawnUnit(PlayerIndex player, int cardId, DuelGridVec placementPos) : DuelFragment
+    public sealed class FragSpawnUnit(PlayerIndex player, int cardId, DuelArenaPosition placementPos) : DuelFragment
     {
         protected override bool Verify()
         {
-            if (!placementPos.Valid(Duel))
+            if (!placementPos.Vec.Valid(Duel))
             {
                 return false;
             }
 
-            if (State.GetPlayer(player).Units[placementPos.ToIndex(Duel)] != null)
+            if (State.GetPlayer(placementPos.Player).Units[placementPos.Vec.ToIndex(Duel)] != null)
             {
                 // todo: give options to choose randomly or not place the unit.
                 return false;

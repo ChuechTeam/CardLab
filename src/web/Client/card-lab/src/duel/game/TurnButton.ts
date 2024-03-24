@@ -1,6 +1,7 @@
 ﻿import {Container, Graphics, Rectangle, Text} from "pixi.js";
 import {GameScene} from "./GameScene.ts";
 import {placeInRectCenter} from "../util.ts";
+import {InteractionData, InteractionType} from "src/duel/game/InteractionModule.ts";
 
 const WIDTH = 250;
 const HEIGHT = 80;
@@ -16,6 +17,8 @@ export class TurnButton extends Container {
     text: Text;
     
     state: TurnButtonState = TurnButtonState.AVAILABLE;
+    preInteractionState = TurnButtonState.AVAILABLE;
+    interactionId = -1
 
     constructor(public scene: GameScene) {
         super();
@@ -42,6 +45,8 @@ export class TurnButton extends Container {
                 await this.trigger();
             }
         });
+        
+        this.listen(this.scene.interaction, "stop", this.onInteractionEnd)
     }
     
     switchState(newState: TurnButtonState) {
@@ -60,9 +65,17 @@ export class TurnButton extends Container {
     }
     
     async trigger() {
-        const controller = this.scene.game.controller!;
-        if (controller.canEndTurn) {
-            await controller.endTurn();
+        if (this.scene.interaction.canLaunch(InteractionType.ENDING_TURN, null)) {
+            this.interactionId = this.scene.interaction.launch(InteractionType.ENDING_TURN, null);
+            this.preInteractionState = this.state;
+            this.switchState(TurnButtonState.WAITING);
+        }
+    }
+    
+    onInteractionEnd(type: InteractionType, data: InteractionData, id: number, cancel: boolean) {
+        if (id === this.interactionId) {
+            this.state = this.preInteractionState;
+            this.interactionId = -1;
         }
     }
 }

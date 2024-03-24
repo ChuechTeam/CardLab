@@ -37,6 +37,7 @@ public sealed partial class Duel : IDisposable
     private readonly ILogger _logger;
 
     public DuelMessageRouting Routing { get; }
+    public (PlayerIndex, DuelRequestAckMessage)? AckPostMutation { get; set; } = null;
 
     // TODO: Timer
 
@@ -210,6 +211,12 @@ public sealed partial class Duel : IDisposable
         StateIteration++;
 
         var deltas = mut.Deltas;
+        if (AckPostMutation is var (player, msg))
+        {
+            SendMessage(player, msg);
+            AckPostMutation = null;
+        }
+        
         BroadcastMessage(p => new DuelMutatedMessage(
             deltas.Select(d => Sanitize(d, p)).Where(DeltaRelevant).ToList(),
             GeneratePropositions(p),
@@ -297,6 +304,7 @@ public sealed partial class Duel : IDisposable
             OriginStats = card.Attribs, // todo: clone
             OriginTraits = [..card.Traits],
             Owner = owner,
+            Position = new(PlayerIndex.P1, new DuelGridVec(0, 0)),
             Attribs = new DuelAttributeSet
             {
                 [Attributes.Attack] = card.Attribs[Attributes.Attack],

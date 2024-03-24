@@ -1,11 +1,13 @@
 ﻿import {GameScene} from "src/duel/game/GameScene.ts";
-import {LocalDuelCard} from "src/duel/control/state.ts";
+import {LocalDuelArenaPosition, LocalDuelCard, LocalDuelUnit} from "src/duel/control/state.ts";
 import {Card, CardVisualData} from "src/duel/game/Card.ts";
+import {DuelController} from "src/duel/control/controller.ts";
+import {Unit, UnitVisualData} from "src/duel/game/Unit.ts";
 
 // Creates all the avatars of the game, i.e., the visual representations of the cards and units.
 // Note that the player is represented as the core.
 export class GameAvatars {
-    constructor(public scene: GameScene) {
+    constructor(public scene: GameScene, public controller: DuelController) {
     }
     
     get cards() {
@@ -26,6 +28,7 @@ export class GameAvatars {
     
     spawnCard(card: LocalDuelCard): Card {
         const avatar = new Card(this.scene, this.makeCardVisualData(card), card.type !== "unknown");
+        avatar.updatePropositions(this.controller.propositions.card.get(card.id) ?? null);
         this.scene.spawnCard(card.id, avatar);
         return avatar;
     }
@@ -34,9 +37,27 @@ export class GameAvatars {
         return this.scene.units.get(unitId)
     }
     
-    // todo: spawnUnit
+    spawnUnit(unit: LocalDuelUnit): Unit {
+        const slotW = this.scene.myUnitSlotGrid.slotWidth;
+        const slotH = this.scene.myUnitSlotGrid.slotHeight;
+        
+        const avatar = new Unit(this.scene, this.makeUnitVisualData(unit), slotW, slotH);
+        this.scene.spawnUnit(unit.id, avatar);
+        return avatar;
+    }
     
-    
+    findSlot(pos: LocalDuelArenaPosition) {
+        const grid = this.scene.unitSlotGrids[pos.player];
+        return grid.slotAt(pos.vec.x, pos.vec.y);
+    }
+     
+    makeUnitVisualData(unit: LocalDuelUnit): UnitVisualData {
+        return {
+            image: this.scene.game.assets.getCardTexture(unit.originRef)!,
+            attack: unit.attribs.attack,
+            health: unit.attribs.health
+        }
+    }
     
     makeCardVisualData(card: LocalDuelCard): CardVisualData {
         if (card.type === 'unknown') {

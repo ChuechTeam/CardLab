@@ -184,7 +184,7 @@ public sealed record DuelUnit : IEntity
     
     public required DuelAttributeSet Attribs { get; set; }
 
-    public DuelGridVec Position { get; set; } = new(0, 0);
+    public required DuelArenaPosition Position { get; set; }
     
     public required PlayerIndex Owner { get; set; }
     

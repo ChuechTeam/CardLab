@@ -22,7 +22,7 @@ public sealed partial class Duel
             }
             
             return new FragUseCard(cardId, player).Verify(Duel) &&
-                   new FragSpawnUnit(player, cardId, placementVec).Verify(Duel);
+                   new FragSpawnUnit(player, cardId, new(player, placementVec)).Verify(Duel);
         }
 
         protected override bool Run()
@@ -32,7 +32,7 @@ public sealed partial class Duel
                 return false;
             }
 
-            if (ApplyFrag(new FragSpawnUnit(player, cardId, placementVec)) != DuelFragmentResult.Success)
+            if (ApplyFrag(new FragSpawnUnit(player, cardId, new(player, placementVec))) != DuelFragmentResult.Success)
             {
                 return false;
             }

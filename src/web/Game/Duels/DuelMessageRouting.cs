@@ -14,14 +14,12 @@ public sealed class DuelMessageRouting(Duel duel)
                     return;
                 case DuelEndTurnMessage { Header: var header }:
                 {
+                    PrepareAck(player, header);
+                    
                     var result = duel.EndTurn(player);
                     if (result.FailedWith(out var err))
                     {
                         SendFailure(player, header, err);
-                    }
-                    else
-                    {
-                        SendAck(player, header);
                     }
 
                     break;
@@ -45,14 +43,12 @@ public sealed class DuelMessageRouting(Duel duel)
                             return;
                         }
 
+                        PrepareAck(player, req.Header);
+                        
                         var result = duel.PlayUnitCard(player, req.CardId, slot.Vec);
                         if (result.FailedWith(out var err))
                         {
                             SendFailure(player, req.Header, err);
-                        }
-                        else
-                        {
-                            SendAck(player, req.Header);
                         }
                     }
                     else
@@ -82,11 +78,12 @@ public sealed class DuelMessageRouting(Duel duel)
 
     private void SendFailure(PlayerIndex player, DuelRequestHeader header, string msg)
     {
+        duel.AckPostMutation = null;
         duel.SendMessage(player, new DuelRequestFailedMessage(header.RequestId, msg));
     }
     
-    private void SendAck(PlayerIndex player, DuelRequestHeader header)
+    private void PrepareAck(PlayerIndex player, DuelRequestHeader header)
     {
-        duel.SendMessage(player, new DuelRequestAckMessage(header.RequestId));
+        duel.AckPostMutation = (player, new DuelRequestAckMessage(header.RequestId));
     }
 }

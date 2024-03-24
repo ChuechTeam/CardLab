@@ -1,6 +1,7 @@
 ﻿import {BitmapText, Container, Graphics, Point, Rectangle, Sprite, TextStyle, Texture} from "pixi.js";
 import {GameScene} from "src/duel/game/GameScene.ts";
 import {placeInRectCenter} from "src/duel/util.ts";
+import {UnitSlot} from "src/duel/game/UnitSlotGrid.ts";
 
 export type UnitVisualData = {
     image: Texture,
@@ -52,6 +53,8 @@ export class Unit extends Container {
     border: Graphics;
     attackAttr: UnitAttribute;
     healthAttr: UnitAttribute;
+    
+    occupiedSlot: UnitSlot | null = null
 
     constructor(public scene: GameScene, visData: UnitVisualData, slotW: number, slotH: number) {
         super();
@@ -86,6 +89,26 @@ export class Unit extends Container {
         this.addChild(this.healthAttr);
 
         this.pivot.set(slotW / 2, slotH / 2);
+        
+        this.on("destroyed", () => {
+            this.occupiedSlot?.empty();
+        })
+    }
+    
+    spawnOn(slot: UnitSlot) {
+        this.position = slot.worldPos;
+        slot.occupiedBy(this);
+    }
+    
+    updateVisualData(visData: Partial<UnitVisualData>) {
+        if (visData.attack !== undefined) {
+            this.attackAttr.value = visData.attack;
+            this.attackAttr.updateText();
+        }
+        if (visData.health !== undefined) {
+            this.healthAttr.value = visData.health;
+            this.healthAttr.updateText();
+        }
     }
 }
 
