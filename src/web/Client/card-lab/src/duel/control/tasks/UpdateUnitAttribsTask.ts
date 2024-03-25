@@ -2,9 +2,6 @@
 import {GameAvatars} from "src/duel/control/avatar.ts";
 import {duelLogError} from "src/duel/log.ts";
 
-class NetUnitAttributes {
-}
-
 export class UpdateUnitAttribsTask extends GameTask {
     constructor(public unitId: number, public attribs: Partial<NetDuelUnitAttributes>, public avatars: GameAvatars) {
         super();

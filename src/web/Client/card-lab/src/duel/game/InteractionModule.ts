@@ -1,4 +1,4 @@
-﻿import {EventEmitter, Ticker} from "pixi.js";
+﻿import {Container, EventEmitter, FederatedPointerEvent, Ticker} from "pixi.js";
 import {GameScene} from "src/duel/game/GameScene.ts";
 import {Card} from "src/duel/game/Card.ts";
 import {LocalDuelArenaPosition, LocalDuelCardPropositions} from "src/duel/control/state.ts";
@@ -46,6 +46,7 @@ type LaunchInteractionTypes = InteractionType.ENDING_TURN;
 // and other secondaries interactions 
 export class InteractionModule extends EventEmitter<{
     start: [InteractionType, InteractionData, number],
+    submit: [InteractionType, InteractionData, number],
     stop: [InteractionType, InteractionData, number, boolean],
     block: [],
     unblock: []
@@ -59,6 +60,7 @@ export class InteractionModule extends EventEmitter<{
     hoveringTimer: number = 0.0 // The amount of milliseconds where the pointer was hovering one single card
     hoveringPreview: boolean = false // Whether card previews should be shown
     hoveredCard: Card | null = null // The currently hovered card
+    stage: Container
     
     blocked: boolean = false // Whether all interactions are blocked
     
@@ -66,6 +68,7 @@ export class InteractionModule extends EventEmitter<{
     
     constructor(public scene: GameScene) {
         super();
+        this.stage = scene.game.app.stage
         scene.game.app.ticker.add(this.tick, this);
     }
     
@@ -142,6 +145,7 @@ export class InteractionModule extends EventEmitter<{
                 this.stop(true)
             }
         })
+        this.emit("submit", this.type, this.data, this.id)
         this.state = InteractionState.WAITING_RESPONSE;
     }
     
@@ -165,6 +169,7 @@ export class InteractionModule extends EventEmitter<{
             
             this.type = InteractionType.IDLE
             this.state = InteractionState.IDLE
+            this.data = { type: InteractionType.IDLE }
             this.id = -1;
             this.emit("stop", type, data, id, cancel)
         }
@@ -207,6 +212,8 @@ export class InteractionModule extends EventEmitter<{
         
         this.hoveringHandId = id;
         this.switchHandHoverCard(card);
+        this.stage.on("pointerup", this.hhPointerUp, this);
+        this.stage.on("pointerupoutside", this.hhPointerUp, this);
     }
     
     switchHandHoverCard(card: Card | null) {
@@ -240,6 +247,15 @@ export class InteractionModule extends EventEmitter<{
         if (hoveredCard) {
             // Then the card didn't initiate this action! Notify it to go back.
             hoveredCard.cancelHover();
+        }
+
+        this.stage.off("pointerup", this.hhPointerUp, this);
+        this.stage.off("pointerupoutside", this.hhPointerUp, this);
+    }
+    
+    private hhPointerUp(e: FederatedPointerEvent) {
+        if (e.pointerId === this.hoveringHandId) {
+            this.endHandHover();
         }
     }
 }

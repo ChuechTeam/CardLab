@@ -61,6 +61,7 @@ export class UnitSlotGrid extends Container {
         })
 
         this.scene.interaction.on("start", this.onInteractionStart, this)
+        this.scene.interaction.on("submit", this.onInteractionSubmit, this)
         this.scene.interaction.on("stop", this.onInteractionStop, this)
     }
 
@@ -116,6 +117,12 @@ export class UnitSlotGrid extends Container {
                     newSlot.select();
                 }
             }
+        }
+    }
+    
+    private onInteractionSubmit(type: InteractionType, data: InteractionData, id: number) {
+        if (this.interactionId === id) {
+            this.endSlotSelect();
         }
     }
 
