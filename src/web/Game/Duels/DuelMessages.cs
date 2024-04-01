@@ -32,5 +32,4 @@ public record DuelUseCardPropositionMessage(
 public record DuelUseUnitPropositionMessage(
     DuelRequestHeader Header,
     int UnitId,
-    int? ChosenUnitId,
-    int? ChosenCore) : DuelMessage;
+    int ChosenEntityId) : DuelMessage;

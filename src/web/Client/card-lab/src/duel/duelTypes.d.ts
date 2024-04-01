@@ -129,7 +129,7 @@ declare type NetDuelUnitPropositions = {
  * Deltas
  */
 
-type NetDuelDeltaBase<T extends string> = { type: T }
+type NetDuelDeltaBase<T extends string> = { type: T; tags?: string[] }
 type NetDuelDeltaScopeBase<T extends string> = NetDuelDeltaBase<T> & {
     isScope: 1
 }
@@ -145,7 +145,7 @@ declare type NetDuelDelta =
     unit: NetDuelUnit,
     position: NetDuelGridVec
 } | NetDuelDeltaBase<"removeUnit"> & {
-    removedIds: DuelUnitId[]
+    removedId: DuelUnitId
 } | NetDuelDeltaBase<"updateEntityAttribs"> & {
     entityId: number,
     attribs: NetAttributeSet
@@ -169,7 +169,12 @@ declare type NetDuelDelta =
     player: NetDuelPlayerIndex
 } | NetDuelDeltaScopeBase<"cardDiscardScope"> & {
     player: NetDuelPlayerIndex
-} | NetDuelDeltaScopeBase<"deathScope">
+} | NetDuelDeltaScopeBase<"damageScope"> & {
+    sourceId: number,
+    targetId: number,
+    damage: number
+}
+| NetDuelDeltaScopeBase<"deathScope">
     | NetDuelDeltaBase<"scopePreparationEnd">
     | NetDuelDeltaBase<"scopeEnd"> & { interrupted: boolean }
 
@@ -208,6 +213,10 @@ declare type DuelMessage =
     cardId: DuelCardId,
     chosenSlots: NetDuelArenaPosition[],
     chosenEntities: number[]
+} | DuelMessageBase<"duelUseUnitProposition"> & {
+    header: DuelRequestHeader;
+    unitId: number;
+    chosenEntityId: number;
 }
 
 declare type DuelRequestMessage = Extract<DuelMessage, { header: DuelRequestHeader }>

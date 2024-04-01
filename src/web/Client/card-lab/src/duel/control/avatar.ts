@@ -22,6 +22,10 @@ export class GameAvatars {
         return this.scene.cores;
     }
     
+    findEntity(entityId: number) {
+        return this.scene.findEntity(entityId)
+    }
+    
     findCard(cardId: DuelCardId) {
         return this.scene.cards.get(cardId)
     }
@@ -55,7 +59,8 @@ export class GameAvatars {
         return {
             image: this.scene.game.assets.getCardTexture(unit.originRef)!,
             attack: unit.attribs.attack,
-            health: unit.attribs.health
+            health: unit.attribs.health,
+            wounded: unit.attribs.health < unit.attribs.maxHealth
         }
     }
     

@@ -133,9 +133,33 @@ export class LocalDuelState {
             this.locToArray(location)?.splice(index ?? 0, 0, cardId)
         }
     }
-    
+
     createUnit(unit: NetDuelUnit) {
-        this.units.set(unit.id, new LocalDuelUnit(unit));
+        const u = new LocalDuelUnit(unit);
+        this.units.set(unit.id, u);
+        this.players[u.position.player].setUnitAt(u.position.vec.x, u.position.vec.y, u.id)
+    }
+
+    markUnitDead(unitId: DuelUnitId) {
+        const unit = this.units.get(unitId);
+        if (unit) {
+            unit.alive = false
+        }
+    }
+
+    removeDeadUnits() {
+        for (let [id, unit] of this.units) {
+            if (!unit.alive) {
+                const player = this.players[unit.position.player]
+                this.units.delete(id)
+                for (let i = 0; i < player.units.length; i++) {
+                    if (player.units[i] === id) {
+                        player.units[i] = null;
+                        break
+                    }
+                }
+            }
+        }
     }
 
     updateAttribs(entityId: number, attribs: NetAttributeSet) {
@@ -143,10 +167,10 @@ export class LocalDuelState {
         if (entity === undefined) {
             throw new Error(`Entity not found: ${entityId}`)
         }
-        
+
         // Merge attributes into the entity.
         Object.assign(entity.attribs, attribs)
-        
+
         return entity;
     }
 
@@ -173,9 +197,9 @@ export class LocalDuelPlayerState {
     attribs: NetDuelPlayerAttributes;
     deck: DuelCardId[];
     hand: DuelCardId[];
-    units: DuelUnitId[];
+    units: (DuelUnitId | null)[]; // Fixed size array
     id: number;
-    
+
     constructor(state: NetDuelPlayerState) {
         this.index = toLocalIndex(state.index)
         this.attribs = state.attribs;
@@ -183,6 +207,14 @@ export class LocalDuelPlayerState {
         this.hand = state.hand;
         this.id = state.id;
         this.units = state.units;
+    }
+    
+    setUnitAt(x: number, y: number, unitId: DuelUnitId | null) {
+        this.units[y * 4 + x] = unitId;
+    }
+    
+    getUnitAt(x: number, y: number) {
+        return this.units[y * 4 + x];
     }
 }
 
@@ -232,6 +264,7 @@ export class LocalUnitDuelCard extends KnownLocalDuelCard {
 export class LocalDuelUnit {
     id: DuelUnitId
     originRef: CardAssetRef
+    originStats: NetUnitDuelCardAttributes
     owner: LocalDuelPlayerIndex
     attribs: NetDuelUnitAttributes
     position: LocalDuelArenaPosition
@@ -240,6 +273,7 @@ export class LocalDuelUnit {
     constructor(unit: NetDuelUnit) {
         this.id = unit.id;
         this.originRef = unit.originRef;
+        this.originStats = unit.originStats;
         this.owner = toLocalIndex(unit.owner);
         this.attribs = unit.attribs;
         this.position = toLocalPos(unit.position);

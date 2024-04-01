@@ -42,6 +42,7 @@ export class DuelMessaging {
         this.pendingRequests.clear();
         
         this.onConnectionLost()
+        duelLog("Connection to server lost!");
     }
 
     receiveMessage(message: LabMessage) {

@@ -9,15 +9,12 @@ export class RevealCardsTask extends GameTask {
     }
 
     *run() {
-        // This is not very efficient rn when the card isn't visible in the viewport,
-        // like if it's in the deck, but that case almost never happens so who cares?
         for (const rev of this.revealedCards) {
             const avatar = this.avatars.findCard(rev.id);
            
             const local = toLocalCard(rev);
             if (avatar === undefined) {
-                // The card will be spawned outside the viewport.
-                this.avatars.spawnCard(local);
+                // Don't spawn it. Other tasks will do it.
             } else {
                 // TODO: animate the card flipping
                 avatar.replaceVisuals(this.avatars.makeCardVisualData(local));

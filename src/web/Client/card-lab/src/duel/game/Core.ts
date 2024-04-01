@@ -28,9 +28,11 @@ export class Core extends Container {
         const off = 12;
         this.attribBack.width = this.coreSprite.width + off;
         this.attribBack.height = 48;
-        this.attribBack.x = -off / 2;
+        this.attribBack.x = 0;
         this.attribBack.y = this.coreSprite.height - 44;
         this.addChild(this.attribBack);
+        
+        this.coreSprite.x += off/2;
 
         this.hpText = new BitmapText({text: "", style: TEXT_STYLE});
         this.hpText.tint = 0xFFFFFF;

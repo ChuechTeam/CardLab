@@ -189,12 +189,6 @@ public sealed partial class Duel
                 return false;
             }
 
-            var defender = State.FindEntity(targetId);
-            if (defender is null or not DuelUnit or DuelPlayerState)
-            {
-                return false;
-            }
-
             if (unitId == targetId)
             {
                 return false;
@@ -206,11 +200,39 @@ public sealed partial class Duel
                 return false;
             }
 
+            var defender = State.FindEntity(targetId);
+            if (defender is not DuelUnit && defender is not DuelPlayerState)
+            {
+                return false;
+            }
+
             if (!friendlyFire &&
                 (defender is DuelUnit u && u.Owner == attacker.Owner
                  || defender is DuelPlayerState p && p.Index == attacker.Owner))
             {
                 return false;
+            }
+
+            if (defender is DuelPlayerState p2)
+            {
+                if (p2.ExistingUnits.Any())
+                {
+                    return false;
+                }
+            }
+            else if (defender is DuelUnit u2)
+            {
+                // Make sure that there isn't any unit in front of the target.
+                var player = State.GetPlayer(u2.Position.Player);
+                var (defX, defY) = u2.Position.Vec;
+
+                for (int y = defY + 1; y < Duel.Settings.UnitsY; y++)
+                {
+                    if (player.Units[new DuelGridVec(defX, y).ToIndex(Duel)] != null)
+                    {
+                        return false;
+                    }
+                }
             }
 
             return true;
@@ -219,22 +241,54 @@ public sealed partial class Duel
         protected override bool Run()
         {
             var attacker = State.FindUnit(unitId)!;
-            var attack = attacker.Attribs[Attributes.Attack];
+            var myAttack = attacker.Attribs[Attributes.Attack];
 
-            var result = ApplyFrag(new FragHurtEntity(unitId, targetId, attack));
-            if (result == DuelFragmentResult.Success)
-            {
-                if (DuelIdentifiers.TryExtractType(targetId, out var type) && type is DuelEntityType.Unit)
-                {
-                    ApplyFrag(new FragHurtEntity(unitId, targetId, attack));
-                }
-
-                return true;
-            }
-            else
+            var result = ApplyFrag(new FragHurtEntity(unitId, targetId, myAttack));
+            if (result != DuelFragmentResult.Success)
             {
                 return false;
             }
+
+            if (State.FindEntity(targetId) is DuelUnit target)
+            {
+                // Check if we can apply excess damage.
+                var hp = target.Attribs[Attributes.Health];
+                if (hp < 0)
+                {
+                    var excessDmg = -hp;
+
+                    // Deal damage to the unit/player behind.
+                    var defPlayer = State.GetPlayer(target.Position.Player);
+                    var (defX, defY) = target.Position.Vec;
+
+                    int excessTargetId = -1;
+                    for (int y = defY - 1; y >= 0; y--)
+                    {
+                        var uid = defPlayer.Units[new DuelGridVec(defX, y).ToIndex(Duel)];
+                        if (uid is { } valid)
+                        {
+                            excessTargetId = valid;
+                            break;
+                        }
+                    }
+
+                    if (excessTargetId == -1)
+                    {
+                        excessTargetId = defPlayer.Id;
+                    }
+
+                    ApplyFrag(new FragHurtEntity(unitId, excessTargetId, excessDmg, DuelTags.ExcessDamage));
+                }
+                
+                // Make the defender attack us back.
+                var theirAttack = target.Attribs[Attributes.Attack];
+                if (theirAttack > 0)
+                {
+                    ApplyFrag(new FragHurtEntity(targetId, unitId, theirAttack));
+                }
+            }
+
+            return true;
         }
     }
 
@@ -262,40 +316,33 @@ public sealed partial class Duel
         }
     }
 
-    // todo: return the number of units killed?
-    public sealed class FragKillUnits(ImmutableArray<int> unitIds, int? sourceId, bool guessSource = true)
+    public sealed class FragDestroyUnit(int unitId, int? sourceId, bool guessSource)
         : DuelFragment
     {
         public override ScopeDelta? Scope { get; } = new DeathScopeDelta();
 
         protected override bool Run()
         {
-            var existing = ImmutableArray.CreateBuilder<int>(unitIds.Length);
-
-            foreach (var id in unitIds)
+            if (State.Units.TryGetValue(unitId, out var unit))
             {
-                if (State.Units.TryGetValue(id, out var unit))
-                {
-                    existing.Add(id);
+                var srcId = sourceId ?? (guessSource ? unit.LastDamageSourceId : null);
+                Duel.HandlePostDeath(this, State.FindEntity(srcId ?? -1), unit);
 
-                    var srcId = sourceId ?? (guessSource ? unit.LastDamageSourceId : null);
-                    Duel.HandlePostDeath(this, State.FindEntity(srcId ?? -1), unit);
-                }
+                ApplyDelta(new RemoveUnitDelta
+                {
+                    RemovedId = unitId
+                });
+
+                return true;
             }
 
-            ApplyDelta(new RemoveUnitDelta
-            {
-                RemovedIds = existing.ToImmutable()
-            });
-
-            return existing.Count > 0;
+            return false;
         }
     }
 
     public sealed class FragSwitchToPlay : DuelFragment
     {
-        protected override bool Verify()
-            => State.Status is DuelStatus.AwaitingConnection;
+        public override DuelStatus RequiredStatus { get; set; } = DuelStatus.AwaitingConnection;
 
         protected override bool Run()
         {
@@ -303,10 +350,26 @@ public sealed partial class Duel
             return true;
         }
     }
-
-    public sealed class FragHurtEntity(int sourceId, int targetId, int damage) : DuelFragment
+    
+    public sealed class FragSwitchToEnd(PlayerIndex? winner) : DuelFragment
     {
-        public override bool UseParentQueue { get; set; } = true;
+        public override DuelStatus RequiredStatus { get; set; } = DuelStatus.Playing;
+
+        protected override bool Run()
+        {
+            ApplyDelta(new SwitchStatusDelta { Status = DuelStatus.Ended, Winner = winner });
+            return true;
+        }
+    }
+
+    public sealed class FragHurtEntity(int sourceId, int targetId, int damage, params string[] tags) : DuelFragment
+    {
+        public override ScopeDelta? Scope { get; } = new DamageScopeDelta(sourceId, targetId, damage)
+        {
+            Tags = ImmutableArray.Create(tags)
+        };
+
+        public override bool Flatten { get; set; } = true;
 
         protected override bool Verify()
         {
@@ -389,7 +452,7 @@ public sealed partial class Duel
     public sealed class FragSetAttribute(int id, DuelAttributeDefinition def, int value, bool create = false)
         : DuelFragment
     {
-        public override bool UseParentQueue { get; set; } = true;
+        public override bool Flatten { get; set; } = true;
 
         protected override bool Verify()
         {
@@ -409,11 +472,11 @@ public sealed partial class Duel
             // Some special rules for certain attributes.
             if (def == Attributes.Health)
             {
-                value = Math.Clamp(value, 0, attribs[Attributes.MaxHealth]);
+                value = Math.Min(value, attribs[Attributes.MaxHealth]);
             }
             else if (def == Attributes.Energy)
             {
-                value = Math.Clamp(value, 0, Duel.Settings.MaxEnergy);
+                value = Math.Min(value, Duel.Settings.MaxEnergy);
             }
 
             var oldValue = attribs[def];
@@ -463,7 +526,7 @@ public sealed partial class Duel
         var deltaNum = mut.Deltas.Count;
 
         // Trigger any events before this fragment runs.
-        // This event handler can run other fragments directly, with the parent set to the current fragment.
+        // This event handler can run other fragments directly, in respect to the parent's flattening settings.
         HandlePreFragment(mut, frag);
 
         if (mut.Deltas.Count > deltaNum)
@@ -484,8 +547,10 @@ public sealed partial class Duel
         if (result is DuelFragmentResult.Success or DuelFragmentResult.RunFailed)
         {
             // Right now we don't differentiate between a failed-during-run result and successful result.
-            KillZeroHealthUnits(mut);
-            HandlePostFragment(mut, frag);
+            // todo: optimize this to not run that when health doesn't change??
+            KillZeroHealthUnits(frag);
+            CheckGameWin(frag);
+            HandlePostFragment(mut, frag, result);
         }
 
         if (frag.Scope != null)
@@ -493,43 +558,67 @@ public sealed partial class Duel
             mut.Apply(new ScopeEndDelta(result != DuelFragmentResult.Success));
         }
 
-        // Run all queued fragments as children of the parent fragment.
-        foreach (var action in frag.QueuedFragments)
+        // If we aren't a flattened node (meaning we have our own queue of fragments),
+        // then run them. Else, the parent fragment will do this.
+        if (!frag.Flatten)
         {
-            action.Parent = frag.Parent;
-            mut.ApplyFrag(action);
+            foreach (var action in frag.QueuedFragments)
+            {
+                mut.ApplyFrag(action);
+            }
         }
 
         return result;
     }
 
-    private void KillZeroHealthUnits(DuelMutation mut)
+    private void KillZeroHealthUnits(DuelFragment frag)
     {
         var toKill = State.Units.Values
             .Where(x => x.Attribs[Attributes.Health] <= 0 && !x.DeathPending)
-            .Select(x => x.Id)
-            .ToImmutableArray();
+            .Select(x => x.Id);
 
-        if (toKill.Length > 0)
+        foreach (var id in toKill)
         {
-            foreach (var id in toKill)
-            {
-                State.Units[id].DeathPending = true;
-            }
+            State.Units[id].DeathPending = true;
+            frag.EnqueueFragment(new FragDestroyUnit(id, null, true));
+        }
+    }
+    
+    private void CheckGameWin(DuelFragment frag)
+    {
+        var p1 = State.GetPlayer(PlayerIndex.P1);
+        var p2 = State.GetPlayer(PlayerIndex.P2);
+        
+        var (h1, h2) = (p1.Attribs[Attributes.CoreHealth], p2.Attribs[Attributes.CoreHealth]);
 
-            mut.ApplyFrag(new FragKillUnits(toKill, null));
+        if (h1 <= 0 && h2 <= 0)
+        {
+            frag.EnqueueFragment(new FragSwitchToEnd(null));
+        }
+        else if (h1 <= 0)
+        {
+            frag.EnqueueFragment(new FragSwitchToEnd(PlayerIndex.P2));
+        }
+        else if (h2 <= 0)
+        {
+            frag.EnqueueFragment(new FragSwitchToEnd(PlayerIndex.P1));
         }
     }
 }
 
 public abstract class DuelFragment
 {
-    public DuelFragment? Parent { get; set; } = null;
-    public Queue<DuelFragment> QueuedFragments { get; } = new();
+    // Can be set to the parent's queue when Flatten = true
+    public Queue<DuelFragment> QueuedFragments { get; private set; } = new();
 
-    // Should be true for fragments that shouldn't be considered 
-    // as independent actions, but rather as part of a parent fragment.
-    public virtual bool UseParentQueue { get; set; } = false;
+    // When true, this fragment and all child fragments will be "flattened":
+    // all triggers (and children triggers too) will queue fragments to the parent fragment.
+    // A flattened fragment cannot be the root of a fragment tree.
+    public virtual bool Flatten { get; set; } = false;
+    
+    public virtual DuelStatus RequiredStatus { get; set; } = DuelStatus.Playing;
+
+    public DuelFragment? Parent { get; private set; } = null;
 
     public Duel Duel { get; private set; } = null!;
     public DuelState State => Duel.State;
@@ -540,14 +629,7 @@ public abstract class DuelFragment
 
     public void EnqueueFragment(DuelFragment frag)
     {
-        if (UseParentQueue && Parent is not null)
-        {
-            Parent.EnqueueFragment(frag);
-        }
-        else
-        {
-            QueuedFragments.Enqueue(frag);
-        }
+        QueuedFragments.Enqueue(frag);
     }
 
     public DuelFragmentResult Run(Duel duel, DuelMutation mutation)
@@ -572,7 +654,7 @@ public abstract class DuelFragment
     {
         Duel = duel;
 
-        return Verify();
+        return State.Status == RequiredStatus && Verify();
     }
 
     protected abstract bool Run();
@@ -584,13 +666,15 @@ public abstract class DuelFragment
         return Mutation.Apply(delta);
     }
 
-    public DuelFragmentResult ApplyFrag(DuelFragment frag, bool? useMyQueue = null)
+    public DuelFragmentResult ApplyFrag(DuelFragment frag)
     {
-        frag.Parent = this;
-        if (useMyQueue is { } umq)
+        if (frag.Flatten || Flatten)
         {
-            frag.UseParentQueue = umq;
+            frag.Flatten = true;
+            frag.QueuedFragments = this.QueuedFragments;
         }
+
+        frag.Parent = this;
 
         return Duel.ApplyFrag2(Mutation, frag);
     }

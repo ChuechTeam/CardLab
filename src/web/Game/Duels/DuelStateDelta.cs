@@ -31,20 +31,30 @@ namespace CardLab.Game.Duels;
 [JsonDerivedType(typeof(CardPlayScopeDelta), "cardPlayScope")]
 [JsonDerivedType(typeof(CardDrawScopeDelta), "cardDrawScope")]
 [JsonDerivedType(typeof(DeathScopeDelta), "deathScope")]
+[JsonDerivedType(typeof(DamageScopeDelta), "damageScope")]
 [JsonDerivedType(typeof(ScopePreparationEndDelta), "scopePreparationEnd")]
 [JsonDerivedType(typeof(ScopeEndDelta), "scopeEnd")]
 public abstract record DuelStateDelta
 {
     public abstract Result<Unit> Apply(Duel duel, DuelState state);
+    
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+
+    public ImmutableArray<string>? Tags { get; set; } = null;
 }
 
 public sealed record SwitchStatusDelta : DuelStateDelta
 {
     public required DuelStatus Status { get; init; }
+    public PlayerIndex? Winner { get; init; } = null;
 
     public override Result<Unit> Apply(Duel duel, DuelState state)
     {
         state.Status = Status;
+        if (Winner is { } w)
+        {
+            state.Winner = Winner;
+        }
         return Result.Success();
     }
 }
@@ -90,7 +100,7 @@ public sealed record PlaceUnitDelta : DuelStateDelta
         state.Units.Add(Unit.Id, Unit);
         playerSt.Units[index] = Unit.Id;
         Unit.Position = Position;
-        
+
         SnapshotUnit = Unit.Snapshot();
 
         return Result.Success();
@@ -99,32 +109,31 @@ public sealed record PlaceUnitDelta : DuelStateDelta
 
 public sealed record RemoveUnitDelta : DuelStateDelta
 {
-    public required ImmutableArray<int> RemovedIds { get; init; }
+    public required int RemovedId { get; init; }
 
     public override Result<Unit> Apply(Duel duel, DuelState state)
     {
         // todo: validation?
-        foreach (var removedId in RemovedIds)
+
+        if (state.FindUnit(RemovedId) is { } unit)
         {
-            if (state.FindUnit(removedId) is { } unit)
+            state.Units.Remove(RemovedId);
+
+            var i = Array.IndexOf(state.Player1.Units, RemovedId);
+            if (i != -1)
             {
-                state.Units.Remove(removedId);
-
-                var i = Array.IndexOf(state.Player1.Units, removedId);
-                if (i != -1)
-                {
-                    state.Player1.Units[i] = null;
-                }
-
-                i = Array.IndexOf(state.Player2.Units, removedId);
-                if (i != -1)
-                {
-                    state.Player2.Units[i] = null;
-                }
-
-                unit.Eliminated = true;
+                state.Player1.Units[i] = null;
             }
+
+            i = Array.IndexOf(state.Player2.Units, RemovedId);
+            if (i != -1)
+            {
+                state.Player2.Units[i] = null;
+            }
+
+            unit.Eliminated = true;
         }
+
 
         return Result.Success();
     }
@@ -134,7 +143,7 @@ public sealed record UpdateEntityAttribsDelta : DuelStateDelta
 {
     public required int EntityId { get; init; }
     public required Dictionary<string, object> Attribs { get; init; }
-    
+
     public override Result<Unit> Apply(Duel duel, DuelState state)
     {
         // Changes are done in DuelMutation
@@ -316,6 +325,8 @@ public sealed record UnitTriggerScopeDelta(int UnitId) : ScopeDelta;
 public sealed record CardPlayScopeDelta(int CardId, PlayerIndex Player) : ScopeDelta;
 
 public sealed record CardDrawScopeDelta(PlayerIndex Player) : ScopeDelta;
+
+public sealed record DamageScopeDelta(int SourceId, int TargetId, int Amount) : ScopeDelta;
 
 public sealed record DeathScopeDelta() : ScopeDelta;
 

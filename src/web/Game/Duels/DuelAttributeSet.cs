@@ -155,16 +155,16 @@ public sealed class DuelAttributeSet
         return Math.Max(def.MinValue, Math.Min(def.MaxValue, value));
     }
 
-    public DuelAttributeSet Snapshot()
+    // Creates a snapshot of this attribute set, with the modifiers applied:
+    // each attribute will have the actual value as its base value, and no modifier will
+    // exist on the new set.
+    public DuelAttributeSet SnapshotFlattened()
     {
         var set = new DuelAttributeSet();
-        set._attributes = new Dictionary<DuelAttributeDefinition, AttrEntry>(_attributes);
-        foreach (var k in set._attributes.Keys)
+        foreach (var (key, value) in _attributes)
         {
-            ref AttrEntry v = ref CollectionsMarshal.GetValueRefOrNullRef(set._attributes, k);
-            v.Modifiers = [..v.Modifiers];
+            set._attributes.Add(key, new AttrEntry(value.Actual, value.Actual, new(0)));
         }
-        set._modIdToAttr = new Dictionary<int, DuelAttributeDefinition>(_modIdToAttr);
         return set;
     }
 
@@ -225,13 +225,13 @@ public class DuelAttributes(DuelSettings settings)
         = new("attack", 0, 0, int.MaxValue);
 
     public readonly DuelAttributeDefinition Health
-        = new("health", 0, 0, int.MaxValue)
+        = new("health", int.MinValue, 0, int.MaxValue)
         {
             SupportsModifiers = false
         };
     
     public readonly DuelAttributeDefinition MaxHealth
-        = new("maxHealth", 0, 0, int.MaxValue);
+        = new("maxHealth", 1, 0, int.MaxValue);
 
     public readonly DuelAttributeDefinition Cost
         = new("cost", 0, 0, int.MaxValue);

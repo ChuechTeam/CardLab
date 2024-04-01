@@ -11,6 +11,8 @@ namespace CardLab.Game.Duels;
 public sealed record DuelState
 {
     public DuelStatus Status { get; set; } = DuelStatus.AwaitingConnection;
+
+    public PlayerIndex? Winner { get; set; } = null; 
     
     // fun little hack to have C-like inline arrays
     private readonly PlayerArray _players;
@@ -198,7 +200,7 @@ public sealed record DuelUnit : IEntity
     {
         return new DuelUnit(this)
         {
-            Attribs = Attribs.Snapshot()
+            Attribs = Attribs.SnapshotFlattened()
         };
     }
 }

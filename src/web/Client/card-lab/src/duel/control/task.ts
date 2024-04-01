@@ -1,7 +1,5 @@
-﻿import {duelLog, duelLogDebug, duelLogError} from "../log.ts";
-import {DuelGame} from "../duel.ts";
-import {GameScene} from "../game/GameScene.ts";
-import {Ticker, TickerCallback} from "pixi.js";
+﻿import {duelLog, duelLogError} from "../log.ts";
+import {Ticker} from "pixi.js";
 
 export enum GameTaskState {
     PENDING,
@@ -51,6 +49,25 @@ export class GameTask {
         }
         if (name != null) {
             this.name = name;
+        }
+    }
+    
+    static callback(func: (complete: () => void) => void) {
+        return new CallbackTask(func);
+    }
+    
+    static wait(duration: number) {
+        return new WaitTask(duration);
+    }
+    
+    *simultaneous(tasks: GameTask[]): Generator<GameTask> {
+        for (const task of tasks) {
+            if (task.state === GameTaskState.PENDING) {
+                task.start(this)
+            }
+        }
+        for (const task of tasks) {
+            yield task;
         }
     }
 
@@ -172,5 +189,31 @@ export class GameTask {
 
     toString() {
         return this.name ?? this.constructor.name;
+    }
+}
+
+export class WaitTask extends GameTask {
+    remaining: number
+    // In seconds
+    constructor(public readonly duration: number) {
+        super();
+        this.remaining = duration
+    }
+
+    tick(ticker: Ticker) {
+        this.remaining -= ticker.deltaMS/1000;
+        if (this.remaining < 0) {
+            this.complete();
+        }
+    }
+}
+
+export class CallbackTask extends GameTask {
+    constructor(public readonly func: (complete: () => void) => void) {
+        super();
+    }
+
+    run() {
+        this.func(this.complete.bind(this));
     }
 }

@@ -8,6 +8,7 @@ import healthIconUrl from "./assets/health-icon.svg";
 import boardCoreUrl from "./assets/board-core.png";
 import largeAttrBg from "./assets/large-attr-bg.svg";
 import verticalGradientUrl from "./assets/vertical-gradient.png";
+import attackTargetUrl from "./assets/attack-target.png";
 import {duelLog} from "./log.ts";
 
 type BaseBundleType = typeof baseBundle;
@@ -35,7 +36,8 @@ const baseBundle = {
     "boardCore": boardCoreUrl,
     "verticalGradient": verticalGradientUrl,
     "healthIcon": svgAsset(healthIconUrl),
-    "largeAttrBg": svgAsset(largeAttrBg)
+    "largeAttrBg": svgAsset(largeAttrBg),
+    "attackTarget": attackTargetUrl
 }
 
 export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {

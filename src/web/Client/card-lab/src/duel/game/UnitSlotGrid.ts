@@ -42,11 +42,13 @@ export class UnitSlotGrid extends Container {
 
         for (let y = 0; y < UNITS_NUM_Y; y++) {
             for (let x = 0; x < UNITS_NUM_X; x++) {
-                const pos = {player: playerIndex as LocalDuelPlayerIndex, vec: this.toGameCoords(x, y)};
+                const pos = {
+                    player: playerIndex as LocalDuelPlayerIndex, vec: this.toGameCoords(x, y)};
                 const slot = new UnitSlot(scene, pos);
                 slot.pivot.set(SLOT_WIDTH / 2, SLOT_HEIGHT / 2)
+                // We need to reverse the y coordinate because this coordinate system is terrible...
                 slot.position.set(x * (SLOT_WIDTH + SPACING_X) + SLOT_WIDTH / 2,
-                    y * (SLOT_HEIGHT + SPACING_Y) + SLOT_HEIGHT / 2)
+                    (UNITS_NUM_Y-1-y) * (SLOT_HEIGHT + SPACING_Y) + SLOT_HEIGHT / 2)
                 this.addChild(slot)
 
                 slot.occupant = null;

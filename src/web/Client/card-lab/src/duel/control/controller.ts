@@ -12,7 +12,7 @@ import {
 import {GameTask, GameTaskState} from "./task.ts";
 import {Ticker, UPDATE_PRIORITY} from "pixi.js";
 import {ShowMessageTask} from "./tasks/ShowMessageTask.ts";
-import {DefaultScopeTask} from "src/duel/control/tasks/DefaultScopeTask.ts";
+import {ScopeTask} from "src/duel/control/tasks/ScopeTask.ts";
 import {GameAvatars} from "src/duel/control/avatar.ts";
 import {RevealCardsTask} from "src/duel/control/tasks/RevealCardsTask.ts";
 import {MoveCardsTask} from "src/duel/control/tasks/MoveCardsTask.ts";
@@ -21,6 +21,10 @@ import {TurnButtonState} from "src/duel/game/TurnButton.ts";
 import {UpdatePlayerAttribsTask} from "src/duel/control/tasks/UpdatePlayerAttribsTask.ts";
 import {PlaceUnitTask} from "src/duel/control/tasks/PlaceUnitTask.ts";
 import {UpdateUnitAttribsTask} from "src/duel/control/tasks/UpdateUnitAttribsTask.ts";
+import {UnitAttackScopeTask} from "src/duel/control/tasks/UnitAttackScopeTask.ts";
+import {UnitDeathScopeTask} from "src/duel/control/tasks/UnitDeathScopeTask.ts";
+import {DestroyUnitTask} from "src/duel/control/tasks/DestroyUnitTask.ts";
+import {DamageScopeTask} from "src/duel/control/tasks/DamageScopeTask.ts";
 
 function isScopeDelta(d: NetDuelDelta): d is NetDuelScopeDelta {
     return 'isScope' in d;
@@ -32,7 +36,7 @@ type DeltaFuncMap = {
     [T in NetDeltaLeaf["type"]]?: (delta: NetDuelDeltaOf<T>, scope: ScopeMutationNode) => GameTask | null
 }
 type ScopeFuncMap = {
-    [T in NetDuelScopeDelta["type"]]?: (node: ScopeMutationNode<T>) => GameTask
+    [T in NetDuelScopeDelta["type"]]?: (node: ScopeMutationNode<NetDuelDeltaOf<T>>) => GameTask
 }
 
 type LeafMutationNode = {
@@ -43,7 +47,7 @@ type LeafMutationNode = {
 type ScopeMutationNode<T = NetDuelScopeDelta | null> = {
     isLeaf: false,
     scope: T // null if root node
-    preparationNodes: MutationNode[], // todo in server
+    preparationNodes: MutationNode[],
     childNodes: MutationNode[],
 }
 
@@ -136,6 +140,7 @@ export class DuelController {
         } else {
             duelLog(`Starting mutation to iteration ${m.iteration} with ${m.deltas.length} deltas`)
 
+            this.state.removeDeadUnits();
             const tree = this.buildMutationTree(m);
             const task = this.applyScope(tree);
             this.propositions = new LocalDuelPropositions(m.propositions);
@@ -178,8 +183,6 @@ export class DuelController {
             if (nextDelta === null && d !== null) {
                 throw new Error(`Unclosed scope ${d?.type}`);
             }
-            const test = {} as NetAttributeSet
-            const sus = test.aaa;
             return node;
         }
 
@@ -241,15 +244,37 @@ export class DuelController {
         return t;
     }
 
+    buildScopeTasks(node: ScopeMutationNode,
+                    applyFunc = (child: MutationNode) => this.applyNode(child, node)): [GameTask[], GameTask[]] {
+        const prepTasks = [] as GameTask[];
+        const childTasks = [] as GameTask[];
+
+        for (let prep of node.preparationNodes) {
+            const task = applyFunc(prep);
+            if (task !== null) {
+                prepTasks.push(task);
+            }
+        }
+
+        for (let child of node.childNodes) {
+            const task = applyFunc(child);
+            if (task !== null) {
+                childTasks.push(task);
+            }
+        }
+
+        return [prepTasks, childTasks];
+    }
+
     applyScope(node: ScopeMutationNode): GameTask {
         if (node.scope && node.scope.type in this.scopeFuncs) {
             return this.scopeFuncs[node.scope.type]!(node as any);
         }
 
         // Default implementation.
-        const preparationTasks = node.preparationNodes.map(n => this.applyNode(n, node));
-        const childTasks = node.childNodes.map(n => this.applyNode(n, node));
-        return new DefaultScopeTask(node.scope?.type ?? "root", preparationTasks, childTasks);
+        const task = new ScopeTask(...this.buildScopeTasks(node));
+        task.scopeType = node.scope?.type ?? "root";
+        return task;
     }
 
     applyDelta(delta: NetDeltaLeaf, scope: ScopeMutationNode): GameTask | null {
@@ -283,9 +308,8 @@ export class DuelController {
             if (entity instanceof LocalDuelPlayerState) {
                 return new UpdatePlayerAttribsTask(entity.index, delta.attribs as any, this.avatars);
             } else if (entity instanceof LocalDuelUnit) {
-                return new UpdateUnitAttribsTask(entity.id, delta.attribs as any, this.avatars);
-            }
-            else {
+                return new UpdateUnitAttribsTask(stateSnapshot(entity), delta.attribs as any, this.avatars);
+            } else {
                 duelLogError(`Can't yet update attributes for entity ${entity.constructor.name}`, delta);
                 return null;
             }
@@ -306,10 +330,25 @@ export class DuelController {
         "placeUnit": delta => {
             this.state.createUnit(delta.unit);
             return new PlaceUnitTask(delta.unit, this.avatars);
+        },
+        "removeUnit": delta => {
+            this.state.markUnitDead(delta.removedId);
+            return new DestroyUnitTask(delta.removedId, this.avatars);
         }
     }
 
-    scopeFuncs: ScopeFuncMap = {}
+    scopeFuncs: ScopeFuncMap = {
+        "unitAttackScope": node => {
+            return new UnitAttackScopeTask(node.scope.unitId, node.scope.targetId, this.avatars, ...this.buildScopeTasks(node));
+        },
+        "deathScope": node => {
+            return new UnitDeathScopeTask(...this.buildScopeTasks(node));
+        },
+        "damageScope": node => {
+            return new DamageScopeTask(node.scope.sourceId, node.scope.targetId, node.scope.damage, 
+                node.scope.tags ?? [], this.avatars, ...this.buildScopeTasks(node));
+        }
+    }
 
     // Removes all created avatars (units and cards) from the scene, and resets any temporary state.
     tearDownScene() {
@@ -319,6 +358,10 @@ export class DuelController {
         for (const card of cards) {
             card.destroy();
         }
+        const units = [...this.avatars.units.values()]
+        for (const unit of units) {
+            unit.destroy();
+        }
 
         this.scene.messageBanner.hide();
         for (let turnIndicator of this.scene.turnIndicators) {
@@ -326,11 +369,18 @@ export class DuelController {
         }
 
         this.scene.cardPreviewOverlay.hide();
-        
+        this.scene.targetArrow.hide();
+        this.scene.entitySelectOverlay.hide();
+
         for (const grid of this.scene.unitSlotGrids) {
             for (const slot of grid.slots) {
                 slot.empty();
             }
+        }
+        
+        const proj = [...this.scene.projectiles]
+        for (let p of proj) {
+            p.destroy();
         }
     }
 
@@ -363,6 +413,7 @@ export class DuelController {
         for (let unit of this.state.units.values()) {
             const avatar = this.avatars.spawnUnit(unit);
             const slot = this.avatars.findSlot(unit.position);
+            avatar.updatePropositions(this.propositions.unit.get(unit.id));
             avatar.spawnOn(slot);
         }
 
@@ -385,7 +436,9 @@ export class DuelController {
         for (const [id, card] of this.avatars.cards.entries()) {
             card.updatePropositions(this.propositions.card.get(id));
         }
-        // todo: unit
+        for (const [id, unit] of this.avatars.units.entries()) {
+            unit.updatePropositions(this.propositions.unit.get(id));
+        }
     }
 
     /**
@@ -430,6 +483,22 @@ export class DuelController {
         return prom;
     }
 
+    useUnitProposition(unitId: number, chosenId: number) {
+        if (!this.canUseUnitProposition(unitId, chosenId)) {
+            throw new Error("Invalid unit proposition parameters.");
+        }
+
+        const [msg, prom] = this.game.messaging.sendRequest(
+            id => ({
+                type: "duelUseUnitProposition",
+                header: this.makeHeader(id),
+                unitId,
+                chosenEntityId: chosenId
+            }));
+
+        return prom;
+    }
+
     canUseCardProposition(cardId: DuelCardId,
                           slots: LocalDuelArenaPosition[],
                           entities: number[] = []) {
@@ -447,5 +516,14 @@ export class DuelController {
                         b => a.player === b.player && a.vec.equals(b.vec)
                     ));
         }
+    }
+
+    canUseUnitProposition(unitId: number, chosenId: number) {
+        const prop = this.propositions.unit.get(unitId);
+        if (prop === undefined) {
+            return false;
+        }
+
+        return prop.allowedEntities.includes(chosenId);
     }
 }

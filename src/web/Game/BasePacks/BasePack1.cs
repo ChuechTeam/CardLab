@@ -26,7 +26,7 @@ public static class BasePack1
             Name = "EVIL Stéphane Plaza",
             Attack = 3,
             Health = 8,
-            Cost = 9,
+            Cost = 2,
             Description = "À l'apparition, pose tout plein de meubles sur l'arène adverse. Ils explosent au bout d'un tour"
         }, 2, Path.Combine(assetsDir, "Pack1/plaza.png")),
     ];

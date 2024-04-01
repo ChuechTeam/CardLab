@@ -13,5 +13,8 @@ export class PlaceUnitTask extends GameTask {
         
         const slot = this.avatars.findSlot(local.position)
         spawned.spawnOn(slot);
+        spawned.startSpawnAnim();
+        
+        yield GameTask.callback(complete => spawned.spawnAnim.onDone = complete);
     }
 }

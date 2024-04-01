@@ -14,7 +14,7 @@ public sealed partial class Duel
         // todo
     }
 
-    private void HandlePostFragment(DuelMutation mut, DuelFragment fragment)
+    private void HandlePostFragment(DuelMutation mut, DuelFragment fragment, DuelFragmentResult result)
     {
         _logger.LogTrace("Applying fragment end: {Frag}", fragment);
         // todo

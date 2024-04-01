@@ -54,6 +54,8 @@ public sealed partial class Duel
 
     private sealed class ActGameStartRandom : DuelAction
     {
+        public override DuelStatus RequiredStatus { get; set; } = DuelStatus.AwaitingConnection;
+
         protected override bool Run()
         {
             var randomGuy = (PlayerIndex)Duel._rand.Next(0, 2);

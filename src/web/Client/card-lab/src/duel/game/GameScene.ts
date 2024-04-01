@@ -11,8 +11,11 @@ import {EnergyCounter} from "./EnergyCounter.ts";
 import {TurnButton} from "./TurnButton.ts";
 import {TurnIndicator} from "./TurnIndicator.ts";
 import {MessageBanner} from "./MessageBanner.ts";
-import {Unit} from "src/duel/game/Unit.ts";
+import {Unit, UnitTargetArrow} from "src/duel/game/Unit.ts";
 import {InteractionModule} from "src/duel/game/InteractionModule.ts";
+import {EntitySelectOverlay} from "src/duel/game/EntitySelectOverlay.ts";
+import {DuelEntityType} from "src/duel/control/state.ts";
+import {HomingProjectile, HomingProjectileOptions} from "src/duel/game/HomingProjectile.ts";
 
 export const GAME_WIDTH = 720;
 export const GAME_HEIGHT = 1440;
@@ -29,7 +32,7 @@ const PLAYER_ZONE_BASELINE = 320;
 type AnyEvent = {
     [K: ({} & string) | ({} & symbol)]: any;
 };
-export class GameScene extends Scene implements EventEmitter<ContainerEvents & AnyEvent & { a: [] }> {
+export class GameScene extends Scene implements EventEmitter<ContainerEvents & AnyEvent & { }> {
     viewport: Viewport;
 
     myHand: Hand;
@@ -53,8 +56,12 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
     myTurnIndicator: TurnIndicator;
     advTurnIndicator: TurnIndicator;
     turnIndicators: TurnIndicator[]; // per player index
+    
+    targetArrow: UnitTargetArrow;
+    projectiles: HomingProjectile[] = [];
 
     cardPreviewOverlay: CardPreviewOverlay;
+    entitySelectOverlay: EntitySelectOverlay;
     messageBanner: MessageBanner;
 
     cards = new Map<DuelCardId, Card>();
@@ -174,9 +181,15 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
 
         this.unitSlotGrids = playerIndex == 0 ? [this.myUnitSlotGrid, this.advUnitSlotGrid]
             : [this.advUnitSlotGrid, this.myUnitSlotGrid];
+        
+        this.targetArrow = new UnitTargetArrow(this);
+        this.viewport.addChild(this.targetArrow);
 
         this.cardPreviewOverlay = new CardPreviewOverlay(this)
         this.viewport.addChild(this.cardPreviewOverlay)
+        
+        this.entitySelectOverlay = new EntitySelectOverlay(this)
+        this.viewport.addChild(this.entitySelectOverlay)
 
         if (debugScene) {
             this.spawnDebugEntities()
@@ -213,12 +226,39 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
         }
         const u = this.viewport.addChild(unit);
         this.units.set(id, u);
+        u.id = id;
         unit.on("destroyed", () => this.units.delete(id));
 
         // by default, put it in an out-of-screen place.
         u.x = -9999;
         u.y = -9999;
         return u;
+    }
+    
+    spawnProjectile(options: HomingProjectileOptions): HomingProjectile {
+        const proj = new HomingProjectile(this, options);
+        this.viewport.addChild(proj);
+        this.projectiles.push(proj);
+        proj.on("destroyed", () => {
+            const idx = this.projectiles.indexOf(proj);
+            if (idx >= 0) {
+                this.projectiles.splice(idx, 1);
+            }
+        })
+        return proj;
+    }
+    
+    findEntity(id: number) : Card | Unit | Core | undefined {
+        const type = id & 0b1111;
+        if (type === DuelEntityType.CARD) {
+            return this.cards.get(id)
+        } else if (type === DuelEntityType.UNIT) {
+            return this.units.get(id)
+        } else if (type === DuelEntityType.PLAYER) {
+            return this.cores[id >> 4]
+        } else {
+            return undefined
+        }
     }
 
     end() {
@@ -240,8 +280,9 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
             }, this.game, false), true))
             spawned.updatePropositions({ allowedSlots: [] } as any); // quite the hack
 
-            this.myHand.addCard(spawned)
+            this.myHand.addCard(spawned, false)
         }
+        this.myHand.repositionCards();
 
         for (let i = 0; i < 4; i++) {
             const spawned = this.spawnCard(1024 + i, new Card(this, {type: "faceDown"}, false))
@@ -257,9 +298,11 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
                     const unit = new Unit(this, {
                         image: this.game.assets.getCardTexture({packId: pack.id, cardId: card.id})!,
                         attack: card.definition.attack,
-                        health: card.definition.health
+                        health: card.definition.health,
+                        wounded: false
                     }, slot.width, slot.height);
                     unit.position = slot.worldPos;
+                    unit.updatePropositions({ allowedEntities: [] } as any);
                     this.viewport.addChild(unit);
                 }
             }
@@ -273,5 +316,9 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
     
     unregisterCardEarly(card: Card) {
         this.cards.delete(card.id);
+    }
+    
+    unregisterUnitEarly(unit: Unit) {
+        this.units.delete(unit.id);
     }
 }

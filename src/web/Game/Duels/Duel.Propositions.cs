@@ -62,9 +62,9 @@ public sealed partial class Duel
             // for now we only accept attacking enemy units of course
             
             // top 10 binary hack
-            foreach (var otherId in State.Players[~(int)player & 1].ExistingUnits)
+            foreach (var (otherId, otherUnit) in State.Units)
             {
-                if (new ActUseUnitAttack(player, id, otherId).Verify(this))
+                if (otherUnit.Owner != player && new ActUseUnitAttack(player, id, otherId).Verify(this))
                 {
                     okEntities.Add(otherId);
                 }
