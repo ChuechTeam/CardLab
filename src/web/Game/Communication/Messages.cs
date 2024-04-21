@@ -1,4 +1,5 @@
 ﻿using System.Text.Json.Serialization;
+using CardLab.Game.AssetPacking;
 using CardLab.Game.Duels;
 
 namespace CardLab.Game.Communication;
@@ -7,6 +8,11 @@ namespace CardLab.Game.Communication;
 [JsonDerivedType(typeof(LobbyPlayerUpdatedMessage), "lobbyPlayerUpdated")]
 [JsonDerivedType(typeof(SwitchedPhaseMessage), "switchedPhase")]
 [JsonDerivedType(typeof(WelcomeMessage), "welcome")]
+[JsonDerivedType(typeof(PackAvailableMessage), "packAvailable")]
+[JsonDerivedType(typeof(SessionDuelStartedMessage), "sessionDuelStarted")]
+[JsonDerivedType(typeof(SessionDuelEndedMessage), "sessionDuelEnded")]
+[JsonDerivedType(typeof(TutorialStartedMessage), "tutorialStarted")]
+[JsonDerivedType(typeof(PhaseStateUpdatedMessage), "phaseStateUpdated")]
 [JsonDerivedType(typeof(DuelWelcomeMessage), "duelWelcome")]
 [JsonDerivedType(typeof(DuelMutatedMessage), "duelMutated")]
 [JsonDerivedType(typeof(DuelRequestFailedMessage), "duelRequestFailed")]
@@ -14,6 +20,9 @@ namespace CardLab.Game.Communication;
 [JsonDerivedType(typeof(DuelEndTurnMessage), "duelEndTurn")]
 [JsonDerivedType(typeof(DuelUseCardPropositionMessage), "duelUseCardProposition")]
 [JsonDerivedType(typeof(DuelUseUnitPropositionMessage), "duelUseUnitProposition")]
+[JsonDerivedType(typeof(DuelControlTimer), "duelControlTimer")]
+[JsonDerivedType(typeof(DuelReportReady), "duelReportReady")]
+[JsonDerivedType(typeof(DuelTimerUpdated), "duelTimerUpdated")]
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 public abstract record LabMessage;
 
@@ -26,7 +35,25 @@ public enum LobbyPlayerUpdateKind
     Update
 }
 
-public record LobbyPlayerUpdatedMessage(int PlayerId, string PlayerName, LobbyPlayerUpdateKind Kind) : LabMessage;
-public record SwitchedPhaseMessage(GamePhaseName Name, PhaseStatePayload? State) : LabMessage;
+public sealed record LobbyPlayerUpdatedMessage(int PlayerId, string PlayerName, LobbyPlayerUpdateKind Kind) : LabMessage;
 
-public record WelcomeMessage(PlayerPayload? Me, GamePhaseName PhaseName, PhaseStatePayload? PhaseState) : LabMessage;
+public sealed record SwitchedPhaseMessage(GamePhaseName Name, PhaseStatePayload? State) : LabMessage;
+
+public sealed record WelcomeMessage(
+    int TempId,
+    Guid PermId,
+    PlayerPayload? Me,
+    DownloadablePackPayload? Pack,
+    DuelWelcomeMessage? Duel,
+    bool DuelRequireSessionPack,
+    GamePhaseName PhaseName,
+    PhaseStatePayload? PhaseState) : LabMessage;
+
+public sealed record PackAvailableMessage(DownloadablePackPayload Pack) : LabMessage;
+
+public sealed record SessionDuelStartedMessage(bool RequireSessionPack, DuelWelcomeMessage Welcome) : LabMessage;
+public sealed record SessionDuelEndedMessage() : LabMessage;
+
+public sealed record TutorialStartedMessage : LabMessage;
+
+public sealed record PhaseStateUpdatedMessage(PhaseStatePayload? State) : LabMessage;

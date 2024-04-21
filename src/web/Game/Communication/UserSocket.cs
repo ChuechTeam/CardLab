@@ -16,8 +16,6 @@ public sealed class UserSocket
 
     public readonly record struct Connection(Channel<LabMessage> SendChannel, int Id, CancellationToken StopToken);
     
-    // Soon, there will a receive channel for duels.
-    
     public Channel<LabMessage> SendChannel { get; set; }
         = Channel.CreateBounded<LabMessage>(ChannelOptions);
     
@@ -26,16 +24,24 @@ public sealed class UserSocket
 
     public int ConnectionId { get; set; } = 0;
     public bool Connected { get; set; } = true;
+    public bool Closed { get; set; } = false;
 
     // Used to notify that we're ending an ongoing connection, to end the websocket.
     public CancellationTokenSource CancelToken { get; set; } = new();
     
     public Action<LabMessage>? ReceiveHandler { get; set; } = null;
+    public Action? OnDisconnect { get; set; } = null;
 
-    public Connection StartConnection()
+    // Null if connection closed
+    public Connection? StartConnection()
     {
         lock (Lock)
         {
+            if (Closed)
+            {
+                return null;
+            }
+            
             // Stop the previous connection
             if (Connected)
             {
@@ -48,6 +54,20 @@ public sealed class UserSocket
             var token = CancelToken.Token;
 
             return new Connection(SendChannel, ConnectionId, token);
+        }
+    }
+
+    public void Close()
+    {
+        lock (Lock)
+        {
+            if (Closed)
+            {
+                return;
+            }
+            
+            StopConnection(ConnectionId);
+            Closed = true;
         }
     }
 
@@ -68,6 +88,8 @@ public sealed class UserSocket
             // Discard all messages and notify that the connection is closed using the channel and the token.
             SendChannel.Writer.Complete();
             SendChannel = Channel.CreateBounded<LabMessage>(ChannelOptions);
+            
+            OnDisconnect?.Invoke();
         }
     }
     

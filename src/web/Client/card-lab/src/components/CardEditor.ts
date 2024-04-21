@@ -6,8 +6,12 @@ import {DrawCanvas} from "./DrawCanvas.ts";
 import {CardStatInput} from "./CardStatInput.ts";
 import "./CardStatInput.ts"; // So the component gets registered
 import "./DrawCanvas.ts"; // So the component gets registered
-import {BalanceOverview} from "./BalanceOverview.ts"; 
+import {BalanceOverview} from "./BalanceOverview.ts";
 import "./BalanceOverview.ts";
+import {CardScriptEditor} from "src/components/CardScriptEditor.ts";
+import * as Blockly from "blockly/core";
+import type {CardLab} from "src/game.ts";
+import {gameStorageStore, gameStorageLoad, gameSessionLocalInvalidated} from "src/localSave.ts"
 
 const template = registerTemplate('card-editor-template', `
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
@@ -177,7 +181,7 @@ const template = registerTemplate('card-editor-template', `
 `)
 
 export class CardEditor extends LabElement {
-    delayedImgUpload= runAfterDelay({
+    delayedImgUpload = runAfterDelay({
         func: () => this.uploadCardImage(),
         delay: 3000
     })
@@ -185,25 +189,30 @@ export class CardEditor extends LabElement {
         func: () => this.uploadDefinitionServer(),
         delay: 400
     })
-    
+
     @fromDom("card-name") nameTxt: HTMLElement = null!
     @fromDom("card-cost") costTxt: HTMLElement = null!
     @fromDom("card-attack") attackTxt: HTMLElement = null!
     @fromDom("card-health") healthTxt: HTMLElement = null!
     @fromDom("card-desc") descTxt: HTMLInputElement = null!
-    
+
     @fromDom("name-input") nameInput: HTMLInputElement = null!
     @fromDom("cost-input") costInput: CardStatInput = null!
     @fromDom("attack-input") attackInput: CardStatInput = null!
     @fromDom("health-input") healthInput: CardStatInput = null!
-    
+
     @fromDom("card-canvas") cardCanvas: DrawCanvas = null!
-    @fromDom("script-editor") scriptEditor: HTMLElement = null!
+    @fromDom("script-editor") scriptEditor: CardScriptEditor = null!
     @fromDom("balance-overview") balanceOverview: BalanceOverview = null!
-    
+
+    localScriptSaveKey: string
+    localImgSaveKey: string
+
     constructor(public card: CardDefinition, public cardIndex: number) {
         super();
         this.importGlobalStyles = true
+        this.localScriptSaveKey = `card-script-${cardIndex}`;
+        this.localImgSaveKey = `card-img-${cardIndex}`;
     }
 
     render() {
@@ -212,7 +221,7 @@ export class CardEditor extends LabElement {
 
     connected() {
         this.updateDefinitionDom()
-        
+
         for (const input of [this.costInput, this.attackInput, this.healthInput]) {
             input.addEventListener('decrement', () => this.addToStat(input, -1))
             input.addEventListener('increment', () => this.addToStat(input, 1))
@@ -225,15 +234,21 @@ export class CardEditor extends LabElement {
         this.cardCanvas.addEventListener("stroke-ended", e => {
             this.delayedImgUpload.run()
         })
-        
+
         this.scriptEditor.addEventListener('script-updated', e => {
             const script = (e as any).detail.script
             if (script !== null) {
                 console.log("New script: ", script)
                 this.card.script = script
                 this.updateDefinition(false)
+                this.saveScriptLocally()
             }
         })
+
+        if (!gameSessionLocalInvalidated) {
+            this.loadScriptLocally();
+            this.loadImageLocally().then(() => console.log(`Card image loaded!`));
+        }
     }
 
     disconnected() {
@@ -244,13 +259,13 @@ export class CardEditor extends LabElement {
         })
     }
 
-    updateDefinition(dom=true) {
+    updateDefinition(dom = true) {
         if (dom) {
             this.updateDefinitionDom()
         }
         this.delayedDefUpdate.run()
-    }    
-    
+    }
+
     updateDefinitionDom() {
         this.nameTxt.textContent = this.card.name;
         this.descTxt.textContent = this.card.description;
@@ -269,12 +284,13 @@ export class CardEditor extends LabElement {
     async uploadDefinitionServer() {
         const result = await gameApi.cards.update(this.cardIndex, this.card)
         console.log(`Uploaded card definition ${this.cardIndex}, we got: `, result)
-        
+
         this.balanceOverview.updateData(result.balance)
         this.card.description = result.description
+        this.card.archetype = result.archetype
         this.updateDefinitionDom()
     }
-    
+
     addToStat(inputSrc: CardStatInput, delta: number) {
         if (inputSrc === this.costInput) {
             if (this.card.cost + delta > 0 && this.card.cost + delta <= 10) {
@@ -296,7 +312,7 @@ export class CardEditor extends LabElement {
     async uploadCardImage() {
         try {
             console.log(`Generating image for card ${this.cardIndex}...`)
-            
+
             const blob = await new Promise<Blob>((resolve, reject) => {
                 this.cardCanvas.canvas.toBlob(blob => {
                     if (blob === null) {
@@ -307,11 +323,68 @@ export class CardEditor extends LabElement {
                 })
             })
 
-            console.log(`Card ${this.cardIndex} image generated, size=${blob.size}. Uploading...`);
-            await gameApi.cards.uploadImage(this.cardIndex, blob);
-            console.log(`Card ${this.cardIndex} image uploaded.`)
+            console.log(`Card ${this.cardIndex} image generated, size=${blob.size}. Uploading & saving to local...`);
+            const p1 = gameApi.cards.uploadImage(this.cardIndex, blob);
+            const p2 = this.saveImageLocally(blob);
+            await Promise.all([p1, p2]);
+            console.log(`Card ${this.cardIndex} image uploaded and saved.`)
         } catch (e) {
             console.error(`Error uploading card image ${this.cardIndex}`, e)
+        }
+    }
+
+    async saveImageLocally(blob: Blob) {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+
+        return new Promise(complete => {
+            reader.onloadend = () => {
+                const b64 = reader.result as string;
+                try {
+                    gameStorageStore(this.localImgSaveKey, b64);
+                } catch (e) {
+                    console.error("Error saving image to local storage, likely not enough space.", e)
+                }
+                complete(null);
+            }
+        });
+    }
+
+    async loadImageLocally() {
+        const b64 = gameStorageLoad(this.localImgSaveKey);
+        if (b64 === null) {
+            return;
+        }
+
+        const img = new Image();
+        img.src = b64;
+        img.onload = () => {
+            this.cardCanvas.ctx.drawImage(img, 0, 0);
+        }
+    }
+
+    saveScriptLocally() {
+        const w = this.scriptEditor.workspace;
+        const saveData = Blockly.serialization.workspaces.save(w);
+
+        try {
+            gameStorageStore(this.localScriptSaveKey, JSON.stringify(saveData));
+        } catch (e) {
+            console.error("Error saving script to local storage, likely not enough space.", e)
+        }
+    }
+
+    loadScriptLocally() {
+        const saveData = gameStorageLoad(this.localScriptSaveKey);
+        if (saveData === null) {
+            return;
+        }
+
+        const data = JSON.parse(saveData);
+        try {
+            Blockly.serialization.workspaces.load(data, this.scriptEditor.workspace);
+        } catch (e) {
+            console.error("Error loading script from local storage", e)
         }
     }
 }

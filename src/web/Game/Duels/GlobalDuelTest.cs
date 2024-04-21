@@ -29,8 +29,9 @@ public class GlobalDuelTest
             MaxCoreHealth = 40,
             Packs = ImmutableArray.Create(_basePacks.GetPack(BasePack1.PackId)!),
             Player1Deck = MakeBSDeck(TestPack, 32),
-            Player2Deck = MakeBSDeck(TestPack, 32)
-        }, _logFactory.CreateLogger("CardLab.DuelTesting"));
+            Player2Deck = MakeBSDeck(TestPack, 32),
+            SecondsPerTurn = 60,
+        }, _logFactory, "p1", "p2");
     }
 
     public void Reset()

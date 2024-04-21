@@ -9,6 +9,15 @@
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+@font-face {
+    font-family: 'Chakra Petch';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("fonts/ChakraPetch-Bold-Latin.woff2") format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
     --card-color: #000000;
     --card-inner-margin: 1px 3%;
@@ -24,10 +33,10 @@ html {
 
     font-family: "Chakra Petch", sans-serif;
 }
-
+ 
 .game-card-fields {
     display: grid;
-    grid-template-rows: 16.7px 60px 1.5fr auto;
+    grid-template-rows: 16.7px 60px 43px auto;
     grid-template-columns: 1fr;
 
     padding: 1.25px;
@@ -91,7 +100,7 @@ html {
     text-align: center;
 
     margin: var(--card-inner-margin);
-    font-size: 0.8em;
+    font-size: 0.7em;
     
     white-space: pre-wrap;
 }

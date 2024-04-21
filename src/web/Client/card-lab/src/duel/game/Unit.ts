@@ -11,18 +11,27 @@
     Ticker
 } from "pixi.js";
 import {GameScene} from "src/duel/game/GameScene.ts";
-import {easeExp, easeExpRev, placeInRectCenter, PointerTracker} from "src/duel/util.ts";
+import {clerp, easeExp, easeExpRev, lerp, placeInRectCenter, PointerTracker} from "src/duel/util.ts";
 import {UnitSlot} from "src/duel/game/UnitSlotGrid.ts";
 import {LocalDuelUnitPropositions} from "src/duel/control/state.ts";
 import {InteractionData, InteractionType} from "src/duel/game/InteractionModule.ts";
+import {StateAnimation, StateAnimPlayer} from "src/duel/anim.ts";
+import {PulsatingRect} from "src/duel/game/PulsatingRect.ts";
+import {GlossyRect} from "src/duel/game/GlossyRect.ts";
+import {AttrChangeIndicator} from "src/duel/game/AttrChangeIndicator.ts";
+import {CardVisualData} from "src/duel/game/Card.ts";
+import {AttrState, attrTextColor} from "src/duel/game/AttrState.ts";
 
 const SELECT_DIST_THRESH = 25;
+const ATK_COLOR = 0xa300c8;
 
 export type UnitVisualData = {
     image: Texture,
     attack: number,
+    attackState: AttrState,
     health: number,
-    wounded: boolean
+    healthState: AttrState
+    associatedCardData: CardVisualData
 };
 
 export enum UnitState {
@@ -76,6 +85,8 @@ function makeArtworkFitTexture(art: Texture, tW: number, tH: number) {
     return new Texture({source: art.source, frame: artRect});
 }
 
+type UnitAnimProps = typeof Unit.prototype.animatableProps;
+
 export class Unit extends Container {
     root: Container;
     id: number = -1;
@@ -86,6 +97,10 @@ export class Unit extends Container {
     border: Graphics;
     attackAttr: UnitAttribute;
     healthAttr: UnitAttribute;
+    whiteFlash: Graphics;
+    redFlash: Graphics;
+    pulseRect: PulsatingRect;
+    glossyRect: GlossyRect;
 
     attackAttrParent: Container;
     healthAttrParent: Container;
@@ -99,20 +114,24 @@ export class Unit extends Container {
     pointerTracker: PointerTracker
 
     selectStart = new Point(0, 0);
+    selectPos = new Point(0, 0);
 
     attackAnim = {
         target: new Point(0, 0),
 
-        prepTime: 0.4,
+        prepTime: 0.45,
         rushTime: 0.0,
-        phase1Time: 0.0,
 
         goBackTime: 0.0,
         goBackOffset: new Point(0, 0),
 
         dir: new Point(0, 0),
         dist: 0.0,
-        phase: 1 as 1 | 2,
+        // Phase 0: preparation
+        // Phase 1: rush to target
+        // Phase 2: go back
+        phase: 0 as 0 | 1 | 2,
+        pauseAfterPhase0: false,
 
         onPhase1Done: (u: Unit) => {
         },
@@ -121,7 +140,8 @@ export class Unit extends Container {
     }
     deathAnim = {
         destroyDelay: 0.2,
-        maxTime: 0.35
+        maxTime: 0.4,
+        randRot: 0
     }
     spawnAnim = {
         entryTime: 0.35,
@@ -137,11 +157,36 @@ export class Unit extends Container {
     animPaused = false
     animName = UnitAnim.NONE
 
+    animatableProps = {
+        rootPos: new Point(0, 0),
+        rootRot: 0.0,
+        rootScale: 1.0,
+        flashVisible: false,
+        flashTint: 0xffffff,
+        flashAlpha: 1.0,
+        flash2Visible: false,
+        flash2Alpha: 1.0,
+        borderWidth: 3,
+        borderTint: 0x000000
+    }
+    animPropsDirty = false
+    superimposedAnimator = new StateAnimPlayer<UnitAnimProps>()
+    superHadAnimated = false
+
+    superHurtAnim = this.superAnimMakeHurt()
+    superPlayableAnim = this.superAnimMakePlayable()
+    superTriggerAnim = this.superAnimMakeTrigger()
+    superImpactAnim = this.superAnimMakeImpact()
+
+    queuedTriggerAnimDone = false
+
+    onTriggerAnimDone: (() => void) | null = null
+
     constructor(public scene: GameScene, visData: UnitVisualData, slotW: number, slotH: number) {
         super();
 
         this.visData = visData;
-        this.hitArea = new Rectangle(0, 0, slotW, slotH);
+        
         this.root = new Container();
         this.addChild(this.root);
 
@@ -150,15 +195,49 @@ export class Unit extends Container {
         this.artwork.height = slotH;
         this.root.addChild(this.artwork);
 
-        const borderWidth = 3;
-        const bwHalf = borderWidth / 2;
-        // i have no idea why those are the correct coordinates to make an inner border
-        // honestly, it makes no sense to me...
         this.border = new Graphics()
-            .rect(bwHalf, bwHalf, slotW - borderWidth, slotH - borderWidth)
-            .stroke({width: borderWidth, color: 0xffffff});
-        this.border.tint = 0x000000;
+            .rect(0, 0, slotW, slotH)
+            .stroke({width: this.animatableProps.borderWidth, color: 0xffffff, alignment: 1});
+        this.border.tint = this.animatableProps.borderTint;
         this.root.addChild(this.border);
+
+        this.whiteFlash = new Graphics()
+            .rect(0, 0, slotW, slotH)
+            .fill({color: 0xffffff});
+        this.whiteFlash.visible = false;
+        this.whiteFlash.blendMode = "add";
+        this.root.addChild(this.whiteFlash)
+
+        this.redFlash = new Graphics()
+            .rect(0, 0, slotW, slotH)
+            .fill({color: 0xffffff});
+        this.redFlash.visible = false;
+        this.redFlash.blendMode = "normal";
+        this.redFlash.tint = 0xff0000;
+        this.root.addChild(this.redFlash)
+
+        this.pulseRect = new PulsatingRect(scene, {
+            innerWidth: slotW,
+            innerHeight: slotH,
+            thickness: 5,
+            endThicknessScale: 0.6,
+            distance: 40,
+            pulseTime: 0.6,
+            interval: 2.5 + Math.random(),
+            color: ATK_COLOR
+        });
+        this.root.addChild(this.pulseRect)
+
+        this.glossyRect = new GlossyRect(scene, {
+            width: slotW,
+            height: slotH,
+            glossSize: Math.sqrt(slotW * slotW + slotH * slotH),
+            time: 0.6,
+            alpha: 0.8,
+            autoMask: true
+        });
+        //this.glossyRect.gloss.blendMode = "add";
+        this.root.addChild(this.glossyRect)
 
         this.attackAttrParent = new Container();
         this.healthAttrParent = new Container();
@@ -179,11 +258,11 @@ export class Unit extends Container {
 
         this.updateVisualData(visData);
 
-        const local = this.getLocalBounds();
-        this.boundsArea = new Rectangle(local.x, local.y, local.width, local.height);
-
-        this.eventMode = "static";
-        this.pivot.set(slotW / 2, slotH / 2);
+        this.superAnimRegister()
+        
+        this.root.eventMode = "static";
+        this.root.pivot.set(slotW / 2, slotH / 2);
+        this.root.hitArea = new Rectangle(0, 0, slotW, slotH);
 
         this.pointerTracker = new PointerTracker(this, scene);
         this.pointerTracker.onStart = this.onTrackedPointerStart.bind(this);
@@ -193,7 +272,8 @@ export class Unit extends Container {
         this.listen(this.scene.interaction, "stop", this.onInteractionStop);
         this.listen(this.scene.interaction, "canStartUpdate", this.onInteractionCanStartUpdate);
         this.scene.game.app.ticker.add(this.tick, this);
-        this.on("pointerdown", this.onUnitPointerDown, this);
+        this.root.on("pointerdown", this.onUnitPointerDown, this);
+        this.root.on("pointertap", this.onUnitPointerTap, this);
         this.on("destroyed", () => {
             this.occupiedSlot?.empty();
             this.becomeIdle();
@@ -229,15 +309,23 @@ export class Unit extends Container {
 
     updateVisualData(visData: Partial<UnitVisualData>) {
         if (visData.attack !== undefined) {
+            this.visData.attack = visData.attack;
             this.attackAttr.value = visData.attack;
+            if (visData.attackState !== undefined) {
+                this.visData.attackState = visData.attackState;
+                this.attackAttr.attrState = visData.attackState;
+            }
             this.attackAttr.updateText();
         }
+
         if (visData.health !== undefined) {
+            this.visData.health = visData.health;
             this.healthAttr.value = visData.health;
+            if (visData.healthState !== undefined) {
+                this.visData.healthState = visData.healthState;
+                this.healthAttr.attrState = visData.healthState;
+            }
             this.healthAttr.updateText();
-        }
-        if (visData.wounded !== undefined) {
-            this.healthAttr.text.tint = visData.wounded ? "#ea1121" : 0xffffff;
         }
     }
 
@@ -246,35 +334,49 @@ export class Unit extends Container {
      */
 
     tick(timer: Ticker) {
+        const dt = timer.deltaMS / 1000;
+
         if (this.animName !== UnitAnim.NONE && !this.animPaused) {
-            this.animTime += timer.deltaMS / 1000;
+            this.animTime += dt;
         }
 
-        if (this.animName === UnitAnim.ATTACK) {
-            this.continueAttackAnim();
-        } else if (this.animName === UnitAnim.DEATH) {
-            this.continueDeathAnim();
-        } else if (this.animName === UnitAnim.SPAWN) {
-            this.continueSpawnAnim();
+        if (this.animName !== UnitAnim.NONE) {
+            this.animPropsDirty = true; // a bit hacky too
+        }
+        
+        switch (this.animName) {
+            case UnitAnim.ATTACK:
+                this.continueAttackAnim();
+                break;
+            case UnitAnim.DEATH:
+                this.continueDeathAnim();
+                break;
+            case UnitAnim.SPAWN:
+                this.continueSpawnAnim();
+                break;
+        }
+
+        if (!this.destroyed) {
+            this.superAnimUpdate(dt)
         }
     }
 
-    startAttackAnim(target: Point) {
+    startAttackAnim(target: Point, pauseAfterPrep=false) {
         if (this.animName !== UnitAnim.NONE) {
             this.clearAnim();
         }
 
         this.animName = UnitAnim.ATTACK;
 
-        this.attackAnim.phase = 1;
+        this.attackAnim.phase = 0;
         this.attackAnim.target = target;
         const posToTarget = this.attackAnim.target.subtract(this.position);
         this.attackAnim.dir = posToTarget.normalize();
         this.attackAnim.dist = posToTarget.magnitude();
         this.attackAnim.prepTime = 0.375;
         this.attackAnim.rushTime = 0.15 + this.attackAnim.dist * 0.0001;
-        this.attackAnim.phase1Time = this.attackAnim.prepTime + this.attackAnim.rushTime;
         this.attackAnim.goBackTime = 0.5 + this.attackAnim.dist * 0.0002;
+        this.attackAnim.pauseAfterPhase0 = pauseAfterPrep;
         this.attackAnim.onPhase1Done = () => {
         };
         this.attackAnim.onPhase2Done = () => {
@@ -282,46 +384,70 @@ export class Unit extends Container {
 
         this.zIndex = 1;
     }
+    
+    startOrResumeAttackAnim(target: Point) {
+        if (this.animName === UnitAnim.ATTACK) {
+            this.animPaused = false;
+            this.attackAnim.pauseAfterPhase0 = false;
+        } else {
+            this.startAttackAnim(target, false);
+        }
+    }
 
     private continueAttackAnim() {
         const prepDist = 50;
-        const {prepTime, rushTime, phase1Time, dir, dist} = this.attackAnim;
+        const {prepTime, rushTime, dir, dist} = this.attackAnim;
 
         let t = this.animTime;
 
-        if (this.attackAnim.phase === 1) {
-            const calcMagnitude = (time: number) => {
-                if (time <= prepTime) {
-                    const progress = time / prepTime;
-                    return -prepDist * easeExp(progress, -4.0)
-                } else {
-                    const progress = (time - prepTime) / rushTime;
-                    // The radius of the (imaginary) circle hurtbox.
-                    // (multiply it by .8 so we penetrate it a bit)
-                    const offset = Math.min(this.border.height, this.border.width) * .8;
+        if (this.attackAnim.phase === 0 && t > prepTime) {
+            t = prepTime;
+            this.attackAnim.phase = 1;
+            
+            if (this.attackAnim.pauseAfterPhase0) {
+                this.animPaused = true;
+                this.animTime = t;
+            }
+        }
 
-                    const maxDist = dist - offset + prepDist;
-                    return -prepDist + maxDist * easeExp(progress, 3);
-                }
+        if (this.attackAnim.phase === 0) {
+            function calcMagnitude(time: number) {
+                const progress = time / prepTime;
+                return -prepDist * easeExp(progress, -4.0)
             }
 
-            if (t > phase1Time) {
+            const magnitude = calcMagnitude(t);
+            this.animatableProps.rootPos = dir.multiplyScalar(magnitude);
+        } else if (this.attackAnim.phase === 1) {
+            t = t - prepTime;
+            const calcMagnitude = (time: number) => {
+                const progress = time / rushTime;
+                // The radius of the (imaginary) circle hurtbox.
+                // (multiply it by .8 so we penetrate it a bit)
+                const offset = Math.min(this.border.height, this.border.width) * .8;
+
+                const maxDist = dist - offset + prepDist;
+                return -prepDist + maxDist * easeExp(progress, 3);
+            }
+
+            if (t > rushTime) {
                 // animTime is untouched.
-                t = phase1Time;
+                t = rushTime;
                 this.animPaused = true;
                 this.attackAnim.onPhase1Done(this);
             }
+
             const magnitude = calcMagnitude(t);
-            this.root.position = dir.multiplyScalar(magnitude);
+            this.animatableProps.rootPos = dir.multiplyScalar(magnitude);
         } else if (this.attackAnim.phase === 2) {
-            t = t - phase1Time;
+            t = t - prepTime - rushTime;
             if (t > this.attackAnim.goBackTime) {
                 this.clearAnim();
                 this.becomeIdle();
                 this.attackAnim.onPhase2Done(this);
             } else {
                 const progress = t / this.attackAnim.goBackTime;
-                this.root.position = this.attackAnim.goBackOffset.multiplyScalar(
+                this.animatableProps.rootPos = this.attackAnim.goBackOffset.multiplyScalar(
                     easeExpRev(progress, -4)
                 );
             }
@@ -339,18 +465,33 @@ export class Unit extends Container {
         if (this.animName !== UnitAnim.NONE) {
             this.clearAnim();
         }
-        
+
         this.animName = UnitAnim.DEATH;
         this.animTime = 0.0;
+
+        const randRotMag = 0.05 + Math.random() * 0.05;
+        const randSgn = Math.sign(Math.random() - 0.5);
+
+        this.deathAnim.randRot = randRotMag * randSgn;
     }
 
     continueDeathAnim() {
-        const {destroyDelay, maxTime} = this.deathAnim;
+        const {destroyDelay, maxTime, randRot} = this.deathAnim;
         if (this.animTime <= maxTime) {
-            this.root.position = new Point(
+            const offset = new Point(
                 (Math.random() - 0.5) * 10,
                 (Math.random() - 0.5) * 10
             );
+            if (this.animTime > destroyDelay) {
+                const dp = (this.animTime - destroyDelay) / (maxTime - destroyDelay);
+                offset.y += lerp(0, 25, dp);
+
+                this.animatableProps.rootRot = lerp(0, randRot, dp);
+                this.animPropsDirty = true;
+                this.root.alpha = lerp(1, 0, dp);
+            }
+
+            this.animatableProps.rootPos = offset;
         } else {
             this.clearAnim();
             this.destroy();
@@ -362,7 +503,8 @@ export class Unit extends Container {
             this.clearAnim();
         }
 
-        this.spawnAnim.onDone = () => {};
+        this.spawnAnim.onDone = () => {
+        };
         this.animName = UnitAnim.SPAWN;
         this.animTime = 0.0;
         this.zIndex = 1;
@@ -370,7 +512,7 @@ export class Unit extends Container {
 
     continueSpawnAnim() {
         const {entryTime, attrSlideTime, maxTime, attrSlideOffset} = this.spawnAnim;
-        
+
         if (this.animTime > maxTime) {
             this.spawnAnim.onDone(this);
             this.clearAnim();
@@ -380,7 +522,7 @@ export class Unit extends Container {
         const t = this.animTime;
 
         const entryProgress = Math.min(1, t / entryTime);
-        this.root.position.y = easeExpRev(entryProgress, -2) * this.height * 0.4;
+        this.animatableProps.rootPos.y = easeExpRev(entryProgress, -2) * this.height * 0.4;
         this.root.alpha = easeExp(entryProgress, -2);
 
         const attrSlideProgress = Math.min(1, (t - entryTime + attrSlideOffset) / attrSlideTime);
@@ -388,25 +530,29 @@ export class Unit extends Container {
         const mid = 0.5;
         const w = this.healthAttr.width;
         const h = this.healthAttr.height;
+
         function attrX(progress: number) {
             if (progress < mid) {
-                return (mid-progress)/mid*w*0.3;
+                return (mid - progress) / mid * w * 0.3;
             } else {
                 return 0;
             }
         }
+
         function attrY(progress: number) {
             if (progress < mid) {
-                return h*0.4;
+                return h * 0.4;
             } else {
-                return h*0.4*(1-(progress-mid)/mid);
+                return h * 0.4 * (1 - (progress - mid) / mid);
             }
         }
+
         const alphaMid = 0.6;
+
         function attrAlpha(progress: number) {
-            return progress > alphaMid ? 1 : progress/alphaMid;
+            return progress > alphaMid ? 1 : progress / alphaMid;
         }
-        
+
         if (attrSlideProgress < 0) {
             this.healthAttrParent.alpha = 0
             this.attackAttrParent.alpha = 0
@@ -428,7 +574,160 @@ export class Unit extends Container {
             c.rotation = 0;
             c.alpha = 1;
         }
+        this.animatableProps.rootPos = new Point(0, 0);
+        this.animatableProps.rootRot = 0;
+        this.animPropsDirty = true;
         this.zIndex = 0;
+    }
+
+    /*
+     * Superimposed animations
+     */
+
+    superAnimMakeHurt() {
+        return new StateAnimation<UnitAnimProps>({
+            maxTime: 0.14,
+            randomRot: 0.0,
+            update(time: number, state: UnitAnimProps) {
+                if (time === 0) {
+                    const r = Math.random();
+                    this.randomRot = Math.sign(0.5 - r) * (r * 0.05 + 0.125);
+                }
+
+                const flashD = 0.06
+                state.flashTint = 0xffffff;
+                state.flashVisible = true;
+                state.flashAlpha = lerp(0.5, 0, Math.min(1, (time - flashD) / (this.maxTime - flashD)));
+
+                state.flash2Visible = true;
+                state.flash2Alpha = lerp(1, 0, (time) / (this.maxTime));
+
+                const half = this.maxTime / 2;
+                state.rootRot = lerp(0, this.randomRot, (half - Math.abs(time - half)) / half);
+            }
+        });
+    }
+
+    superAnimMakePlayable() {
+        return new StateAnimation<UnitAnimProps>({
+            maxTime: 0.25,
+            applyOnEnd: true,
+            update(time: number, state: UnitAnimProps) {
+                state.borderWidth = lerp(3, 6, time / this.maxTime);
+                state.borderTint = clerp(0x000000, ATK_COLOR, time / this.maxTime);
+            }
+        })
+    }
+
+    superAnimMakeTrigger() {
+        const me = this;
+        return new StateAnimation<UnitAnimProps>({
+            maxTime: 0.35,
+            neverEnd: true,
+            update(time: number, state: UnitAnimProps, end: boolean, anim: StateAnimation<UnitAnimProps>) {
+                const rev = anim.reverse ? -1 : 1;
+
+                const p = time / this.maxTime;
+                const p2 = easeExp(p, rev * -4);
+                state.rootScale = lerp(1, 1.2, p2);
+                state.borderWidth = lerp(3, 4, p2);
+                state.borderTint = clerp(0x000000, 0xe4a900, Math.min(1, (time) / 0.08));
+
+                if (end) {
+                    me.queuedTriggerAnimDone = true;
+                }
+            }
+        })
+    }
+    
+    superAnimMakeImpact() {
+        const def = {
+            maxTime: 0.26,
+            impactDir: new Point(0, 0), // normalized
+            impactDist: 0,
+            update(time: number, state: UnitAnimProps) {
+                const p = Math.sin(time/this.maxTime * Math.PI);
+                state.rootPos = state.rootPos.add(this.impactDir.multiplyScalar(p*this.impactDist));
+            },
+            config(dir: Point, dmg: number) {
+                this.impactDir = dir;
+                this.impactDist = Math.min(150, dmg*10);
+            }
+        }
+        return new StateAnimation<UnitAnimProps, typeof def>(def)
+    }
+
+    superAnimRegister() {
+        this.superimposedAnimator.register(this.superHurtAnim)
+        this.superimposedAnimator.register(this.superPlayableAnim)
+        this.superimposedAnimator.register(this.superTriggerAnim)
+        this.superimposedAnimator.register(this.superImpactAnim)
+        
+        this.superimposedAnimator.cloner = (a: UnitAnimProps) => {
+            const copy = structuredClone(a);
+            copy.rootPos = a.rootPos.clone();
+            return copy;
+        }
+    }
+
+    superAnimUpdate(dt: number) {
+        const newState = this.superimposedAnimator.apply(dt, this.animatableProps);
+
+        if (this.superHadAnimated || newState !== this.animatableProps || this.animPropsDirty) {
+            this.whiteFlash.visible = newState.flashVisible
+            this.whiteFlash.tint = newState.flashTint
+            this.whiteFlash.alpha = newState.flashAlpha
+            this.redFlash.visible = newState.flash2Visible
+            this.redFlash.alpha = newState.flash2Alpha
+            this.root.position = newState.rootPos;
+            this.root.rotation = newState.rootRot;
+            this.root.scale.set(newState.rootScale);
+
+            if (this.superHadAnimated
+                || newState.borderWidth !== this.animatableProps.borderWidth
+                || newState.borderTint !== this.animatableProps.borderTint) {
+                this.renderBorder(newState.borderWidth, newState.borderTint)
+            }
+        }
+
+        this.superHadAnimated = newState !== this.animatableProps
+        this.animPropsDirty = false
+
+        if (this.queuedTriggerAnimDone) {
+            const f = this.onTriggerAnimDone;
+            this.onTriggerAnimDone = null;
+            this.queuedTriggerAnimDone = false
+            if (f !== null) {
+                f()
+            }
+        }
+    }
+
+    reactToHurt() {
+        this.superHurtAnim.start()
+    }
+
+    reactToHeal() {
+        this.glossyRect.show(0x5fd312)
+    }
+
+    /*
+     * Miscellaneous visual stuff
+     */
+
+    renderBorder(width: number, tint: number) {
+        this.border.clear()
+            .rect(0, 0, this.artwork.width, this.artwork.height)
+            .stroke({width, color: 0xffffff, alignment: 1});
+        this.border.tint = tint;
+    }
+
+    glossTrigger() {
+        this.glossyRect.show(0xffd527);
+    }
+
+    glossAlteration(positive: boolean) {
+        this.glossyRect.show(positive ? 0x0C3CC6 : 0xDF3636, !positive);
     }
 
     /*
@@ -441,56 +740,43 @@ export class Unit extends Container {
         }
     }
 
+    onUnitPointerTap() {
+        if (!this.playable) {
+            this.scene.cardPreviewOverlay.show(this.visData.associatedCardData, true)
+        }
+    }
+
     onTrackedPointerStart(pos: Point) {
         this.selectStart = pos;
     }
 
     onTrackedPointerMove(pos: Point) {
+        this.selectPos = pos;
         if (this.state === UnitState.IDLE) {
             if (pos.subtract(this.selectStart).magnitude() > SELECT_DIST_THRESH) {
                 this.becomeSelected(pos);
             }
         } else if (this.state === UnitState.SELECTED) {
-            this.scene.targetArrow.update(pos);
+            this.scene.targetSelect.update(pos);
         }
     }
 
     onTrackedPointerQuit() {
         this.selectStart = new Point(0, 0);
         if (this.state === UnitState.SELECTED) {
-            const targetId = this.findEntityAtPointer();
-            if (targetId !== null &&
-                this.scene.interaction.canSubmit(InteractionType.ATTACKING_UNIT, {targetId})) {
-                this.scene.interaction.submit(InteractionType.ATTACKING_UNIT, {targetId})
-                this.startPreAttacking();
+            const result = this.scene.entitySelectOverlay.findSelectedEntity(this.scene.targetSelect.targetPos);
+            if (result !== null &&
+                this.scene.interaction.canSubmit(InteractionType.ATTACKING_UNIT, {targetId: result[0]})) {
+                this.scene.interaction.submit(InteractionType.ATTACKING_UNIT, {targetId: result[0]})
+                
+                const entity = this.scene.findEntity(result[0])!;
+                this.startPreAttacking(entity.position);
             } else {
                 this.becomeIdle();
             }
+        } else if (this.state === UnitState.IDLE) {
+            this.scene.cardPreviewOverlay.show(this.visData.associatedCardData, true)
         }
-    }
-
-    /*
-     * Interaction actions
-     */
-
-    findEntityAtPointer() {
-        const pos = this.scene.targetArrow.targetPos;
-
-        for (const id of this.propositions!.allowedEntities) {
-            const entity = this.scene.findEntity(id);
-            if (entity === undefined) {
-                continue;
-            }
-
-            const bounds = entity.getLocalBounds();
-            bounds.x = entity.x - entity.pivot.x;
-            bounds.y = entity.y - entity.pivot.y;
-            if (bounds.containsPoint(pos.x, pos.y)) {
-                return id
-            }
-        }
-
-        return null
     }
 
     /*
@@ -499,8 +785,12 @@ export class Unit extends Container {
 
     onInteractionStop(type: InteractionType, data: InteractionData, id: number, cancel: boolean) {
         if (this.interactionId === id) {
+            // assuming type == ATTACKING_UNIT
             this.interactionId = -1;
-            if (this.state !== UnitState.PRE_ATTACKING) {
+            // If the interaction has been cancelled, then we must be in either the SELECTED or PRE_ATTACKING state.
+            // Either way, we need to revert. In case of the PRE_ATTACKING state, becomeIdle will cancel the
+            // animation
+            if (cancel) {
                 this.becomeIdle();
             }
         }
@@ -511,15 +801,19 @@ export class Unit extends Container {
     }
 
     onVisuallyPlayableUpdate(value: boolean) {
-        this.border.tint = value ? 0xa300c8 : 0x000000;
+        //this.border.tint = value ? ATK_COLOR : 0x000000;
+        this.superPlayableAnim.start(!value);
     }
 
     onPlayableUpdate(value: boolean) {
-        if (!value) {
+        if (value) {
+            this.pulseRect.startPeriodic()
+        } else {
             this.pointerTracker.stop(true);
             if (this.state === UnitState.SELECTED) {
                 this.becomeIdle();
             }
+            this.pulseRect.endPeriodic()
         }
     }
 
@@ -535,8 +829,10 @@ export class Unit extends Container {
             }, i => this.interactionId = i);
 
             this.state = UnitState.SELECTED;
-            this.scene.targetArrow.show(this.position, target);
+            this.scene.targetSelect.show(this.position, target);
             this.scene.entitySelectOverlay.show(this.propositions.allowedEntities)
+
+            this.pulseRect.endPeriodic();
         }
     }
 
@@ -549,8 +845,12 @@ export class Unit extends Container {
         }
 
         this.pointerTracker.stop(true);
-        this.scene.targetArrow.hide();
+        this.scene.targetSelect.hide();
         this.scene.entitySelectOverlay.hide();
+
+        if (this.playable) {
+            this.pulseRect.startPeriodic();
+        }
     }
 
     becomeIdle() {
@@ -558,7 +858,9 @@ export class Unit extends Container {
             this.exitSelected();
         }
         if (this.state === UnitState.PRE_ATTACKING) {
-            // what do?
+            if (this.animName === UnitAnim.ATTACK) {
+                this.clearAnim()
+            }
         }
 
         if (this.state !== UnitState.IDLE) {
@@ -566,18 +868,18 @@ export class Unit extends Container {
         }
     }
 
-    startPreAttacking() {
+    startPreAttacking(target: Point) {
         if (this.state === UnitState.SELECTED) {
             this.exitSelected(false);
             this.state = UnitState.PRE_ATTACKING;
-            // todo: start attack anim, but stop early in phase 1
+            this.startAttackAnim(target, true)
         }
     }
 
     beginAttacking(target: Point) {
         if (this.state === UnitState.IDLE || this.state === UnitState.PRE_ATTACKING) {
             this.state = UnitState.ATTACKING;
-            this.startAttackAnim(target);
+            this.startOrResumeAttackAnim(target);
         }
     }
 
@@ -592,7 +894,8 @@ export class Unit extends Container {
 
 const ATTR_TEXT_STYLE = new TextStyle({
     fontFamily: "ChakraPetchDigits",
-    fontSize: 48 // will be scaled down accordingly
+    fontSize: 48, // will be scaled down accordingly
+    fill: 0xffffff
 });
 
 const ATTR_MARGIN = 2;
@@ -607,7 +910,10 @@ export class UnitAttribute extends Container {
     backdrop: Sprite;
     text: BitmapText;
     value: number;
+    attrState: AttrState;
     backgroundBounds: Rectangle
+
+    changeIndicator: AttrChangeIndicator
 
     constructor(public scene: GameScene, width: number,
                 public cornerLeft: boolean,
@@ -615,13 +921,14 @@ export class UnitAttribute extends Container {
         super();
 
         this.value = -1;
+        this.attrState = AttrState.NEUTRAL;
 
         this.backdrop = this.makeBackground(width)
         this.backdrop.y += this.backdrop.height * 0.12;
         if (type === UnitAttrType.HEALTH) {
-            this.backdrop.tint = "#b60000";
+            this.backdrop.tint = 0xb60000;
         } else if (type === UnitAttrType.ATTACK) {
-            this.backdrop.tint = "#a300c8";
+            this.backdrop.tint = ATK_COLOR;
         }
         this.addChild(this.backdrop);
 
@@ -638,6 +945,11 @@ export class UnitAttribute extends Container {
             style: ATTR_TEXT_STYLE
         })
         this.addChild(this.text);
+
+        this.changeIndicator = new AttrChangeIndicator(scene, width, this.cornerLeft, this.backdrop.tint);
+        this.changeIndicator.x = this.cornerLeft ? 10 : width - 10;
+        this.changeIndicator.y = -this.boundsArea.height * 0.1;
+        this.addChild(this.changeIndicator);
     }
 
     makeBackground(width: number) {
@@ -654,76 +966,10 @@ export class UnitAttribute extends Container {
 
     updateText() {
         this.text.text = this.value.toString();
+        this.text.tint = attrTextColor(this.attrState);
         this.text.height = this.background.height - ATTR_MARGIN;
         this.text.scale.x = this.text.scale.y;
         placeInRectCenter(this.text, this.backgroundBounds)
     }
 }
 
-export class UnitTargetArrow extends Container {
-    line: Graphics;
-    target: Sprite;
-    active = false;
-    startPos = new Point();
-    targetPos = new Point();
-
-    constructor(public scene: GameScene) {
-        super();
-
-        this.line = new Graphics();
-        this.addChild(this.line);
-
-        this.target = new Sprite(scene.game.assets.base.attackTarget);
-        this.target.width = 168;
-        this.target.scale.y = this.target.scale.x;
-        this.target.anchor.set(0.5, 0.5);
-        this.target.tint = 0xa300c8;
-        this.addChild(this.target);
-
-        this.eventMode = "none";
-        this.position = new Point(0, 0);
-        this.zIndex = 10000;
-        this.visible = false;
-
-        this.scene.game.app.ticker.add(this.tick, this);
-    }
-
-    show(pos: Point, target: Point) {
-        this.active = true;
-        this.startPos = pos;
-        this.targetPos = target;
-        this.redraw();
-        this.visible = true;
-    }
-
-    update(target: Point) {
-        if (this.active) {
-            this.targetPos = target;
-            this.redraw();
-        }
-    }
-
-    hide() {
-        this.active = false;
-        this.visible = false;
-        this.line.clear();
-        this.target.rotation = 0.0;
-    }
-
-    redraw() {
-        this.line
-            .clear()
-            .moveTo(this.startPos.x, this.startPos.y)
-            .lineTo(this.targetPos.x, this.targetPos.y)
-            .stroke({width: 12, color: 0xa300c8})
-            .circle(this.startPos.x, this.startPos.y, 6)
-            .fill({color: 0xa300c8});
-        this.target.position = this.targetPos;
-    }
-
-    tick(t: Ticker) {
-        if (this.active) {
-            this.target.rotation += (t.deltaMS / 4000) * 6.28;
-        }
-    }
-}

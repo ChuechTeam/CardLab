@@ -14,10 +14,15 @@ export class DuelMessaging {
     pendingRequests = new Map<number, (func: RequestResult) => void>()
     connected: boolean = false;
 
+    simulatedLatency: number | null = null; // Amount of latency in ms to simulate, for debugging
+    simulateRequestFailure: boolean = false; // Whether to simulate request failures, for debugging
+
     onMessageReceived: (message: DuelMessage) => void = () => {
     }
-    onConnectionLost: () => void = () => {}
-    onConnectionEstablished: () => void = () => {}
+    onConnectionLost: () => void = () => {
+    }
+    onConnectionEstablished: () => void = () => {
+    }
 
     constructor(managedSocketUrl: string | URL | null) {
         if (managedSocketUrl) {
@@ -40,14 +45,19 @@ export class DuelMessaging {
             resolver({status: "cancelled"});
         }
         this.pendingRequests.clear();
-        
+
         this.onConnectionLost()
         duelLog("Connection to server lost!");
     }
 
-    receiveMessage(message: LabMessage) {
+    receiveMessage(message: LabMessage, skipLatency = false) {
         if (!this.ready) {
             this.msgQueue.push(message)
+            return
+        }
+
+        if (this.simulatedLatency !== null && !skipLatency) {
+            setTimeout(() => this.receiveMessage(message, true), this.simulatedLatency / 2);
             return
         }
 
@@ -59,6 +69,7 @@ export class DuelMessaging {
             if (callback === undefined) {
                 duelLogError(`Received response for unknown request ${message.requestId}!`);
             } else {
+                this.pendingRequests.delete(message.requestId)
                 callback(message.type === "duelRequestAck" ? {status: "ok"} : {
                     status: "error",
                     message: message.reason
@@ -67,20 +78,37 @@ export class DuelMessaging {
         }
     }
 
-    sendRequest<T extends DuelRequestMessage>(msgFunc: (id: number) => T): [T, Promise<RequestResult>] {
-        const msg = msgFunc(this.generateReqId())
-        if (this.messageSender) {
-            this.messageSender(msg)
-        } else if (this.managedSocket) {
-            this.managedSocket.send(JSON.stringify(msg))
-        } else {
-            duelLogError(`No message sender for sending message ${msg.type}!`);
-            throw new Error();
+    sendMessage(message: DuelMessage, skipLatency: boolean = false) {
+        if (this.simulatedLatency !== null && !skipLatency) {
+            setTimeout(() => this.sendMessage(message, true), this.simulatedLatency / 2);
+            return
         }
 
-        return [msg, new Promise<RequestResult>(resolve => {
-            this.pendingRequests.set(msg.header.requestId, resolve);
-        })];
+        if (this.messageSender) {
+            this.messageSender(message)
+        } else if (this.managedSocket) {
+            this.managedSocket.send(JSON.stringify(message))
+        } else {
+            duelLogError(`No message sender for sending message ${message.type}!`);
+            throw new Error();
+        }
+    }
+
+    sendRequest<T extends DuelRequestMessage>(msgFunc: (id: number) => T): [T, Promise<RequestResult>] {
+        const msg = msgFunc(this.generateReqId())
+        if (!this.simulateRequestFailure) {
+            this.sendMessage(msg)
+
+            return [msg, new Promise<RequestResult>(resolve => {
+                this.pendingRequests.set(msg.header.requestId, resolve);
+            })];
+        } else {
+            const prom = new Promise<RequestResult>(resolve => {
+                setTimeout(() => resolve({ status: "error", message: "Simulated failure" })
+                ,this.simulatedLatency ?? 100)
+            });
+            return [msg, prom];
+        }
     }
 
     generateReqId() {
@@ -95,5 +123,19 @@ export class DuelMessaging {
                 this.receiveMessage(msg)
             }
         }
+    }
+
+    dismount() {
+        this.pendingRequests.clear();
+        this.managedSocket?.close();
+        this.msgQueue.length = 0;
+        this.ready = false;
+        this.connected = false;
+        this.onMessageReceived = () => {
+        };
+        this.onConnectionEstablished = () => {
+        };
+        this.onConnectionLost = () => {
+        };
     }
 }

@@ -7,6 +7,7 @@ using CardLab.Game.BasePacks;
 using CardLab.Game.Duels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.FileProviders;
 using Vite.AspNetCore.Extensions;
 using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
@@ -36,10 +37,17 @@ builder.Services.AddRouting(r =>
     r.LowercaseQueryStrings = true;
 });
 
+builder.Services.AddOptions<GameRequestQueue>(GameRequestQueue.Options.Section);
 builder.Services.AddSingleton<ServerState>();
-builder.Services.AddSingleton<CardBalancer>();
+builder.Services.AddSingleton<CardModule>();
 builder.Services.AddSingleton<BasePackRegistry>();
 builder.Services.AddSingleton<GlobalDuelTest>();
+builder.Services.AddSingleton<GamePackCompiler>();
+builder.Services.AddSingleton<GamePackCompileQueue>();
+builder.Services.AddSingleton<WebGamePacker>();
+builder.Services.AddHostedService<GamePackCompileWorker>();
+// builder.Services.AddSingleton<GameRequestQueue>();
+// builder.Services.AddHostedService<GameRequestWorker>();
 
 builder.Services.AddViteServices(opt =>
 {
@@ -72,16 +80,26 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+var clTypes = new FileExtensionContentTypeProvider
+{
+    Mappings =
+    {
+        ["." + GamePack.PackDefFileExt] = GamePack.PackDefMime,
+        ["." + GamePack.PackResFileExt] = GamePack.PackResMime
+    }
+};
 app.UseStaticFiles(new StaticFileOptions
 {
-    ContentTypeProvider = new FileExtensionContentTypeProvider
-    {
-        Mappings =
-        {
-            ["." + GamePack.PackDefFileExt] = GamePack.PackDefMime,
-            ["." + GamePack.PackResFileExt] = GamePack.PackResMime
-        }
-    }
+    ContentTypeProvider = clTypes
+});
+
+var packsPath = Path.Combine(builder.Environment.ContentRootPath, WebGamePacker.ContentRootSubDir);
+Directory.CreateDirectory(packsPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = clTypes,
+    FileProvider = new PhysicalFileProvider(packsPath),
+    RequestPath = new PathString("/"+WebGamePacker.WebSubDir)
 });
 
 app.UseRouting();

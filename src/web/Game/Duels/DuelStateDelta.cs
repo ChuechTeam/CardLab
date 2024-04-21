@@ -25,13 +25,17 @@ namespace CardLab.Game.Duels;
 [JsonDerivedType(typeof(PlaceUnitDelta), "placeUnit")]
 [JsonDerivedType(typeof(RemoveUnitDelta), "removeUnit")]
 [JsonDerivedType(typeof(UpdateEntityAttribsDelta), "updateEntityAttribs")]
+[JsonDerivedType(typeof(ShowMessageDelta), "showMessage")]
 // Scopes
 [JsonDerivedType(typeof(UnitAttackScopeDelta), "unitAttackScope")]
 [JsonDerivedType(typeof(UnitTriggerScopeDelta), "unitTriggerScope")]
 [JsonDerivedType(typeof(CardPlayScopeDelta), "cardPlayScope")]
 [JsonDerivedType(typeof(CardDrawScopeDelta), "cardDrawScope")]
+[JsonDerivedType(typeof(EffectScopeDelta), "effectScope")]
 [JsonDerivedType(typeof(DeathScopeDelta), "deathScope")]
 [JsonDerivedType(typeof(DamageScopeDelta), "damageScope")]
+[JsonDerivedType(typeof(HealScopeDelta), "healScope")]
+[JsonDerivedType(typeof(AlterationScopeDelta), "alterationScope")]
 [JsonDerivedType(typeof(ScopePreparationEndDelta), "scopePreparationEnd")]
 [JsonDerivedType(typeof(ScopeEndDelta), "scopeEnd")]
 public abstract record DuelStateDelta
@@ -117,7 +121,9 @@ public sealed record RemoveUnitDelta : DuelStateDelta
 
         if (state.FindUnit(RemovedId) is { } unit)
         {
-            state.Units.Remove(RemovedId);
+            // We don't remove the unit yet! We'll remove all eliminated units later.
+            // state.Units.Remove(RemovedId);
+            state.EliminatedUnits.Add(RemovedId);
 
             var i = Array.IndexOf(state.Player1.Units, RemovedId);
             if (i != -1)
@@ -134,7 +140,6 @@ public sealed record RemoveUnitDelta : DuelStateDelta
             unit.Eliminated = true;
         }
 
-
         return Result.Success();
     }
 }
@@ -142,7 +147,7 @@ public sealed record RemoveUnitDelta : DuelStateDelta
 public sealed record UpdateEntityAttribsDelta : DuelStateDelta
 {
     public required int EntityId { get; init; }
-    public required Dictionary<string, object> Attribs { get; init; }
+    public required Dictionary<string, int> Attribs { get; init; }
 
     public override Result<Unit> Apply(Duel duel, DuelState state)
     {
@@ -210,23 +215,13 @@ public sealed record MoveCardsDelta : DuelStateDelta
 {
     // null index = append or none
     public ImmutableArray<Move> Changes { get; init; }
-
-    public Reason Context { get; init; } // Cosmetic
-
-    public readonly record struct Move(int CardId, DuelCardLocation NewLocation, int? Index);
-
-    public enum Reason
-    {
-        Played,
-        Discarded,
-        Drawn,
-        Other
-    }
+    
+    public readonly record struct Move(int CardId, DuelCardLocation PrevLocation, DuelCardLocation NewLocation, int? Index);
 
     public override Result<Unit> Apply(Duel duel, DuelState state)
     {
         // check
-        foreach (var (cardId, _, _) in Changes)
+        foreach (var (cardId, _, _, _) in Changes)
         {
             if (!state.Cards.ContainsKey(cardId))
             {
@@ -234,7 +229,7 @@ public sealed record MoveCardsDelta : DuelStateDelta
             }
         }
 
-        foreach (var (cardId, newLocation, index) in Changes)
+        foreach (var (cardId, _, newLocation, index) in Changes)
         {
             // 1. remove from old list (if there's one)
             var card = state.Cards[cardId];
@@ -301,6 +296,15 @@ public sealed record MoveCardsDelta : DuelStateDelta
     }
 }
 
+// Duration in MS
+public sealed record ShowMessageDelta(string Message, int Duration) : DuelStateDelta
+{
+    public override Result<Unit> Apply(Duel duel, DuelState state)
+    {
+        return Result.Success();
+    }
+}
+
 // Scopes: used to know who did what
 // Scopes are sent to the client in the following sequence (using json types):
 // - fooScope | tells that the scope began
@@ -318,7 +322,10 @@ public abstract record ScopeDelta : DuelStateDelta
     }
 }
 
-public sealed record UnitAttackScopeDelta(int UnitId, int TargetId) : ScopeDelta;
+public sealed record UnitAttackScopeDelta(int UnitId, int TargetId) : ScopeDelta
+{
+    public int Damage { get; set; } = 0;
+}
 
 public sealed record UnitTriggerScopeDelta(int UnitId) : ScopeDelta;
 
@@ -326,7 +333,20 @@ public sealed record CardPlayScopeDelta(int CardId, PlayerIndex Player) : ScopeD
 
 public sealed record CardDrawScopeDelta(PlayerIndex Player) : ScopeDelta;
 
-public sealed record DamageScopeDelta(int SourceId, int TargetId, int Amount) : ScopeDelta;
+public sealed record EffectScopeDelta(int SourceId, List<int> Targets, EffectTint Tint) : ScopeDelta
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool DisableTargeting { get; set; } = false;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int StartDelay { get; set; } = 0;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int EndDelay { get; set; } = 0;
+}
+
+public sealed record DamageScopeDelta(int? SourceId, int TargetId, int Amount) : ScopeDelta;
+public sealed record HealScopeDelta(int? SourceId, int TargetId, int Amount) : ScopeDelta;
+
+public sealed record AlterationScopeDelta(int? SourceId, int TargetId, bool Positive) : ScopeDelta;
 
 public sealed record DeathScopeDelta() : ScopeDelta;
 
@@ -344,4 +364,11 @@ public sealed record ScopeEndDelta(bool Interrupted = false) : DuelStateDelta
     {
         return Result.Success();
     }
+}
+
+public enum EffectTint
+{
+    Negative,
+    Neutral,
+    Positive
 }

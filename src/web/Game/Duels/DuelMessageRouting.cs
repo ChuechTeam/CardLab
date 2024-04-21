@@ -16,6 +16,8 @@ public sealed class DuelMessageRouting(Duel duel)
                         return;
                     case DuelEndTurnMessage { Header: var header }:
                     {
+                        PrepareAck(player, header);
+                        
                         var result = duel.EndTurn(player);
                         if (result.FailedWith(out var err))
                         {
@@ -26,35 +28,14 @@ public sealed class DuelMessageRouting(Duel duel)
                     }
                     case DuelUseCardPropositionMessage req when !CheckRequest(player, req.Header):
                         return;
-                    case DuelUseCardPropositionMessage req when duel.State.Cards.TryGetValue(req.CardId, out var card):
+                    case DuelUseCardPropositionMessage req when duel.State.Cards.ContainsKey(req.CardId):
                     {
-                        // temporary code, will be better later
-                        if (card is UnitDuelCard)
+                        PrepareAck(player, req.Header);
+
+                        var result = duel.PlayCard(player, req.CardId, req.ChosenSlots, req.ChosenEntities);
+                        if (result.FailedWith(out var err))
                         {
-                            if (req.ChosenSlots.Length == 0)
-                            {
-                                SendFailure(player, req.Header, "No slots chosen");
-                                return;
-                            }
-
-                            var slot = req.ChosenSlots[0];
-                            if (slot.Player != player)
-                            {
-                                SendFailure(player, req.Header, "Slot not owned by player");
-                                return;
-                            }
-
-                            PrepareAck(player, req.Header);
-
-                            var result = duel.PlayUnitCard(player, req.CardId, slot.Vec);
-                            if (result.FailedWith(out var err))
-                            {
-                                SendFailure(player, req.Header, err);
-                            }
-                        }
-                        else
-                        {
-                            throw new NotImplementedException("what's this??");
+                            SendFailure(player, req.Header, err);
                         }
 
                         break;
@@ -65,12 +46,26 @@ public sealed class DuelMessageRouting(Duel duel)
                     case DuelUseUnitPropositionMessage req when !CheckRequest(player, req.Header):
                         break;
                     case DuelUseUnitPropositionMessage req:
+                        PrepareAck(player, req.Header);
                         var res = duel.UseUnitAttack(player, req.UnitId, req.ChosenEntityId);
                         if (res.FailedWith(out var err2))
                         {
                             SendFailure(player, req.Header, err2);
                         }
+                        break;
+                    case DuelControlTimer ct:
+                        if (ct.Pause)
+                        {
+                            duel.UserPauseTurnTimer(player);
+                        }
+                        else
+                        {
+                            duel.UserUnpauseTurnTimer(player);
+                        }
 
+                        break;
+                    case DuelReportReady:
+                        duel.ReportPlayerReady(player);
                         break;
                 }
             }
@@ -96,7 +91,7 @@ public sealed class DuelMessageRouting(Duel duel)
     {
         duel.SendMessage(player, new DuelRequestFailedMessage(header.RequestId, msg));
     }
-    
+
     private void PrepareAck(PlayerIndex player, DuelRequestHeader header)
     {
         duel.AckPostMutation = (player, new DuelRequestAckMessage(header.RequestId));

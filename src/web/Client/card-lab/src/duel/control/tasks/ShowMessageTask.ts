@@ -1,5 +1,5 @@
-import {GameTask} from "../task.ts";
-import {GameScene} from "../../game/GameScene.ts";
+import {GameTask} from "src/duel/control/task.ts";
+import {GameScene} from "src/duel/game/GameScene.ts";
 import {Ticker} from "pixi.js";
 
 export class ShowMessageTask extends GameTask {

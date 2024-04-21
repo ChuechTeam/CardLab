@@ -1,8 +1,8 @@
-﻿import {blocklyToolbox, blocklyWorkspaceToScript} from "../cardScript.ts";
+﻿import {blocklyToolbox, blocklyWorkspaceToScript} from "src/cardScript.ts";
 import * as Blockly from 'blockly/core';
-import {LabElement} from "../dom.ts";
+import {LabElement} from "src/dom.ts";
 
-class CardScriptEditor extends LabElement {
+export class CardScriptEditor extends LabElement {
     blocklyDiv: HTMLElement = null!;
     blocklyPlaceholder: HTMLElement = null!;
     workspace: Blockly.WorkspaceSvg = null!;
@@ -45,9 +45,9 @@ class CardScriptEditor extends LabElement {
                 wheel: false
             },
             zoom: {
-                controls: true,
+                controls: false,
                 wheel: false,
-                startScale: 0.75,
+                startScale: 0.8,
                 maxScale: 1,
                 minScale: 0.5,
                 scaleSpeed: 1.1,
@@ -59,6 +59,10 @@ class CardScriptEditor extends LabElement {
         document.body.appendChild(this.blocklyDiv);
 
         this.workspace.addChangeListener(e => {
+            if (this.workspace.isDragging()) {
+                return;
+            }
+            
             if (e.type === Blockly.Events.BLOCK_CHANGE
                 || e.type === Blockly.Events.BLOCK_DELETE
                 || (e.type === Blockly.Events.BLOCK_MOVE &&

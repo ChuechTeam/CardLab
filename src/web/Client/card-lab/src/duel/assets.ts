@@ -4,11 +4,14 @@ import {Assets, BitmapFont, GraphicsContext, Texture} from "pixi.js";
 import cardUpBgUrl from "./assets/card-up-bg.png";
 import cardDownBgUrl from "./assets/card-down-bg.png";
 import attribBgUrl from "./assets/attrib-bg.png";
+import attribBgBlackUrl from "./assets/attrib-bg-black.png";
 import healthIconUrl from "./assets/health-icon.svg";
-import boardCoreUrl from "./assets/board-core.png";
-import largeAttrBg from "./assets/large-attr-bg.svg";
+import boardCoreUrl from "./assets/board-core-filled.png";
+import largeAttrBgUrl from "./assets/large-attr-bg.svg";
 import verticalGradientUrl from "./assets/vertical-gradient.png";
 import attackTargetUrl from "./assets/attack-target.png";
+import glossUrl from "./assets/gloss.png";
+import boardCoreMaskUrl from "./assets/board-core-mask.png";
 import {duelLog} from "./log.ts";
 
 type BaseBundleType = typeof baseBundle;
@@ -33,11 +36,14 @@ const baseBundle = {
     "cardUpBg": cardUpBgUrl,
     "cardDownBg": cardDownBgUrl,
     "attribBg": attribBgUrl,
+    "attribBgBlack": attribBgBlackUrl,
     "boardCore": boardCoreUrl,
+    "boardCoreMask": boardCoreMaskUrl,
     "verticalGradient": verticalGradientUrl,
     "healthIcon": svgAsset(healthIconUrl),
-    "largeAttrBg": svgAsset(largeAttrBg),
-    "attackTarget": attackTargetUrl
+    "largeAttrBg": svgAsset(largeAttrBgUrl),
+    "attackTarget": attackTargetUrl,
+    "gloss": glossUrl
 }
 
 export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
@@ -49,7 +55,9 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     const assetPromises: Promise<[string, CardAsset, ImageBitmap]>[] = []
     for (const pack of gameRegistry.packs) {
         for (const card of pack.cards.values()) {
-            assetPromises.push(createImageBitmap(card.image).then(img => [pack.id, card, img]))
+            if (card.image !== null) {
+                assetPromises.push(createImageBitmap(card.image).then(img => [pack.id, card, img]))
+            }
         }
     }
 
@@ -72,7 +80,7 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     await document.fonts.load("12px Chakra Petch")
     BitmapFont.install({
         name: "ChakraPetchDigits",
-        chars: "0123456789!.,;/",
+        chars: "0123456789!.,;/+-",
         style: {
             fontSize: 120,
             fill: 0xffffff,
@@ -91,11 +99,15 @@ export class DuelAssets {
     constructor(public base: BaseAssets, public cardImages: Record<string, Record<number, Texture>>) {
     }
 
-    getCardTexture({packId, cardId}: CardAssetRef) {
+    getCardTextureOrFallback({packId, cardId}: CardAssetRef) {
         const p = this.cardImages[packId]
         if (!p) {
-            return null
+            return this.fallbackTexture;
         }
-        return p[cardId] ?? null;
+        return p[cardId] ?? this.fallbackTexture;
+    }
+    
+    get fallbackTexture() {
+        return this.base.verticalGradient;
     }
 }

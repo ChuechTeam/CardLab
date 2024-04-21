@@ -170,8 +170,9 @@ export class InteractionModule extends EventEmitter<{
                 this.stop(true)
             }
         })
-        this.emit("submit", this.type, this.data, this.id)
         this.state = InteractionState.WAITING_RESPONSE;
+        this.emit("submit", this.type, this.data, this.id)
+        this.emit("canStartUpdate", this.canStart());
     }
 
     // Instantly start and submit an interaction.

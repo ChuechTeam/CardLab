@@ -1,21 +1,30 @@
 import {Scene} from "../scene.ts";
 import {DuelGame} from "../duel.ts";
 import {Viewport} from "pixi-viewport";
-import {Card} from "./Card.ts";
+import {Card, CardControlMode} from "./Card.ts";
 import {Hand} from "./Hand.ts";
-import {GRID_HEIGHT, UNITS_NUM_X, UNITS_NUM_Y, UnitSlot, UnitSlotGrid} from "./UnitSlotGrid.ts";
-import {ContainerEvents, EventEmitter, Graphics} from "pixi.js";
+import {GRID_HEIGHT, UNITS_NUM_X, UNITS_NUM_Y, UnitSlotGrid} from "./UnitSlotGrid.ts";
+import {Graphics, Text} from "pixi.js";
 import {CardPreviewOverlay} from "./CardPreviewOverlay.ts";
 import {Core} from "./Core.ts";
 import {EnergyCounter} from "./EnergyCounter.ts";
 import {TurnButton} from "./TurnButton.ts";
 import {TurnIndicator} from "./TurnIndicator.ts";
 import {MessageBanner} from "./MessageBanner.ts";
-import {Unit, UnitTargetArrow} from "src/duel/game/Unit.ts";
+import {Unit} from "src/duel/game/Unit.ts";
 import {InteractionModule} from "src/duel/game/InteractionModule.ts";
 import {EntitySelectOverlay} from "src/duel/game/EntitySelectOverlay.ts";
 import {DuelEntityType} from "src/duel/control/state.ts";
 import {HomingProjectile, HomingProjectileOptions} from "src/duel/game/HomingProjectile.ts";
+import {CardInfoTooltip} from "src/duel/game/CardInfoTooltip.ts";
+import {TargetSelect} from "src/duel/game/TargetSelect.ts";
+import {EffectTargetAnim} from "src/duel/game/EffectTargetAnim.ts";
+import {TurnTimer} from "src/duel/game/TurnTimer.ts";
+import {SpellUseOverlay} from "src/duel/game/SpellUseOverlay.ts";
+import {GlossyRect} from "src/duel/game/GlossyRect.ts";
+import {DuelEndOverlay} from "src/duel/game/DuelEndOverlay.ts";
+import {YourTurnOverlay} from "src/duel/game/YourTurnOverlay.ts";
+import {AttrState} from "src/duel/game/AttrState.ts";
 
 export const GAME_WIDTH = 720;
 export const GAME_HEIGHT = 1440;
@@ -29,10 +38,7 @@ const SEP_LINE_WIDTH = 620;
 // The Y position, relative to the hand, of the player info/control zone, 
 // containing the core, energy, buttons, etc.
 const PLAYER_ZONE_BASELINE = 320;
-type AnyEvent = {
-    [K: ({} & string) | ({} & symbol)]: any;
-};
-export class GameScene extends Scene implements EventEmitter<ContainerEvents & AnyEvent & { }> {
+export class GameScene extends Scene {
     viewport: Viewport;
 
     myHand: Hand;
@@ -50,22 +56,32 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
     myEnergyCounter: EnergyCounter;
     advEnergyCounter: EnergyCounter;
     energyCounters: EnergyCounter[]; // per player index
+    
+    advPlayerName: Text;
 
     turnButton: TurnButton;
+    turnTimer: TurnTimer;
 
     myTurnIndicator: TurnIndicator;
     advTurnIndicator: TurnIndicator;
     turnIndicators: TurnIndicator[]; // per player index
     
-    targetArrow: UnitTargetArrow;
+    targetSelect: TargetSelect;
     projectiles: HomingProjectile[] = [];
+    effectTargetAnim: EffectTargetAnim;
 
     cardPreviewOverlay: CardPreviewOverlay;
     entitySelectOverlay: EntitySelectOverlay;
+    spellUseOverlay: SpellUseOverlay;
+    cardInfoTooltip: CardInfoTooltip;
+    yourTurnOverlay: YourTurnOverlay;
     messageBanner: MessageBanner;
+    duelEndOverlay: DuelEndOverlay;
 
     cards = new Map<DuelCardId, Card>();
     units = new Map<DuelUnitId, Unit>();
+    
+    laidDownCard: Card | null = null;
 
     interaction = new InteractionModule(this);
 
@@ -127,11 +143,27 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
 
         this.energyCounters = playerIndex == 0 ?
             [this.myEnergyCounter, this.advEnergyCounter] : [this.advEnergyCounter, this.myEnergyCounter];
+        
+        this.advPlayerName = new Text({
+            style: {
+                fontFamily: "Chakra Petch",
+                fontSize: 22,
+                fill: 0x000000
+            }
+        })
+        this.advPlayerName.y = this.advHand.y + PLAYER_ZONE_BASELINE + 80;
+        this.advPlayerName.x = baselineMargin;
+        this.viewport.addChild(this.advPlayerName)
 
         this.turnButton = new TurnButton(this);
         this.turnButton.y = this.myHand.y - PLAYER_ZONE_BASELINE;
         this.turnButton.x = GAME_WIDTH / 2;
         this.viewport.addChild(this.turnButton);
+        
+        this.turnTimer = new TurnTimer(this)
+        this.turnTimer.x = GAME_WIDTH/2;
+        this.turnTimer.y = this.advCore.y;
+        this.viewport.addChild(this.turnTimer);
 
         this.myTurnIndicator = new TurnIndicator(this, "player", debugScene);
         this.myTurnIndicator.y = this.myHand.y - PLAYER_ZONE_BASELINE - 115;
@@ -182,14 +214,31 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
         this.unitSlotGrids = playerIndex == 0 ? [this.myUnitSlotGrid, this.advUnitSlotGrid]
             : [this.advUnitSlotGrid, this.myUnitSlotGrid];
         
-        this.targetArrow = new UnitTargetArrow(this);
-        this.viewport.addChild(this.targetArrow);
+        this.targetSelect = new TargetSelect(this);
+        this.viewport.addChild(this.targetSelect);
 
         this.cardPreviewOverlay = new CardPreviewOverlay(this)
         this.viewport.addChild(this.cardPreviewOverlay)
         
         this.entitySelectOverlay = new EntitySelectOverlay(this)
         this.viewport.addChild(this.entitySelectOverlay)
+        
+        this.spellUseOverlay = new SpellUseOverlay(this)
+        this.viewport.addChild(this.spellUseOverlay)
+        
+        this.yourTurnOverlay = new YourTurnOverlay(this)
+        this.viewport.addChild(this.yourTurnOverlay)
+        
+        this.effectTargetAnim = new EffectTargetAnim(this)
+        this.viewport.addChild(this.effectTargetAnim)
+        
+        this.duelEndOverlay = new DuelEndOverlay(this)
+        this.viewport.addChild(this.duelEndOverlay)
+        
+        this.cardInfoTooltip = new CardInfoTooltip(this)
+        this.cardInfoTooltip.y = this.myHand.y - PLAYER_ZONE_BASELINE
+        this.cardInfoTooltip.x = GAME_WIDTH / 2 + 10
+        this.viewport.addChild(this.cardInfoTooltip)
 
         if (debugScene) {
             this.spawnDebugEntities()
@@ -277,7 +326,7 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
             const spawned = this.spawnCard(i, new Card(this, Card.dataFromCardRef({
                 packId: pack.id,
                 cardId: randCard().id
-            }, this.game, false), true))
+            }, this.game, false), CardControlMode.NONE))
             spawned.updatePropositions({ allowedSlots: [] } as any); // quite the hack
 
             this.myHand.addCard(spawned, false)
@@ -285,7 +334,7 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
         this.myHand.repositionCards();
 
         for (let i = 0; i < 4; i++) {
-            const spawned = this.spawnCard(1024 + i, new Card(this, {type: "faceDown"}, false))
+            const spawned = this.spawnCard(1024 + i, new Card(this, {type: "faceDown"}, CardControlMode.NONE))
 
             this.advHand.addCard(spawned)
         }
@@ -296,10 +345,12 @@ export class GameScene extends Scene implements EventEmitter<ContainerEvents & A
                 for (const slot of slots) {
                     const card = randCard();
                     const unit = new Unit(this, {
-                        image: this.game.assets.getCardTexture({packId: pack.id, cardId: card.id})!,
+                        image: this.game.assets.getCardTextureOrFallback({packId: pack.id, cardId: card.id})!,
                         attack: card.definition.attack,
+                        attackState: AttrState.BUFFED,
                         health: card.definition.health,
-                        wounded: false
+                        healthState: AttrState.NERFED,
+                        associatedCardData: Card.dataFromCardRef({packId: pack.id, cardId: card.id}, this.game)
                     }, slot.width, slot.height);
                     unit.position = slot.worldPos;
                     unit.updatePropositions({ allowedEntities: [] } as any);

@@ -58,9 +58,33 @@ export const gameApi = {
     //         .then(res => res.json());
     // },
 
-    lobby: {
+    host: {
         async startGame() {
-            let res = await clFetch(apiUrl("api/game/lobby/start-game"), {method: 'POST'});
+            let res = await clFetch(apiUrl("api/game/host/start-game"), {method: 'POST'});
+            return res.ok;
+        },
+        async startTutorialDuels() {
+            let res = await clFetch(apiUrl("api/game/host/start-tutorial-duels"), {method: 'POST'});
+            return res.ok;
+        },
+        async endTutorial() {
+            let res = await clFetch(apiUrl("api/game/host/end-tutorial"), {method: 'POST'});
+            return res.ok;
+        },
+        async endCardCreation() {
+            let res = await clFetch(apiUrl("api/game/host/end-card-creation"), {method: 'POST'});
+            return res.ok;
+        },
+        async kickPlayer(id: number) {
+            let res = await clFetch(apiUrl(`api/game/host/kick-player?id=${id}`), {method: 'POST'});
+            return res.ok;
+        },
+        async preparationRevealOpponents() {
+            let res = await clFetch(apiUrl("api/game/host/preparation-reveal-opponents"), {method: 'POST'});
+            return res.ok;
+        },
+        async endPreparation() {
+            let res = await clFetch(apiUrl("api/game/host/end-preparation"), {method: 'POST'});
             return res.ok;
         }
     },
@@ -92,4 +116,5 @@ export interface CardUpdateResult {
     validation: CardValidationSummary,
     balance: CardBalanceSummary,
     description: string
+    archetype: string | null
 }

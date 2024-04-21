@@ -27,6 +27,9 @@ export class DrawCanvas extends LabElement {
         
         this.canvas = canvas
         this.ctx = canvas.getContext('2d')!;
+        
+        this.ctx.fillStyle = "white";
+        this.ctx.fillRect(0, 0, canvas.width, canvas.height)
 
         this.canvas.addEventListener("mousedown", e => {
             this.strokeStart()

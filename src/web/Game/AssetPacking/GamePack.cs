@@ -34,6 +34,7 @@ public readonly record struct AssetRef(Guid? PackId, uint AssetId, AssetType Typ
 // A fully qualified reference to a card.
 public readonly record struct QualCardRef(Guid PackId, uint CardId);
 
+// Size = 0 --> No resource
 public readonly record struct ResourceRef(uint Loc, uint Size)
 {
     public static readonly ResourceRef Empty = default;

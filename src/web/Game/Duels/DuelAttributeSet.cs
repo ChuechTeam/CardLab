@@ -10,182 +10,80 @@ namespace CardLab.Game.Duels;
 // For now, it doesn't support attributes altering other attributes (e.g. maxHealth)
 // We could also later update this to add support for other types of attributes (e.g. position)
 [JsonConverter(typeof(JsonConv))]
-public sealed class DuelAttributeSet
+public sealed class DuelAttributeSetV2(DuelAttributesMeta meta)
 {
-    private Dictionary<DuelAttributeDefinition, AttrEntry> _attributes = new();
-    private Dictionary<int, DuelAttributeDefinition> _modIdToAttr = new();
-    private int _modIdSeq = 0;
-    
-    public void Register(DuelAttributeDefinition def)
+    private Dictionary<DuelAttributeId, (int baseVal, int actualVal)> _attributes = new();
+    public Dictionary<DuelAttributeId, (int baseVal, int actualVal)> PrevVals { get; } = new();
+    public DuelAttributesMeta Meta { get; } = meta;
+
+    public int this[DuelAttributeId id]
     {
-        if (!_attributes.ContainsKey(def))
-        {
-            _attributes.Add(def, new(def.DefaultValue, def.DefaultValue, new()));
-        }
-        else
-        {
-            // ...do nothing?
-        }
+        get => _attributes.GetValueOrDefault(id).actualVal;
+        // should only be used for init or base-only attrs
+        set => Set(id, value);
     }
 
-    public bool Registered(DuelAttributeDefinition def)
+    public bool Registered(DuelAttributeId id)
     {
-        return _attributes.ContainsKey(def);
+        return _attributes.ContainsKey(id);
     }
 
-    public int this[DuelAttributeDefinition def]
+    // Returns (0, 0) if not present
+    public (int baseVal, int actualVal) Get(DuelAttributeId id)
     {
-        get => Get(def).actualVal;
-        // should only be used for init
-        set
-        {
-            if (!_attributes.ContainsKey(def))
-            {
-                Register(def);
-            }
-            SetBaseValue(def, value, out _);
-        }
-    }
-
-    public (int baseVal, int actualVal) Get(DuelAttributeDefinition def)
-    {
-        ref AttrEntry at = ref CollectionsMarshal.GetValueRefOrNullRef(_attributes, def);
-        if (Unsafe.IsNullRef(ref at))
-        {
-            throw new InvalidOperationException($"Attribute {def.Key} not registered");
-        }
-
-        return (at.Base, at.Actual);
+        return _attributes.GetValueOrDefault(id);
     }
     
-    public bool TryGet(DuelAttributeDefinition def, out int baseValue, out int actualValue)
+    public int GetBase(DuelAttributeId id)
     {
-        ref AttrEntry at = ref CollectionsMarshal.GetValueRefOrNullRef(_attributes, def);
-        if (Unsafe.IsNullRef(ref at))
-        {
-            actualValue = 0;
-            baseValue = 0;
-            return false;
-        }
-        
-        actualValue = at.Actual;
-        baseValue = at.Base;
-        return true;
+        return _attributes.GetValueOrDefault(id).baseVal;
     }
     
-    public void SetBaseValue(DuelAttributeDefinition def, int value, out int newActual)
+    public int GetActual(DuelAttributeId id)
     {
-        ref var attr = ref CollectionsMarshal.GetValueRefOrNullRef(_attributes, def);
-        if (Unsafe.IsNullRef(ref attr))
-        {
-            throw new InvalidOperationException($"Attribute {def.Key} not registered");
-        }
-
-        attr.Base = ClampAttr(def, value);
-        UpdateAttributeActual(def, ref attr);
-        newActual = attr.Actual;
+        return _attributes.GetValueOrDefault(id).actualVal;
     }
 
-    // Returns the id of the modifier
-    public int RegisterModifier(DuelAttributeDefinition def, int value, DuelAttributeSetModifier.Operation op,
-        out int newActual)
+    public void Set(DuelAttributeId id, int bothVal)
     {
-        ref var attr = ref CollectionsMarshal.GetValueRefOrNullRef(_attributes, def);
-        if (Unsafe.IsNullRef(ref attr))
-        {
-            throw new InvalidOperationException($"Attribute {def.Key} not registered");
-        }
-
-        var id = _modIdSeq++;
-        attr.Modifiers.Add(new(id, value, op));
-        _modIdToAttr.Add(id, def);
-        ApplyModifiers(def, ref attr);
-        newActual = attr.Actual;
-
-        return id;
+        _attributes[id] = (bothVal, bothVal);
     }
 
-    public bool RemoveModifier(int id, 
-        [NotNullWhen(true)] out DuelAttributeDefinition? changedAttr, out int newActual)
+    public void Set(DuelAttributeId id, (int baseVal, int actualVal) value)
     {
-        if (_modIdToAttr.TryGetValue(id, out changedAttr))
-        {
-            ref AttrEntry attr = ref CollectionsMarshal.GetValueRefOrNullRef(_attributes, changedAttr);
-            attr.Modifiers.RemoveAll(m => m.InternalId == id);
-            UpdateAttributeActual(changedAttr, ref attr);
-            newActual = attr.Actual;
-            return true;
-        }
-
-        newActual = -1;
-        return false;
+        _ = PrevVals.TryAdd(id, Get(id));
+        _attributes[id] = value;
     }
 
-    private void UpdateAttributeActual(DuelAttributeDefinition def, ref AttrEntry attr)
+    public void ClearPrevVals()
     {
-        if (def.SupportsModifiers)
-        {
-            ApplyModifiers(def, ref attr);
-        }
-        else
-        {
-            attr.Actual = attr.Base;
-        }
+        PrevVals.Clear();
     }
 
-    private void ApplyModifiers(DuelAttributeDefinition def, ref AttrEntry attr)
+    public DuelAttributeSetV2 Snapshot()
     {
-        var actual = attr.Base;
-        foreach (var mod in attr.Modifiers)
-        {
-            actual = mod.Op switch
-            {
-                DuelAttributeSetModifier.Operation.Add => actual + mod.Value,
-                DuelAttributeSetModifier.Operation.Multiply => actual * mod.Value,
-                DuelAttributeSetModifier.Operation.Set => mod.Value,
-                _ => throw new ArgumentOutOfRangeException()
-            };
-        }
-
-        attr.Actual = ClampAttr(def, actual);
-    }
-
-    private int ClampAttr(DuelAttributeDefinition def, int value)
-    {
-        return Math.Max(def.MinValue, Math.Min(def.MaxValue, value));
-    }
-
-    // Creates a snapshot of this attribute set, with the modifiers applied:
-    // each attribute will have the actual value as its base value, and no modifier will
-    // exist on the new set.
-    public DuelAttributeSet SnapshotFlattened()
-    {
-        var set = new DuelAttributeSet();
-        foreach (var (key, value) in _attributes)
-        {
-            set._attributes.Add(key, new AttrEntry(value.Actual, value.Actual, new(0)));
-        }
+        var set = new DuelAttributeSetV2(this.Meta);
+        set._attributes = new(this._attributes);
         return set;
     }
 
-    private record struct AttrEntry(int Base, int Actual, List<DuelAttributeSetModifier> Modifiers);
-
-    public sealed class JsonConv : JsonConverter<DuelAttributeSet>
+    public sealed class JsonConv : JsonConverter<DuelAttributeSetV2>
     {
-        public override DuelAttributeSet Read(ref Utf8JsonReader reader, Type typeToConvert,
+        public override DuelAttributeSetV2 Read(ref Utf8JsonReader reader, Type typeToConvert,
             JsonSerializerOptions options)
         {
             throw new NotImplementedException();
         }
 
-        public override void Write(Utf8JsonWriter writer, DuelAttributeSet value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, DuelAttributeSetV2 value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
-            foreach (var (key, attrEntry) in value._attributes)
+            foreach (var (key, val) in value._attributes)
             {
-                if (!key.Internal)
+                var meta = value.Meta.Get(key);
+                if (!meta.Internal)
                 {
-                    writer.WriteNumber(key.Key, attrEntry.Actual);
+                    writer.WriteNumber(meta.Key, val.actualVal);
                 }
             }
 
@@ -194,82 +92,123 @@ public sealed class DuelAttributeSet
     }
 }
 
-public readonly record struct DuelAttributeSetModifier(int InternalId, int Value, DuelAttributeSetModifier.Operation Op)
+public readonly record struct DuelAttributeId(ushort Value)
 {
-    public enum Operation
+    // meh... but it's required for switch statements
+    public static implicit operator DuelAttributeId(ushort value) => new(value);
+    public static implicit operator ushort(DuelAttributeId id) => id.Value;
+}
+
+public class DuelAttributesMeta
+{
+    private readonly Dictionary<DuelAttributeId, DuelAttrMeta> _attributes = new();
+
+    public DuelAttributesMeta(DuelAttrMeta[]? attributes)
     {
-        Add,
-        Multiply,
-        Set
+        if (attributes == null) return;
+
+        foreach (var meta in attributes)
+        {
+            _attributes[meta.Id] = meta;
+        }
+    }
+
+    public static readonly DuelAttributesMeta Base = new([
+        new DuelAttrMeta(DuelBaseAttrs.CoreHealth, "coreHealth"),
+        new DuelAttrMeta(DuelBaseAttrs.Energy, "energy"),
+        new DuelAttrMeta(DuelBaseAttrs.MaxEnergy, "maxEnergy"),
+        new DuelAttrMeta(DuelBaseAttrs.Attack, "attack"),
+        new DuelAttrMeta(DuelBaseAttrs.Health, "health"),
+        new DuelAttrMeta(DuelBaseAttrs.MaxHealth, "maxHealth"),
+        new DuelAttrMeta(DuelBaseAttrs.Cost, "cost"),
+        new DuelAttrMeta(DuelBaseAttrs.InactionTurns, "inactionTurns"),
+        new DuelAttrMeta(DuelBaseAttrs.ActionsLeft, "actionsLeft"),
+        new DuelAttrMeta(DuelBaseAttrs.ActionsPerTurn, "actionsPerTurn"),
+        new DuelAttrMeta(DuelBaseAttrs.CardsPlayedThisTurn, "cardsPlayedThisTurn", true)
+    ]);
+
+    public void Register(DuelAttrMeta meta)
+    {
+        if (!_attributes.TryAdd(meta.Id, meta))
+        {
+            throw new InvalidOperationException("Attribute already registered");
+        }
+    }
+
+    public DuelAttrMeta Get(DuelAttributeId id)
+    {
+        return _attributes[id];
     }
 }
 
-public class DuelAttributes(DuelSettings settings)
+public readonly record struct DuelAttrMeta(DuelAttributeId Id, string Key, bool Internal=false);
+
+public static class DuelBaseAttrs
 {
-    public readonly DuelAttributeDefinition CoreHealth
-        = new("coreHealth", int.MinValue, settings.MaxCoreHealth, settings.MaxCoreHealth)
-        {
-            SupportsModifiers = false
-        };
+    public const ushort CoreHealth = 0;
+    public const ushort Energy = 1;
+    public const ushort MaxEnergy = 2;
+    public const ushort Attack = 3;
+    public const ushort Health = 4;
+    public const ushort MaxHealth = 5;
+    public const ushort Cost = 6;
+    public const ushort InactionTurns = 7;
+    public const ushort ActionsLeft = 8;
+    public const ushort ActionsPerTurn = 9;
+    public const ushort CardsPlayedThisTurn = 10;
 
-    public readonly DuelAttributeDefinition Energy
-        = new("energy", 0, 0, settings.MaxEnergy)
-        {
-            SupportsModifiers = false
-        };
+    public static int GetCoreHealth(this DuelAttributeSetV2 attribs)
+    {
+        return attribs[CoreHealth];
+    }
 
-    public readonly DuelAttributeDefinition MaxEnergy
-        = new("maxEnergy", 0, 0, settings.MaxEnergy);
+    public static int GetEnergy(this DuelAttributeSetV2 attribs)
+    {
+        return attribs[Energy];
+    }
 
-    public readonly DuelAttributeDefinition Attack
-        = new("attack", 0, 0, int.MaxValue);
+    public static int GetMaxEnergy(this DuelAttributeSetV2 attribs)
+    {
+        return attribs[MaxEnergy];
+    }
 
-    public readonly DuelAttributeDefinition Health
-        = new("health", int.MinValue, 0, int.MaxValue)
-        {
-            SupportsModifiers = false
-        };
+    public static int GetAttack(this DuelAttributeSetV2 attribs)
+    {
+        return attribs[Attack];
+    }
+
+    public static int GetHealth(this DuelAttributeSetV2 attribs)
+    {
+        return attribs[Health];
+    }
+
+    public static int GetMaxHealth(this DuelAttributeSetV2 attribs)
+    {
+        return attribs[MaxHealth];
+    }
+
+    public static int GetCost(this DuelAttributeSetV2 attribs)
+    {
+        return attribs[Cost];
+    }
+
+    public static int GetInactionTurns(this DuelAttributeSetV2 attribs)
+    {
+        return attribs[InactionTurns];
+    }
+
+    public static int GetActionsLeft(this DuelAttributeSetV2 attribs)
+    {
+        return attribs[ActionsLeft];
+    }
+
+    public static int GetActionsPerTurn(this DuelAttributeSetV2 attribs)
+    {
+        return attribs[ActionsPerTurn];
+    }
     
-    public readonly DuelAttributeDefinition MaxHealth
-        = new("maxHealth", 1, 0, int.MaxValue);
-
-    public readonly DuelAttributeDefinition Cost
-        = new("cost", 0, 0, int.MaxValue);
-
-    /*
-     *     public required int InactionTurns { get; set; }
-    public required int ActionsLeft { get; set; }
-    public required int ActionsPerTurn { get; set; }
-     */
-
-    public readonly DuelAttributeDefinition InactionTurns
-        = new("inactionTurns", 0, 0, int.MaxValue);
-
-    public readonly DuelAttributeDefinition ActionsLeft
-        = new("actionsLeft", 0, 0, int.MaxValue);
-
-    public readonly DuelAttributeDefinition ActionsPerTurn
-        = new("actionsPerTurn", 0, 0, int.MaxValue);
-}
-
-public record DuelAttributeDefinition(
-    string Key,
-    int MinValue,
-    int DefaultValue,
-    int MaxValue)
-{
-    public bool SupportsModifiers { get; init; } = true;
-    public bool Internal { get; init; } = false;
-
-    public virtual bool Equals(DuelAttributeDefinition? other)
+    public static int GetCardsPlayedThisTurn(this DuelAttributeSetV2 attribs)
     {
-        if (ReferenceEquals(null, other)) return false;
-        if (ReferenceEquals(this, other)) return true;
-        return Key == other.Key;
-    }
-
-    public override int GetHashCode()
-    {
-        return Key.GetHashCode();
+        return attribs[CardsPlayedThisTurn];
     }
 }

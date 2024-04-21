@@ -12,20 +12,22 @@
     <form method="post" asp-page-handler="create">
         <button>Créer une salle</button>
     </form>
-    
+
     <form method="post" asp-page-handler="join">
         @if (!string.IsNullOrEmpty(Model.JoinErrMsg))
         {
             <p style="color: darkred;">@Model.JoinErrMsg</p>
         }
         <p>Code : </p>
-        <input type="text" 
+        <input type="text"
                oninput="let p=this.selectionStart;this.value=this.value.toUpperCase();this.setSelectionRange(p, p);"
                asp-for="JoinCode"
                required/>
         <p>Votre nom : </p>
         <input type="text" asp-for="PlayerName" required/>
-        <p><button>Rejoindre</button></p>
+        <p>
+            <button>Rejoindre</button>
+        </p>
     </form>
 }
 else

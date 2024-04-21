@@ -1,10 +1,12 @@
 ﻿import {GameTask} from "src/duel/control/task.ts";
 import {GameAvatars} from "src/duel/control/avatar.ts";
 import {ScopeTask, SequenceAwareTask} from "src/duel/control/tasks/ScopeTask.ts";
+import {Unit} from "src/duel/game/Unit.ts";
 
 export class UnitAttackScopeTask extends ScopeTask implements SequenceAwareTask {
     constructor(public unitId: number,
                 public targetId: number,
+                public damage: number,
                 public avatars: GameAvatars,
                 public preparationTasks: GameTask[] = [],
                 public childTasks: GameTask[] = []) {
@@ -22,6 +24,11 @@ export class UnitAttackScopeTask extends ScopeTask implements SequenceAwareTask 
         
         unit.beginAttacking(target.position);
         yield GameTask.callback(complete => unit.attackAnim.onPhase1Done = complete);
+        
+        if (target instanceof Unit) {
+            target.superImpactAnim.def.config(target.position.subtract(unit.position).normalize(), this.damage);
+            target.superImpactAnim.start();
+        }
 
         const backgroundTasks = [] as GameTask[];
         yield* this.runTasks(this.childTasks, backgroundTasks);
@@ -33,7 +40,7 @@ export class UnitAttackScopeTask extends ScopeTask implements SequenceAwareTask 
         yield* this.simultaneous(backgroundTasks);
         
         if (this.padEnd) {
-            yield GameTask.wait(0.15);
+            yield GameTask.wait(0.35);
         }
     }
     

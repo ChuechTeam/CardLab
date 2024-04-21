@@ -2,6 +2,7 @@
 import {GameScene} from "./GameScene.ts";
 import {placeInRectCenter} from "../util.ts";
 import {InteractionData, InteractionType} from "src/duel/game/InteractionModule.ts";
+import {PulsatingRect} from "src/duel/game/PulsatingRect.ts";
 
 const WIDTH = 250;
 const HEIGHT = 80;
@@ -19,6 +20,9 @@ export class TurnButton extends Container {
     state: TurnButtonState = TurnButtonState.AVAILABLE;
     preInteractionState = TurnButtonState.AVAILABLE;
     interactionId = -1
+    #onlyOption: boolean = false;
+    
+    pulsatingRect: PulsatingRect
 
     constructor(public scene: GameScene) {
         super();
@@ -35,6 +39,18 @@ export class TurnButton extends Container {
         });
         placeInRectCenter(this.text, new Rectangle(0, 0, WIDTH, HEIGHT));
         this.addChild(this.text);
+        
+        this.pulsatingRect = new PulsatingRect(scene, {
+            innerWidth: WIDTH,
+            innerHeight: HEIGHT,
+            color: "#3640ff",
+            interval: 3.0,
+            distance: 20,
+            thickness: 4,
+            pulseTime: 0.6,
+            endThicknessScale: 0.5
+        });
+        this.addChild(this.pulsatingRect);
         
         this.pivot.set(WIDTH / 2, HEIGHT / 2);
         
@@ -62,6 +78,8 @@ export class TurnButton extends Container {
             placeInRectCenter(this.text, new Rectangle(0, 0, WIDTH, HEIGHT));
             this.alpha = 0.4;
         }
+
+        this.updateRectPulse()
     }
     
     async trigger() {
@@ -76,6 +94,23 @@ export class TurnButton extends Container {
         if (id === this.interactionId) {
             this.state = this.preInteractionState;
             this.interactionId = -1;
+        }
+    }
+    
+    get onlyOption() {
+        return this.#onlyOption
+    }
+    
+    set onlyOption(v: boolean) {
+        this.#onlyOption = v;
+        this.updateRectPulse()
+    }
+    
+    updateRectPulse() {
+        if (this.#onlyOption && this.state === TurnButtonState.AVAILABLE) {
+            this.pulsatingRect.startPeriodic()
+        } else {
+            this.pulsatingRect.endPeriodic()
         }
     }
 }

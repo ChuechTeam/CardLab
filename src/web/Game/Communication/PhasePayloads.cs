@@ -6,11 +6,13 @@ namespace CardLab.Game.Communication;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(WaitingForPlayersStatePayload), "waitingForPlayers")]
 [JsonDerivedType(typeof(CreatingCardsStatePayload), "creatingCards")]
+[JsonDerivedType(typeof(TutorialStatePayload), "tutorial")]
+[JsonDerivedType(typeof(PreparationStatePayload), "preparation")]
 public abstract record PhaseStatePayload;
 
-public record WaitingForPlayersStatePayload(string Code, ImmutableArray<PlayerPayload> Players) : PhaseStatePayload;
+public sealed record WaitingForPlayersStatePayload(string Code, ImmutableArray<PlayerPayload> Players) : PhaseStatePayload;
 
-public record CreatingCardsStatePayload : PhaseStatePayload
+public sealed record CreatingCardsStatePayload : PhaseStatePayload
 {
     public CreatingCardsStatePayload(HostData host)
     {
@@ -29,3 +31,6 @@ public record CreatingCardsStatePayload : PhaseStatePayload
     public HostData? Host { get; } = null;
     public PlayerData? Player { get; } = null;
 }
+
+public sealed record TutorialStatePayload(bool Started) : PhaseStatePayload;
+public sealed record PreparationStatePayload(PreparationPhase.Status Status, string? YourOpponent) : PhaseStatePayload;

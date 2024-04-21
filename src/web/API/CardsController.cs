@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using CardLab.Auth;
@@ -13,21 +14,11 @@ namespace CardLab.API;
 [Route("api/game/[controller]")]
 [ApiController]
 [Authorize]
-public class CardsController(CardBalancer cardBalancer) : ControllerBase
+public class CardsController(CardModule cardModule, ILogger<CardsController> logger) : ControllerBase
 {
     // Limit the image size to 1 MB, which is larger than the maximum size of a
     // raw bitmap image of size 300x500 (600000 bytes).
     private const int MaxCardImageSize = 1024 * 1024; // 1 MB
-
-    private string GetCardImagePath(GameSession session, int playerId, int cardIndex, out string dir)
-    {
-        // TODO: should be configurable and cleaned automatically when exceeding a total size.
-        var rootDir = Path.Combine(Path.GetTempPath(), "CardLabAssets");
-        var gameDir = Path.Combine(rootDir, session.PermanentId.ToString());
-        dir = Path.Combine(gameDir, "Cards");
-        var imgFile = Path.Combine(dir, $"{playerId}_{cardIndex}.png");
-        return imgFile;
-    }
 
     [HttpPost("{index:int}/image")]
     public async Task<IActionResult> PostCardImage([FromForm(Name = "image")] IFormFile file, int index)
@@ -54,11 +45,11 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
             return BadRequest("Invalid card index.");
         }
 
-        // Is this check unnecessary? BeginCardUpload already does it...
-        if (session.PhaseName != GamePhaseName.CreatingCards)
-        {
-            return BadRequest($"Wrong phase. (Phase=${session.PhaseName})");
-        }
+        // First copy the file to memory so we don't get an upload that takes ages to
+        // write to the filesystem.
+        using var mem = new MemoryStream((int)file.Length);
+        await file.CopyToAsync(mem);
+        mem.Position = 0;
 
         var player = session.Players[playerId];
         var result = player.BeginCardUpload(index);
@@ -68,65 +59,44 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
             return Problem(msg);
         }
 
+        var tkn = result.Value;
         try
         {
-            var path = GetCardImagePath(session, playerId, index, out string dir);
-            Directory.CreateDirectory(dir);
+            var path = player.CardPackInfos[index].ImgFilePath;
+            var dirName = Path.GetDirectoryName(path);
+            if (dirName is not null)
+            {
+                Directory.CreateDirectory(dirName);
+            }
 
             await using (var stream = System.IO.File.Create(path))
             {
-                await file.CopyToAsync(stream);
+                await mem.CopyToAsync(stream, tkn);
             }
 
             return Ok();
         }
         finally
         {
-            player.EndCardUpload(index).ThrowIfFailed();
+            // Ignore failures, if it fails it means that it's already marked as not uploading
+            player.EndCardUpload(index);
         }
     }
 
-    public record CardInput(string Name, string Lore, int Cost, int Attack, int Health, CardScript? Script);
+    public record CardInput(
+        string Name,
+        string Lore,
+        string? Archetype,
+        int Cost,
+        int Attack,
+        int Health,
+        CardScript? Script);
 
     public record CardPostResult(
-        CardBalancer.ValidationSummary Validation,
-        CardBalancer.UsageSummary? Balance,
-        string Description);
-
-    [HttpPost]
-    public ActionResult<IEnumerable<CardPostResult?>> PostCards(IEnumerable<CardInput?> cards)
-    {
-        var user = ((GameUserPrincipal)User);
-        var session = user.GameSession;
-        var player = user.Player;
-        if (player is null)
-        {
-            return Problem("Can't do that as the host", statusCode: (int)HttpStatusCode.Forbidden);
-        }
-
-        var cards2 = cards.ToList();
-        if (cards2.Count != session.CardsPerPlayer)
-        {
-            return Problem("Invalid number of cards.", statusCode: (int)HttpStatusCode.Conflict);
-        }
-
-        return new ActionResult<IEnumerable<CardPostResult?>>(Eval());
-
-        IEnumerable<CardPostResult?> Eval()
-        {
-            for (var i = 0; i < cards2.Count; i++)
-            {
-                var card = cards2[i];
-                if (card is null)
-                {
-                    yield return null;
-                    continue;
-                }
-
-                yield return UpdateSingleCard(i, card, player);
-            }
-        }
-    }
+        CardModule.ValidationSummary Validation,
+        CardModule.UsageSummary? Balance,
+        string Description,
+        string? Archetype);
 
     [HttpPost("{index:int}")]
     public ActionResult<CardPostResult?> PostCard(int index, CardInput card)
@@ -144,38 +114,52 @@ public class CardsController(CardBalancer cardBalancer) : ControllerBase
             return Problem("Invalid card index.", statusCode: (int)HttpStatusCode.Conflict);
         }
 
-        return UpdateSingleCard(index, card, player);
-    }
+        if (!session.AllowedCardUpdates.def)
+        {
+            return Problem("Card updates are disabled.", statusCode: (int)HttpStatusCode.Conflict);
+        }
 
-    private CardPostResult UpdateSingleCard(int index, CardInput card, Player player)
-    {
+        var sw = Stopwatch.StartNew();
+
+        var archetype = !string.IsNullOrWhiteSpace(card.Archetype)
+            ? CardModule.CapitalizeArchetype(card.Archetype)
+            : null;
         var definition = player.Cards[index] with
         {
-            Name = card.Name,
-            Lore = card.Lore,
+            Name = CardModule.SanitizeString(card.Name),
+            Lore = CardModule.SanitizeString(card.Lore),
+            Archetype = archetype,
+            NormalizedArchetype = archetype != null ? CardModule.NormalizeArchetype(archetype) : null,
+            Author = player.Name,
             Cost = card.Cost,
             Attack = card.Attack,
             Health = card.Health,
             Script = card.Script
         };
 
-        CardBalancer.UsageSummary? balance = null;
-        var validation = cardBalancer.ValidateDefinition(definition, out var preventsBalanceCalc);
+        CardModule.UsageSummary? balance = null;
+        var validation = cardModule.ValidateDefinition(definition, out var preventsBalanceCalc);
         if (!preventsBalanceCalc)
         {
-            balance = cardBalancer.CalculateCardBalance(definition);
+            balance = cardModule.CalculateCardBalance(definition);
             definition = definition with
             {
-                Description = cardBalancer.GenerateCardDescription(definition)
+                Description = cardModule.GenerateCardDescription(definition)
             };
         }
 
         if (validation.DefinitionValid && balance is { Balanced: true })
         {
-            player.UpdateCard(definition, index);
+            if (player.UpdateCard(definition, index).FailedWith(out var err))
+            {
+                return Problem(err, statusCode: (int)HttpStatusCode.Conflict);
+            }
         }
+        
+        sw.Stop();
+        logger.LogTrace("Card definition update took {MicroSeconds}µs", sw.ElapsedTicks / (Stopwatch.Frequency / 1_000_000));
 
-        CardPostResult result = new(validation, balance, definition.Description);
+        CardPostResult result = new(validation, balance, definition.Description, definition.Archetype);
         return result;
     }
 }

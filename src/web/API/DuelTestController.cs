@@ -47,8 +47,14 @@ public class DuelTestController(
         var duel = globalDuelTest.TheDuel;
         var userSocket = playerIndex == 0 ? duel.P1Socket : duel.P2Socket;
         using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
-
-        var (send, id, connectionReplacedToken) = userSocket.StartConnection();
+        
+        var conn = userSocket.StartConnection();
+        if (conn is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+        var (send, id, connectionReplacedToken) = conn.Value;
 
         // Send the welcome message now
         // TODO: Fix (very rare) possible race condition issue when a message gets sent before the
@@ -187,22 +193,6 @@ public class DuelTestController(
     {
         globalDuelTest.Reset();
         return Ok();
-    }
-
-
-    public record PlayUnitInput(int CardId, DuelGridVec Place);
-
-    [HttpPost("p{playerIndex:int}/play-unit")]
-    public IActionResult PlayUnit(int playerIndex, [FromBody] PlayUnitInput message)
-    {
-        var duel = globalDuelTest.TheDuel;
-        if (duel.State.Status != DuelStatus.Playing)
-        {
-            return BadRequest();
-        }
-
-        var res = duel.PlayUnitCard((PlayerIndex)playerIndex, message.CardId, message.Place);
-        return res.FailedWith(out var m) ? Conflict(m) : Ok();
     }
 
     public record UseUnitAttackInput(int UnitId, int TargetId);

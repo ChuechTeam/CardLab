@@ -7,7 +7,7 @@ import {DAMAGE_PROJ_STYLE} from "src/duel/game/HomingProjectile.ts";
 export class DamageScopeTask extends ScopeTask implements SequenceAwareTask {
     coreExceedInfo: { deadUnitId: number } | null = null;
 
-    constructor(public sourceId: number,
+    constructor(public sourceId: number | null,
                 public targetId: number,
                 public damage: number,
                 public tags: string[],
@@ -20,23 +20,28 @@ export class DamageScopeTask extends ScopeTask implements SequenceAwareTask {
     * run() {
         // todo: (correct) prep tasks handling that pauses parent.
         yield* this.runTasks(this.preparationTasks);
-        
+
         // If this is excess damage coming from a dead unit to a core, spawn a projectile
         // that deals the damage to make it a bit clearer.
         if (this.coreExceedInfo !== null) {
             const deadUnit = this.avatars.findUnit(this.coreExceedInfo.deadUnitId)!;
             const target = this.avatars.findEntity(this.targetId)!;
-            
-            const proj = this.avatars.scene.spawnProjectile({ 
+
+            const proj = this.avatars.scene.spawnProjectile({
                 startPos: deadUnit.position,
                 targetPos: target.position,
                 showLine: false,
                 ...DAMAGE_PROJ_STYLE
             })
-            
+
             yield GameTask.callback(complete => proj.onHit = complete);
         }
-        
+
+        const target = this.avatars.findEntity(this.targetId);
+        if (target !== undefined && "reactToHurt" in target && typeof target.reactToHurt === "function") {
+            target.reactToHurt()
+        }
+
         yield* this.runTasks(this.childTasks);
     }
 

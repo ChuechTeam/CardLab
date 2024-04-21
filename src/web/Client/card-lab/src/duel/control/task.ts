@@ -5,7 +5,8 @@ export enum GameTaskState {
     PENDING,
     RUNNING,
     COMPLETE,
-    FAILED
+    FAILED,
+    CANCELLED
 }
 
 // A game task is an action that can complete either:
@@ -51,16 +52,16 @@ export class GameTask {
             this.name = name;
         }
     }
-    
+
     static callback(func: (complete: () => void) => void) {
         return new CallbackTask(func);
     }
-    
+
     static wait(duration: number) {
         return new WaitTask(duration);
     }
-    
-    *simultaneous(tasks: GameTask[]): Generator<GameTask> {
+
+    * simultaneous(tasks: GameTask[]): Generator<GameTask> {
         for (const task of tasks) {
             if (task.state === GameTaskState.PENDING) {
                 task.start(this)
@@ -85,7 +86,7 @@ export class GameTask {
         }
         try {
             const gen = this.run();
-            if (gen) {
+            if (gen && this.state === GameTaskState.RUNNING) {
                 this.runningGenerator = gen;
                 this.continueExecution();
             } else {
@@ -121,6 +122,10 @@ export class GameTask {
     }
 
     continueExecution() {
+        if (this.state === GameTaskState.CANCELLED) {
+            return; // Don't do anything.
+        }
+        
         if (this.runningGenerator === null) {
             throw new Error("Task is not running a generator.");
         }
@@ -139,6 +144,8 @@ export class GameTask {
                 this.continueExecution();
             } else if (task.state === GameTaskState.FAILED) {
                 this.fail(task.failure!);
+            } else if (task.state === GameTaskState.CANCELLED) {
+                // act as if nothing happened :), it should be cancelled soon.
             } else {
                 if (task.taskWaitingForMe === null) {
                     task.taskWaitingForMe = this;
@@ -155,13 +162,32 @@ export class GameTask {
 
         duelLogError(`Task ${this} failed: ${e.message}`, this.meta);
 
-        if (this.taskWaitingForMe) {
+        if (this.taskWaitingForMe && this.taskWaitingForMe.state !== GameTaskState.CANCELLED) {
             this.taskWaitingForMe.fail(new Error(`Child task ${this} failed: ${e.message}.`, {cause: e}));
         }
         this.parent?.clearTaskChild(this)
     }
 
+    cancel() {
+        if (this.state !== GameTaskState.RUNNING && this.state !== GameTaskState.PENDING) {
+            throw new Error("Cannot cancel while not running or pending.")
+        }
+        this.state = GameTaskState.CANCELLED
+
+        duelLog(`Cancelled task ${this}`, this.meta)
+
+        for (let child of [...this.children]) {
+            if (child.state === GameTaskState.RUNNING || child.state === GameTaskState.PENDING) {
+                child.cancel();
+            }
+        }
+    }
+
     complete() {
+        if (this.state === GameTaskState.CANCELLED) {
+            return; // Ignore, it might be due to some callbacks we should just get rid of.
+        }
+        
         if (this.state !== GameTaskState.RUNNING) {
             throw new Error("Cannot complete a task that is not running.");
         }
@@ -194,6 +220,7 @@ export class GameTask {
 
 export class WaitTask extends GameTask {
     remaining: number
+
     // In seconds
     constructor(public readonly duration: number) {
         super();
@@ -201,7 +228,7 @@ export class WaitTask extends GameTask {
     }
 
     tick(ticker: Ticker) {
-        this.remaining -= ticker.deltaMS/1000;
+        this.remaining -= ticker.deltaMS / 1000;
         if (this.remaining < 0) {
             this.complete();
         }

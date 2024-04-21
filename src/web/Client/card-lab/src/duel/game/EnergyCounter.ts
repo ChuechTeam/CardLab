@@ -5,8 +5,8 @@ import {placeInRectCenter} from "../util.ts";
 const WIDTH = 100*1.4;
 const HEIGHT = 90*1.4;
 
-const AMOUNT_STYLE = new TextStyle({ fontFamily: "ChakraPetchDigits", fontSize: 64 });
-const MAX_STYLE = new TextStyle({ fontFamily: "ChakraPetchDigits", fontSize: 30 });
+const AMOUNT_STYLE = new TextStyle({ fontFamily: "ChakraPetchDigits", fontSize: 64, fill: 0xffffff });
+const MAX_STYLE = new TextStyle({ fontFamily: "ChakraPetchDigits", fontSize: 30, fill: 0xffffff });
 
 export class EnergyCounter extends Container {
     bg: Graphics

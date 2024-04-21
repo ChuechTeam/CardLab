@@ -1,6 +1,5 @@
 ﻿import {LabElement, registerTemplate} from "../dom.ts";
 import {CardEditor} from "../components/CardEditor.ts";
-import {gameApi} from "../api.ts";
 import type {CardLab} from "../game.ts";
 
 const template = registerTemplate('player-card-workshop-template', `

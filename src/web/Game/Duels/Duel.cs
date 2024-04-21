@@ -1,32 +1,41 @@
 ﻿using System.Collections.Immutable;
+using System.Diagnostics;
 using CardLab.Game.AssetPacking;
 using CardLab.Game.Communication;
-using Medallion.Collections;
-using Microsoft.Build.Framework;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+using CardLab.Game.Duels.Scripting;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace CardLab.Game.Duels;
 
 public sealed partial class Duel : IDisposable
 {
+    // Maximum amount of time that the client can request for extending the turn timer 
+    public const int TimerPauseMaxMillis = 45 * 1000;
+
+    // Some margin of error that allows the client to do stuff despite the timer being at 0 (client-side only!).
+    public const int TimerClientMargin = 2300;
+
+    // A small amount of time that delays the internal timer.
+    public const int TimerServerMargin = 250;
+
     public DuelState State { get; private set; }
 
     // The number of mutations the state has gone through.
     public int StateIteration { get; private set; } = 0;
 
-    // For now, we'll skip the "choosing cards" phase and instead directly pick some cards.
-    //public DuelStatus Status { get; private set; } = DuelStatus.AwaitingConnection;
-    public PlayerIndex? Winner { get; private set; } = null;
     public DuelSettings Settings { get; }
-    public DuelAttributes Attributes { get; }
+    public Dictionary<QualCardRef, CardDefinition> CardDatabase { get; } = new();
 
     public UserSocket P1Socket { get; }
+    public string P1Name { get; }
+    private readonly bool _myP1Socket;
     public UserSocket P2Socket { get; }
+    public string P2Name { get; }
+    private readonly bool _myP2Socket;
 
     private PlayerPair<bool> _ready = new(false);
 
-    private readonly Random _rand = new();
+    public Random Rand { get; } = new();
 
     public readonly object Lock = new();
 
@@ -34,23 +43,45 @@ public sealed partial class Duel : IDisposable
     private int _cardIdSeq = 1;
     private int _modIdSeq = 1;
 
-    private readonly ILogger _logger;
+    public ILogger Logger { get; }
 
     public DuelMessageRouting Routing { get; }
     public (PlayerIndex, DuelRequestAckMessage)? AckPostMutation { get; set; } = null;
 
-    // TODO: Timer
+    private readonly Timer _turnTimer;
+    private DateTime _turnTimerEnd = DateTime.MinValue;
+    private TurnTimerState _turnTimerState = TurnTimerState.Off;
+    private TimeSpan _turnTimerPausedRemaining = TimeSpan.Zero;
+    private int _turnTimerPauseMinIteration = 0;
 
-    public Duel(DuelSettings settings, ILogger logger, UserSocket? p1Socket = null, UserSocket? p2Socket = null)
+    private readonly Timer _pauseTimeoutTimer;
+
+    public Duel(DuelSettings settings, ILoggerFactory loggerFac, string p1Name, string p2Name, UserSocket? p1Socket = null,
+        UserSocket? p2Socket = null)
     {
-        _logger = logger;
+        _turnTimer = new Timer(_ => OnTimerEnd());
+        _pauseTimeoutTimer = new Timer(_ => UnpauseTurnTimer());
+
+        Logger = loggerFac.CreateLogger(typeof(Duel));
         Settings = settings;
-        Attributes = new DuelAttributes(settings);
+        PopulateCardDatabase();
         State = MakeStartState();
 
         Routing = new DuelMessageRouting(this);
-        P1Socket = p1Socket ?? new UserSocket { ReceiveHandler = msg => Routing.ReceiveMessage(PlayerIndex.P1, msg) };
-        P2Socket = p2Socket ?? new UserSocket { ReceiveHandler = msg => Routing.ReceiveMessage(PlayerIndex.P2, msg) };
+        _myP1Socket = p1Socket is null;
+        P1Socket = p1Socket ?? new UserSocket
+        {
+            ReceiveHandler = msg => Routing.ReceiveMessage(PlayerIndex.P1, msg),
+            OnDisconnect = () => OnPlayerDisconnection(PlayerIndex.P1)
+        };
+        _myP2Socket = p2Socket is null;
+        P1Name = p1Name;
+        P2Socket = p2Socket ?? new UserSocket
+        {
+            ReceiveHandler = msg => Routing.ReceiveMessage(PlayerIndex.P2, msg),
+            OnDisconnect = () => OnPlayerDisconnection(PlayerIndex.P2)
+        };
+        P2Name = p2Name;
 
         // todo: obvious validations (deck size, etc.)
     }
@@ -61,6 +92,11 @@ public sealed partial class Duel : IDisposable
 
         lock (Lock)
         {
+            if (State.Status != DuelStatus.AwaitingConnection)
+            {
+                return;
+            }
+
             _ready[who] = true;
 
             if (_ready.P1 && _ready.P2)
@@ -79,17 +115,13 @@ public sealed partial class Duel : IDisposable
                 throw new InvalidOperationException("Can't switch to playing from this status");
             }
 
-            // yeah... no need :)
-            // if (!_ready.P1 || !_ready.P2)
-            // {
-            //     throw new InvalidOperationException("Both players must be ready");
-            // }
-
-            RunMutation(m => m.ApplyFrag(new ActGameStartRandom()));
+            RunMutation(new ActGameStartRandom());
         }
     }
 
-    public Result<Unit> PlayUnitCard(PlayerIndex player, int cardId, DuelGridVec placement)
+    public Result<Unit> PlayCard(PlayerIndex player, int cardId,
+        ImmutableArray<DuelArenaPosition> slots,
+        ImmutableArray<int> entities)
     {
         CheckPlayer(player);
 
@@ -105,13 +137,13 @@ public sealed partial class Duel : IDisposable
                 return Result.Fail<Unit>("Ce n'est pas votre tour.");
             }
 
-            var act = new ActPlayUnitCard(player, cardId, placement);
+            var act = new ActPlayCard(player, cardId, slots, entities);
             if (!act.Verify(this))
             {
                 return Result.Fail("Action impossible.");
             }
 
-            RunMutation(m => m.ApplyFrag(act));
+            RunMutation(act);
 
             return Result.Success();
         }
@@ -131,7 +163,7 @@ public sealed partial class Duel : IDisposable
                 return Result.Fail<Unit>("Ce n'est pas votre tour.");
             }
 
-            RunMutation(x => x.ApplyFrag(new ActNextTurn()));
+            RunMutation(new ActNextTurn());
 
             return Result.Success();
         }
@@ -152,39 +184,39 @@ public sealed partial class Duel : IDisposable
                 return Result.Fail<Unit>("Action impossible.");
             }
 
-            RunMutation(x => x.ApplyFrag(act));
+            RunMutation(act);
 
             return Result.Success();
+        }
+    }
+
+    public void Terminate()
+    {
+        lock (Lock)
+        {
+            if (State.Status == DuelStatus.Ended)
+            {
+                return;
+            }
+
+            RunMutation(new ActTerminateGame());
+        }
+    }
+
+    private void PopulateCardDatabase()
+    {
+        foreach (var pack in Settings.Packs)
+        {
+            foreach (var cardAsset in pack.Cards)
+            {
+                CardDatabase.Add(new QualCardRef(pack.Id, cardAsset.Id), cardAsset.Definition);
+            }
         }
     }
 
     private DuelState MakeStartState()
     {
         var cardDb = new Dictionary<int, DuelCard>();
-
-        DuelPlayerState MakePlayerState(ImmutableArray<QualCardRef> deck, PlayerIndex whoIdx)
-        {
-            var cards = deck.Select(MakeCard).ToList();
-            foreach (var card in cards)
-            {
-                // Register the card to the deck
-                card.Location = whoIdx == PlayerIndex.P1 ? DuelCardLocation.DeckP1 : DuelCardLocation.DeckP2;
-                cardDb.Add(card.Id, card);
-            }
-
-            return new DuelPlayerState
-            {
-                Id = DuelIdentifiers.Create(DuelEntityType.Player, (int)whoIdx),
-                Attribs = new DuelAttributeSet
-                {
-                    [Attributes.CoreHealth] = Settings.MaxCoreHealth,
-                    [Attributes.Energy] = 0,
-                    [Attributes.MaxEnergy] = 0
-                },
-                Deck = cards.Select(x => x.Id).ToList(),
-                Units = new int?[Settings.UnitsX * Settings.UnitsY]
-            };
-        }
 
         return new DuelState
         {
@@ -194,6 +226,33 @@ public sealed partial class Duel : IDisposable
             Cards = cardDb,
             WhoseTurn = PlayerIndex.P1 // this is completely bogus
         };
+
+        DuelPlayerState MakePlayerState(ImmutableArray<QualCardRef> deck, PlayerIndex whoIdx)
+        {
+            var deckIds = new List<int>(deck.Length);
+            foreach (var cardRef in deck)
+            {
+                // Register the card to the deck
+                var card = MakeCard(cardRef);
+                card.Location = whoIdx == PlayerIndex.P1 ? DuelCardLocation.DeckP1 : DuelCardLocation.DeckP2;
+                cardDb.Add(card.Id, card);
+                deckIds.Add(card.Id);
+            }
+
+            return new DuelPlayerState
+            {
+                Id = DuelIdentifiers.Create(DuelEntityType.Player, (int)whoIdx),
+                Attribs = new DuelAttributeSetV2(DuelAttributesMeta.Base)
+                {
+                    [DuelBaseAttrs.CoreHealth] = Settings.MaxCoreHealth,
+                    [DuelBaseAttrs.Energy] = 0,
+                    [DuelBaseAttrs.MaxEnergy] = 0,
+                    [DuelBaseAttrs.CardsPlayedThisTurn] = 0
+                },
+                Deck = deckIds,
+                Units = new int?[Settings.UnitsX * Settings.UnitsY]
+            };
+        }
     }
 
     /**
@@ -201,36 +260,165 @@ public sealed partial class Duel : IDisposable
      */
     private void SubmitMutation(DuelMutation mut)
     {
-        mut.FlushPendingAttrDeltas();
-        
-        if (mut.Deltas.Count == 0)
-        {
-            return;
-        }
-
         StateIteration++;
 
-        var deltas = mut.Deltas;
+        if (mut.PendingTurnTimer is { } ptt)
+        {
+            StartTurnTimer(ptt);
+        }
+        else if (mut.PendingTurnTimerStop)
+        {
+            StopTurnTimer();
+        }
+
         if (AckPostMutation is var (player, msg))
         {
             SendMessage(player, msg);
             AckPostMutation = null;
         }
-        
+
+        var deltas = mut.Deltas;
+        // that isn't very accurate since we do proposition gen + json serialization after, but it's not a big deal
+        var remainingTimerMillis = ClientRemainingTimerMillis;
         BroadcastMessage(p => new DuelMutatedMessage(
-            deltas.Select(d => Sanitize(d, p)).Where(DeltaRelevant).ToList(),
+            PostProcessDeltas(deltas, p),
+            State.WhoseTurn,
             GeneratePropositions(p),
-            StateIteration
+            StateIteration,
+            remainingTimerMillis
         ));
     }
 
-    private void RunMutation(Action<DuelMutation> act)
+    private void RunMutation(DuelAction act)
     {
-        var mut = new DuelMutation(this, State);
-        act(mut);
-        SubmitMutation(mut);
+        var sw = Stopwatch.StartNew();
+        var mut = new DuelMutation(this, State, act);
+        if (mut.Run())
+        {
+            SubmitMutation(mut);
+        }
+
+        sw.Stop();
+        Logger.LogTrace("Mutation {Mutation} took {Elapsed}µs", act.GetType().Name,
+            sw.ElapsedTicks / (Stopwatch.Frequency / 1_000_000));
+    }
+    /**
+     * Timer stuff
+     */
+    private void OnTimerEnd()
+    {
+        lock (Lock)
+        {
+            StopTurnTimer();
+            RunMutation(new ActNextTurn());
+        }
     }
 
+    private void StartTurnTimer(int secs)
+    {
+        var millis = secs * 1000 + TimerClientMargin + TimerServerMargin;
+
+        _turnTimerEnd = DateTime.UtcNow.AddMilliseconds(millis);
+        _turnTimer.Change(millis, Timeout.Infinite);
+        _pauseTimeoutTimer.Change(Timeout.Infinite, Timeout.Infinite);
+        _turnTimerPausedRemaining = TimeSpan.Zero;
+        _turnTimerState = TurnTimerState.On;
+        _turnTimerPauseMinIteration = 0;
+
+        Logger.LogTrace("Started turn timer for player {Player} with {Seconds} seconds", State.WhoseTurn, secs);
+    }
+
+    private void PauseTurnTimer()
+    {
+        if (_turnTimerState == TurnTimerState.On && _turnTimerEnd < DateTime.UtcNow)
+        {
+            Logger.LogWarning("Turn timer didn't trigger during pause?? {End} < {Now}", _turnTimerEnd,
+                DateTime.UtcNow);
+            OnTimerEnd();
+        }
+        else if (_turnTimerState == TurnTimerState.On)
+        {
+            _turnTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            _turnTimerPausedRemaining = _turnTimerEnd - DateTime.UtcNow;
+            _turnTimerState = TurnTimerState.Paused;
+
+            _pauseTimeoutTimer.Change(TimerPauseMaxMillis, Timeout.Infinite);
+
+            Logger.LogTrace("Paused turn timer for player {Player}", State.WhoseTurn);
+        }
+    }
+
+    public void UserPauseTurnTimer(PlayerIndex player)
+    {
+        lock (Lock)
+        {
+            if (_turnTimerState == TurnTimerState.On
+                && State.WhoseTurn == player
+                && StateIteration >= _turnTimerPauseMinIteration)
+            {
+                PauseTurnTimer();
+            }
+            else
+            {
+                Logger.LogTrace(
+                    "Pause request rejected for player {Player} (state={State}, iteration={Iteration}, minIteration={MinIt})",
+                    player, _turnTimerState, StateIteration, _turnTimerPauseMinIteration);
+            }
+        }
+    }
+
+    private void UnpauseTurnTimer()
+    {
+        if (_turnTimerState == TurnTimerState.Paused)
+        {
+            var remain = _turnTimerPausedRemaining;
+
+            _turnTimerEnd = DateTime.UtcNow.Add(remain);
+            _turnTimer.Change(remain, Timeout.InfiniteTimeSpan);
+            _turnTimerPausedRemaining = TimeSpan.Zero;
+            _turnTimerState = TurnTimerState.On;
+            _turnTimerPauseMinIteration = StateIteration + 1;
+
+            _pauseTimeoutTimer.Change(Timeout.Infinite, Timeout.Infinite);
+
+            BroadcastMessage(new DuelTimerUpdated(
+                Math.Max(0, (int)remain.TotalMilliseconds - TimerClientMargin)));
+
+            Logger.LogTrace("Turn timer resumed for player {Player}", State.WhoseTurn);
+        }
+    }
+
+    public void UserUnpauseTurnTimer(PlayerIndex player)
+    {
+        lock (Lock)
+        {
+            if (_turnTimerState == TurnTimerState.Paused && State.WhoseTurn == player)
+            {
+                UnpauseTurnTimer();
+            }
+            else
+            {
+                Logger.LogTrace("Unpause request rejected for player {Player} (state={State})", player,
+                    _turnTimerState);
+            }
+        }
+    }
+
+    private void StopTurnTimer()
+    {
+        _turnTimer.Change(Timeout.Infinite, Timeout.Infinite);
+        _pauseTimeoutTimer.Change(Timeout.Infinite, Timeout.Infinite);
+        _turnTimerState = TurnTimerState.Off;
+    }
+
+    // Put some margin of error so the client doesn't get surprised when the timer runs out at
+    // what it believed was 0:01.
+    private int? ClientRemainingTimerMillis => _turnTimerState switch
+    {
+        TurnTimerState.On => Math.Max(0, (int)(_turnTimerEnd - DateTime.UtcNow).TotalMilliseconds - TimerClientMargin),
+        TurnTimerState.Paused => Math.Max(0, (int)_turnTimerPausedRemaining.TotalMilliseconds - TimerClientMargin),
+        _ => null
+    };
 
     /**
      * Messaging
@@ -261,67 +449,114 @@ public sealed partial class Duel : IDisposable
                 Sanitize(State, playerIndex),
                 GeneratePropositions(playerIndex),
                 StateIteration,
-                playerIndex
+                playerIndex,
+                P1Name,
+                P2Name,
+                ClientRemainingTimerMillis
             );
+        }
+    }
+
+    // to be called
+    public void OnPlayerDisconnection(PlayerIndex player)
+    {
+        lock (Lock)
+        {
+            if (State.WhoseTurn == player && State.Status == DuelStatus.Playing)
+            {
+                UnpauseTurnTimer();
+            }
         }
     }
 
     /**
      * Utilities
      */
-    private DuelCard MakeCard(QualCardRef c)
+    
+    // The "virtual card" thing is a hack to create cards for DeployUnit filters.
+    public DuelCard MakeCard(QualCardRef c, bool virtualCard = false)
     {
         var def = ResolveCardRef(c);
+
+        DuelAttributeSetV2 attributes = new DuelAttributeSetV2(DuelAttributesMeta.Base)
+        {
+            [DuelBaseAttrs.Cost] = def.Cost
+        };
+
         if (def.Type == CardType.Unit)
         {
-            return new UnitDuelCard
-            {
-                Id = DuelIdentifiers.Create(DuelEntityType.Card, _cardIdSeq++),
-                BaseDefRef = c,
-                Attribs = new DuelAttributeSet
-                {
-                    [Attributes.Attack] = def.Attack,
-                    [Attributes.Health] = def.Health,
-                    [Attributes.Cost] = def.Cost
-                },
-                Traits = def.Traits.ToList()
-            };
+            attributes[DuelBaseAttrs.Attack] = def.Attack;
+            attributes[DuelBaseAttrs.Health] = def.Health;
         }
-        else
+
+        var card = new DuelCard
         {
-            throw new NotSupportedException("oh no");
-        }
+            Id = virtualCard ? -1 : DuelIdentifiers.Create(DuelEntityType.Card, _cardIdSeq++),
+            BaseDefRef = c,
+            Requirement = def.Requirement,
+            Attribs = attributes,
+            Type = def.Type,
+            NormalizedArchetype = def.NormalizedArchetype
+        };
+        card.Script = CreateScript(card, card);
+        return card;
     }
 
-    private DuelUnit MakeUnit(UnitDuelCard card, PlayerIndex owner)
+    private DuelUnit MakeUnit(DuelCard card, PlayerIndex owner)
     {
         // Once the unit is summonned, the modifiers are "solidifed" and part of the base definition
         // of the unit.
-        return new DuelUnit
+        var unit = new DuelUnit
         {
             Id = DuelIdentifiers.Create(DuelEntityType.Unit, _unitIdSeq++),
             OriginRef = card.BaseDefRef,
-            OriginStats = card.Attribs.SnapshotFlattened(), // todo: clone
-            OriginTraits = [..card.Traits],
+            OriginStats = card.Attribs.Snapshot(),
             Owner = owner,
             Position = new(PlayerIndex.P1, new DuelGridVec(0, 0)),
-            Attribs = new DuelAttributeSet
+            Attribs = new DuelAttributeSetV2(DuelAttributesMeta.Base)
             {
-                [Attributes.Attack] = card.Attribs[Attributes.Attack],
-                [Attributes.Health] = card.Attribs[Attributes.Health],
-                [Attributes.MaxHealth] = card.Attribs[Attributes.Health],
-                [Attributes.ActionsLeft] = 0,
-                [Attributes.InactionTurns] = 1,
-                [Attributes.ActionsPerTurn] = 1
-            }
+                [DuelBaseAttrs.Attack] = card.Attribs[DuelBaseAttrs.Attack],
+                [DuelBaseAttrs.Health] = card.Attribs[DuelBaseAttrs.Health],
+                [DuelBaseAttrs.MaxHealth] = card.Attribs[DuelBaseAttrs.Health],
+                [DuelBaseAttrs.ActionsLeft] = 0,
+                [DuelBaseAttrs.InactionTurns] = 1,
+                [DuelBaseAttrs.ActionsPerTurn] = 1
+            },
+            NormalizedArchetype = card.NormalizedArchetype
         };
+        // Yes, the script is the same for the unit and the card.
+        unit.Script = CreateScript(unit, card);
+        return unit;
         // todo: apply traits that modify actionsleft/inactionturns
+    }
+
+    private DuelScript? CreateScript(IEntity entity, DuelCard card)
+    {
+        var script = ResolveCardRef(card.BaseDefRef).Script;
+
+        if (script is null)
+        {
+            return null;
+        }
+
+        if (script.SpecialId is { } spId)
+        {
+            return SpecialDuelScripts.Scripts.Count > spId ? SpecialDuelScripts.Scripts[spId](this, entity) : null;
+        }
+        else if (entity is DuelUnit u)
+        {
+            return new UserDuelScript(this, u, script);
+        }
+        else
+        {
+            return null;
+        }
     }
 
     private CardDefinition ResolveCardRef(QualCardRef c)
     {
         // Should obviously be optimized later on.
-        return Settings.Packs.First(x => x.Id == c.PackId).CardMap[c.CardId].Definition;
+        return CardDatabase[c];
     }
 
     private static DuelState Sanitize(DuelState state, PlayerIndex player)
@@ -336,7 +571,9 @@ public sealed partial class Duel : IDisposable
 
         foreach (var card in state.Cards.Values)
         {
-            if (card.Revealed[player])
+            // after the mutation finishes, we don't really care about discarded cards,
+            // they never come back from their grave, so, to save up bandwidth, let's not send them.
+            if (card.Revealed[player] && card.Location != DuelCardLocation.Discarded)
             {
                 shown.Add(card.Id, card);
             }
@@ -352,7 +589,7 @@ public sealed partial class Duel : IDisposable
         return state;
     }
 
-    private static T Sanitize<T>(T delta, PlayerIndex player) where T : DuelStateDelta
+    private static DuelStateDelta Sanitize(DuelStateDelta delta, PlayerIndex player)
     {
         DuelStateDelta d2 = delta switch
         {
@@ -370,7 +607,7 @@ public sealed partial class Duel : IDisposable
             _ => delta
         };
 
-        return (T)d2;
+        return d2;
     }
 
     private static bool DeltaRelevant(DuelStateDelta delta)
@@ -383,6 +620,21 @@ public sealed partial class Duel : IDisposable
         return true;
     }
 
+    private List<DuelStateDelta> PostProcessDeltas(List<DuelStateDelta> deltas, PlayerIndex player)
+    {
+        var processed = new List<DuelStateDelta>(deltas.Count);
+        foreach (var delta in deltas)
+        {
+            var newDelta = Sanitize(delta, player);
+            if (DeltaRelevant(newDelta))
+            {
+                processed.Add(newDelta);
+            }
+        }
+
+        return processed;
+    }
+
     private static void CheckPlayer(PlayerIndex player)
     {
         if (player != PlayerIndex.P1 && player != PlayerIndex.P2)
@@ -392,12 +644,17 @@ public sealed partial class Duel : IDisposable
     }
 
 
-    // dirty, just for testing
     public void Dispose()
     {
-        State.Status = DuelStatus.Ended;
-        P1Socket.StopConnection(P1Socket.ConnectionId);
-        P2Socket.StopConnection(P2Socket.ConnectionId);
+        lock (Lock)
+        {
+            State.Status = DuelStatus.Ended;
+            if (_myP1Socket)
+                P1Socket.StopConnection(P1Socket.ConnectionId);
+            if (_myP2Socket)
+                P2Socket.StopConnection(P2Socket.ConnectionId);
+            _turnTimer.Dispose();
+        }
     }
 }
 
@@ -407,6 +664,8 @@ public sealed record DuelSettings
     public int MaxEnergy { get; init; } = 999;
     public int SecondsPerTurn { get; init; } = 40;
     public int StartCards { get; init; } = 5;
+    
+    public int MaxCardsInHand { get; init; } = 9;
 
     public int UnitsX { get; init; } = 4;
     public int UnitsY { get; init; } = 2;
@@ -416,9 +675,16 @@ public sealed record DuelSettings
     public required ImmutableArray<QualCardRef> Player2Deck { get; init; }
 }
 
-public enum DuelStatus
+public enum DuelStatus : byte
 {
     AwaitingConnection,
     Playing,
     Ended
+}
+
+public enum TurnTimerState : byte
+{
+    Off,
+    Paused,
+    On
 }

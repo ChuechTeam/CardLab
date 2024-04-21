@@ -1,12 +1,13 @@
 ﻿using System.Collections.Immutable;
+using System.Diagnostics;
 using CardLab.Game.Communication;
 
 namespace CardLab.Game;
 
-public sealed class Player(GameSession session, int cardCount)
+public sealed class Player(GameSession session, int id, int cardCount)
 {
     // The id of the player in the current session.
-    public required int Id { get; init; }
+    public int Id { get; } = id;
 
     public required string Name { get; init; }
 
@@ -16,28 +17,54 @@ public sealed class Player(GameSession session, int cardCount)
 
     // -- Mutable state --
 
-    public ImmutableArray<CardDefinition> Cards { get; private set; } =
-        Enumerable.Range(0, cardCount).Select(_ => new CardDefinition()).ToImmutableArray();
+    public ImmutableArray<CardDefinition> Cards { get; set; } =
+        [..Enumerable.Range(0, cardCount).Select(_ => new CardDefinition())];
+
+    public ImmutableArray<SessionCardPackingInfo> CardPackInfos { get; private set; } =
+    [
+        ..Enumerable.Range(0, cardCount).Select(i =>
+        {
+            var path = session.CardImageAssetPath(id, i);
+            var cid = GameSession.PackCardId(id, i);
+            return new SessionCardPackingInfo(path, cid);
+        })
+    ];
+
+    public ImmutableArray<bool> ReadyCards { get; private set; } =
+        [..Enumerable.Range(0, cardCount).Select(_ => false)];
 
     public ImmutableArray<bool> PendingCardUploads { get; private set; } =
-        Enumerable.Range(0, cardCount).Select(_ => false).ToImmutableArray();
+        [..Enumerable.Range(0, cardCount).Select(_ => false)];
 
+    public bool Kicked { get; set; } = false;
+    
     // -- Functions --
 
-    public void UpdateCard(CardDefinition cardDefinition, int index)
+    public Result<Unit> UpdateCard(CardDefinition cardDefinition, int index)
     {
         if (index > Cards.Length || index < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(index));
         }
-
+        
         lock (session.Lock)
         {
+            if (!session.AllowedCardUpdates.def)
+            {
+                return Result.Fail("Card updates are disabled.");
+            }
+
             Cards = Cards.SetItem(index, cardDefinition);
+            if (!ReadyCards[index])
+            {
+                ReadyCards = ReadyCards.SetItem(index, true);
+            }
         }
+
+        return Result.Success();
     }
 
-    public Result<Unit> BeginCardUpload(int cardIndex)
+    public Result<CancellationToken> BeginCardUpload(int cardIndex)
     {
         if (cardIndex > Cards.Length || cardIndex < 0)
         {
@@ -48,18 +75,16 @@ public sealed class Player(GameSession session, int cardCount)
         {
             if (PendingCardUploads[cardIndex])
             {
-                return Result.Fail("Card already marked as pending");
+                return Result.Fail<CancellationToken>("Card already marked as pending");
             }
 
-            if (session.Phase is not CreatingCardsPhase cardsPhase)
+            if (!session.AddOngoingCardUpload())
             {
-                return Result.Fail("Wrong phase.");
+                return Result.Fail<CancellationToken>("Uploads disabled.");
             }
 
             PendingCardUploads = PendingCardUploads.SetItem(cardIndex, true);
-            cardsPhase.RegisterCardUploadBegin();
-
-            return Result.Success();
+            return Result.Success(session.UploadsCancellationToken);
         }
     }
 
@@ -77,15 +102,10 @@ public sealed class Player(GameSession session, int cardCount)
                 return Result.Fail<Unit>("Card is not pending.");
             }
 
-            if (session.Phase is not CreatingCardsPhase cardsPhase)
-            {
-                return Result.Fail("Wrong phase.");
-            }
-
             PendingCardUploads = PendingCardUploads.SetItem(cardIndex, false);
-            cardsPhase.RegisterCardUploadDone();
-
-            return Result.Success();
+            session.RemoveOngoingCardUpload(); // Ignore failures?
         }
+
+        return Result.Success();
     }
 }

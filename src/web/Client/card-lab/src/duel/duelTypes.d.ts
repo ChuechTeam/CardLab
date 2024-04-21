@@ -42,6 +42,7 @@ declare interface NetDuelState {
     status: DuelStatus
     player1: NetDuelPlayerState
     player2: NetDuelPlayerState
+    winner: NetDuelPlayerIndex | null
     turn: number
     whoseTurn: NetDuelPlayerIndex
     units: Record<string, NetDuelUnit>
@@ -54,6 +55,7 @@ declare type NetDuelPlayerAttributes = NetAttributeSet & {
     energy: number
     maxEnergy: number
 }
+
 declare interface NetDuelPlayerState extends NetEntity<NetDuelPlayerAttributes> {
     index: NetDuelPlayerIndex
     hand: DuelCardId[]
@@ -77,14 +79,18 @@ type NetDuelCardBase<T extends string, A = NetDuelCardAttributes> = NetEntity<A>
     baseDefRef: CardAssetRef
 }
 
-declare type NetUnitDuelCardAttributes = NetDuelCardAttributes & {  
+declare type NetUnitDuelCardAttributes = NetDuelCardAttributes & {
     attack: number,
     health: number
 }
-declare type NetUnitDuelCard = NetDuelCardBase<"unit", NetUnitDuelCardAttributes>
 
+declare type NetUnitDuelCard = NetDuelCardBase<"unit", NetUnitDuelCardAttributes>
+declare type NetSpellDuelCard = NetDuelCardBase<"spell">
 declare type NetDuelCard =
     | NetUnitDuelCard
+    | NetSpellDuelCard
+
+declare type NetDuelCardOf<T> = Extract<NetDuelCard, { type: T }>
 
 declare type DuelCardType = NetDuelCard["type"]
 
@@ -111,11 +117,9 @@ declare type NetDuelPropositions = {
     unit: NetDuelUnitPropositions[]
 }
 
-declare type DuelCardRequirement = "none" | "singleSlot"
-
 declare type NetDuelCardPropositions = {
     cardId: number,
-    requirement: DuelCardRequirement,
+    requirement: CardRequirement,
     allowedSlots: NetDuelArenaPosition[]
     allowedEntities: number[]
 }
@@ -134,12 +138,15 @@ type NetDuelDeltaScopeBase<T extends string> = NetDuelDeltaBase<T> & {
     isScope: 1
 }
 
+declare type DuelEffectTint = "positive" | "neutral" | "negative"
+
 declare type NetDuelDelta =
     | NetDuelDeltaBase<"switchTurn"> & {
     newTurn: number
     whoPlays: NetDuelPlayerIndex
 } | NetDuelDeltaBase<"switchStatus"> & {
     status: DuelStatus
+    winner: NetDuelPlayerIndex | null
 } | NetDuelDeltaBase<"placeUnit"> & {
     player: NetDuelPlayerIndex,
     unit: NetDuelUnit,
@@ -155,11 +162,19 @@ declare type NetDuelDelta =
     hiddenCards: DuelCardId[],
     revealedCards: NetDuelCard[]
 } | NetDuelDeltaBase<"moveCards"> & {
-    changes: { cardId: DuelCardId, newLocation: DuelCardLocation, index: number | null }[]
-    context: "played" | "discarded" | "drawn" | "other"
+    changes: {
+        cardId: DuelCardId,
+        prevLocation: DuelCardLocation,
+        newLocation: DuelCardLocation,
+        index: number | null
+    }[]
+} | NetDuelDeltaBase<"showMessage"> & {
+    message: string,
+    duration: number // ms  
 } | NetDuelDeltaScopeBase<"unitAttackScope"> & {
     unitId: DuelUnitId,
     targetId: number
+    damage: number
 } | NetDuelDeltaScopeBase<"unitTriggerScope"> & {
     unitId: DuelUnitId
 } | NetDuelDeltaScopeBase<"cardPlayScope"> & {
@@ -167,14 +182,29 @@ declare type NetDuelDelta =
     player: NetDuelPlayerIndex
 } | NetDuelDeltaScopeBase<"cardDrawScope"> & {
     player: NetDuelPlayerIndex
+} | NetDuelDeltaScopeBase<"effectScope"> & {
+    sourceId: number
+    targets: number[]
+    tint: DuelEffectTint
+    disableTargeting?: boolean
+    startDelay?: number // ms
+    endDelay?: number // ms
 } | NetDuelDeltaScopeBase<"cardDiscardScope"> & {
     player: NetDuelPlayerIndex
 } | NetDuelDeltaScopeBase<"damageScope"> & {
-    sourceId: number,
+    sourceId: number | null,
     targetId: number,
     damage: number
+} | NetDuelDeltaScopeBase<"healScope"> & {
+    sourceId: number | null,
+    targetId: number,
+    damage: number
+} | NetDuelDeltaScopeBase<"alterationScope"> & {
+    sourceId: number | null,
+    targetId: number,
+    positive: boolean
 }
-| NetDuelDeltaScopeBase<"deathScope">
+    | NetDuelDeltaScopeBase<"deathScope">
     | NetDuelDeltaBase<"scopePreparationEnd">
     | NetDuelDeltaBase<"scopeEnd"> & { interrupted: boolean }
 
@@ -196,12 +226,17 @@ declare type DuelMessage =
     state: NetDuelState,
     propositions: NetDuelPropositions,
     iteration: number,
-    player: NetDuelPlayerIndex
+    player: NetDuelPlayerIndex,
+    p1Name: string,
+    p2Name: string
+    timer: number | null
 } | DuelMessageBase<"duelMutated"> & {
     deltas: NetDuelDelta[],
     state: NetDuelState,
+    whoseTurn: NetDuelPlayerIndex
     propositions: NetDuelPropositions,
     iteration: number,
+    timer: number | null
 } | DuelMessageBase<"duelRequestFailed"> & {
     requestId: int,
     reason: string
@@ -217,6 +252,11 @@ declare type DuelMessage =
     header: DuelRequestHeader;
     unitId: number;
     chosenEntityId: number;
+} | DuelMessageBase<"duelControlTimer"> & {
+    pause: boolean
+} | DuelMessageBase<"duelReportReady">
+    | DuelMessageBase<"duelTimerUpdated"> & {
+    timer: number
 }
 
 declare type DuelRequestMessage = Extract<DuelMessage, { header: DuelRequestHeader }>

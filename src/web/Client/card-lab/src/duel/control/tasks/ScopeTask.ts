@@ -3,8 +3,7 @@
 export class ScopeTask extends GameTask {
     scopeType = "unknown"
 
-    constructor(public preparationTasks: GameTask[] = [],
-                public childTasks: GameTask[] = []) {
+    constructor(public preparationTasks: GameTask[], public childTasks: GameTask[]) {
         super();
     }
 
@@ -27,7 +26,7 @@ export class ScopeTask extends GameTask {
 
             let bg = false;
             if (isSeqAware(task)) {
-                const result = task.sequencePrepare(tasks[i - 1] ?? null, tasks[i + 1] ?? null);
+                const result = task.sequencePrepare(tasks[i - 1] ?? null, tasks[i + 1] ?? null, this);
                 bg = result?.runInBackground ?? false;
             }
 
@@ -54,7 +53,9 @@ export class ScopeTask extends GameTask {
 }
 
 export interface SequenceAwareTask extends GameTask {
-    sequencePrepare(previous: GameTask | null, next: GameTask | null): { runInBackground: boolean } | void;
+    sequencePrepare(previous: GameTask | null, next: GameTask | null, parent: GameTask): {
+        runInBackground: boolean
+    } | void;
 }
 
 function isSeqAware(t: GameTask): t is SequenceAwareTask {

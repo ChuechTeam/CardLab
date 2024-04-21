@@ -1,45 +1,65 @@
-﻿namespace CardLab.Game.Duels;
+﻿using CardLab.Game.Duels.Scripting;
 
-public class DuelMutation(Duel duel, DuelState state)
+namespace CardLab.Game.Duels;
+
+public class DuelMutation(Duel duel, DuelState state, DuelAction root)
 {
-    public List<DuelStateDelta> Deltas { get; init; } = [];
+    public const ushort MaxFragments = 2000;
+    
+    public List<DuelStateDelta> Deltas { get; } = [];
+    public DuelAction Root { get; } = root;
 
-    private readonly Dictionary<int, Dictionary<string, object>> _pendingAttrChanges = new();
+    private readonly Dictionary<int, Dictionary<string, int>> _pendingAttrChanges = new();
+    public int? PendingTurnTimer { get; set; } = null;
+    public bool PendingTurnTimerStop { get; set; } = false;
 
-    // We have to make an exception for attributes because else it's going to be a nightmare
-    // Throws when the attribute isn't present.
-    // Returns true when the attribute changed.
-    public bool SetAttributeBaseValue(IEntity entity, DuelAttributeDefinition def, int value, out int newVal)
+    public UserScriptingMutState UserScriptingState = new(); 
+
+    private ushort _nextFragId = 0;
+
+    public void RegisterAttrUpdate(IEntity entity, DuelAttributeId id)
     {
         var attribs = entity.Attribs;
-        var prev = attribs[def];
-        attribs.SetBaseValue(def, value, out newVal);
-        if (prev != newVal)
+
+        if (!_pendingAttrChanges.TryGetValue(entity.Id, out var entityAttrChanges))
         {
-            if (!_pendingAttrChanges.ContainsKey(entity.Id))
-            {
-                _pendingAttrChanges.Add(entity.Id, new Dictionary<string, object>());
-            }
-
-            if (!_pendingAttrChanges[entity.Id].TryAdd(def.Key, newVal))
-            {
-                _pendingAttrChanges[entity.Id][def.Key] = newVal;
-            }
-
-            return true;
+            entityAttrChanges = new Dictionary<string, int>();
+            _pendingAttrChanges.Add(entity.Id, entityAttrChanges);
         }
-        else
+
+        var val = attribs[id];
+        var (_, name, internalAttr) = attribs.Meta.Get(id);
+        if (!internalAttr && !entityAttrChanges.TryAdd(name, val))
         {
-            return false;
+            entityAttrChanges[name] = val;
         }
     }
 
-    // todo: Modifier stuff
+    public void StartTurnTimer(int secs)
+    {
+        if (PendingTurnTimerStop)
+        {
+            PendingTurnTimerStop = false;
+        }
+        
+        // we need to set the timer as late as possible to get accurate time.
+        PendingTurnTimer = secs;
+    }
+
+    public void StopTurnTimer()
+    {
+        if (PendingTurnTimer != null)
+        {
+            PendingTurnTimer = null;
+        }
+
+        PendingTurnTimerStop = true;
+    }
 
     public Result<Unit> Apply(DuelStateDelta delta)
     {
         FlushPendingAttrDeltas();
-        
+
         var res = delta.Apply(duel, state);
 
         if (res.Succeeded)
@@ -63,11 +83,56 @@ public class DuelMutation(Duel duel, DuelState state)
                 });
             }
         }
+
         _pendingAttrChanges.Clear();
+    }
+
+    public bool TryGiveFragId(out ushort id)
+    {
+        id = _nextFragId;
+        
+        if (_nextFragId < MaxFragments)
+        {
+            _nextFragId++;
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    public bool Run()
+    {
+        UserScriptingState.TotalTriggers = 0;
+        
+        var res = ApplyFrag(Root);
+        FlushPendingAttrDeltas();
+        
+        // If the initial verification failed, then nothing happened.
+        // If the second verification failed, we should have some deltas indicating
+        // that some state has changed, or that the fragment was applied.
+        var stuffHappened = res != DuelFragmentResult.VerifyFailed || Deltas.Count != 0;
+        if (stuffHappened)
+        {
+            foreach (var script in duel.State.ActiveScripts)
+            {
+                script.PostMutationEnd(this);
+            }
+        }
+        
+        // Clear all eliminated units.
+        foreach (var unitId in duel.State.EliminatedUnits)
+        {
+            duel.State.Units.Remove(unitId);
+        }
+        duel.State.EliminatedUnits.Clear();
+        
+        return stuffHappened;
     }
 
     public DuelFragmentResult ApplyFrag(DuelFragment f)
     {
-        return duel.ApplyFrag2(this, f);
+        return duel.ApplyFrag(this, f);
     }
 }

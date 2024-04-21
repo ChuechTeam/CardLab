@@ -3,21 +3,21 @@
 public readonly struct ResourceWriter(Stream file) : IDisposable, IAsyncDisposable
 {
     public Stream File { get; } = file;
-    
-    private readonly Dictionary<string, ResourceRef> _resources = new(); 
 
-    public async Task<ResourceRef> AddResourceAsync(string filePath)
+    private readonly Dictionary<string, ResourceRef> _resources = new();
+
+    public async Task<ResourceRef> AddResourceAsync(string filePath, CancellationToken token = default)
     {
         if (_resources.TryGetValue(filePath, out var val))
         {
             return val;
         }
-        
+
         await using var fStream = System.IO.File.OpenRead(filePath);
-        
+
         var start = File.Position;
-        await fStream.CopyToAsync(File);
-        
+        await fStream.CopyToAsync(File, token);
+
         var end = File.Position;
 
         var resRef = new ResourceRef((uint)start, (uint)end - (uint)start);

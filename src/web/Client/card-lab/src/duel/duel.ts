@@ -9,14 +9,9 @@ import {DuelController} from "./control/controller.ts";
 import {duelLog, duelLogError, overlay as logOverlay} from "./log.ts";
 import "pixi.js/math-extras";
 import {registerUtilMixins} from "src/duel/util.ts";
+import {usePixiRenderingHacks} from "src/duel/hacks.ts";
 
 function qualitySettings(): Partial<ApplicationOptions> {
-    // Allow forcing the use of WebGL for testing purposes.
-    const preference = localStorage.getItem("forceWebGL") === "true" ? "webgl" : undefined;
-    if (preference !== undefined) {
-        duelLog("Quality settings: WebGL forced by localStorage");
-    }
-    
     // Provide settings for known and supported mobile devices.
     if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
         // Antialiasing is very expensive on my Android device.
@@ -28,16 +23,14 @@ function qualitySettings(): Partial<ApplicationOptions> {
         duelLog(`Quality settings: Mobile (aa=false, resolution=${resolution})`);
         return {
             antialias: false,
-            resolution: resolution,
-            preference
+            resolution: resolution
         };
     } else {
         // On desktop or unknown devices, we can afford to be a bit more generous.
         duelLog(`Quality settings: Desktop/Unknown (aa=true, resolution=${window.devicePixelRatio})`);
         return {
             antialias: true,
-            resolution: window.devicePixelRatio,
-            preference
+            resolution: window.devicePixelRatio
         };
     }
 }
@@ -57,7 +50,8 @@ export async function createDuel(parent: HTMLElement,
             click: true
         },
         width: window.visualViewport!.width,
-        height: window.visualViewport!.height
+        height: window.visualViewport!.height,
+        preference: "webgl"
     });
     parent.appendChild(app.canvas)
     app.canvas.style.display = "block";
@@ -71,6 +65,8 @@ export class DuelGame {
     controller: DuelController | null = null;
 
     testTimings: HTMLElement | null = null;
+    
+    lastVisibleTimestamp: number | null = null
 
     constructor(app: Application,
                 public registry: DuelGameRegistry,
@@ -80,9 +76,9 @@ export class DuelGame {
         (window as any).PIXI = PIXI;
         
         registerUtilMixins();
-
-        // window.addEventListener("resize", () => this.resizeToWindow())
-        window.visualViewport!.addEventListener("resize", () => this.resizeToWindow())
+        usePixiRenderingHacks();
+        
+        window.visualViewport!.addEventListener("resize", this.resizeToWindow)
         this.resizeToWindow();
 
         // Make the stage react to pointer events so children can listen to global move events
@@ -93,7 +89,7 @@ export class DuelGame {
         this.messaging.readyToReceive();
 
         // Development/Debug stuff
-        this.testTimings = app.canvas.parentElement!.querySelector(".duel-test-timings");
+        this.testTimings = app.canvas.parentElement?.querySelector(".duel-test-timings") ?? null;
 
         if (this.testTimings) {
             this.app.renderer.runners.postrender.add(this);
@@ -103,9 +99,10 @@ export class DuelGame {
             pixi: PIXI,
             app: app,
         };
-        Object.defineProperty(window, "duelScene", {
-            get: () => this.scene
-        });
+
+        (window as any).duelGame = this;
+        
+        document.addEventListener("visibilitychange", this.onDocVisibilityStateChange)
     }
 
     fpsSamples = [] as number[];
@@ -149,7 +146,7 @@ export class DuelGame {
         this.scene.start();
     }
 
-    resizeToWindow() {
+    resizeToWindow = () => {
         this.app.canvas.style.height = window.visualViewport!.height + "px"
         this.app.canvas.style.width = window.visualViewport!.width + "px"
         this.app.renderer.resize(window.visualViewport!.width, window.visualViewport!.height);
@@ -158,4 +155,41 @@ export class DuelGame {
         
         duelLog(`Resized to: ${this.app.canvas.width} ${this.app.canvas.height}`);
     }
+    
+    onDocVisibilityStateChange = ()=> {
+        if (document.visibilityState === "hidden") {
+            this.lastVisibleTimestamp = performance.now();
+        } else if (this.lastVisibleTimestamp !== null) { // document is visible
+            const elapsed = performance.now() - this.lastVisibleTimestamp;
+            this.lastVisibleTimestamp = null;
+            
+            duelLog(`Game brought to foreground after ${elapsed}ms.`);
+            
+            if (this.controller !== null) {
+                this.controller.onGameBroughtToForeground(elapsed);
+            }
+        }
+    }
+    
+    dismount() {
+        document.removeEventListener("visibilitychange", this.onDocVisibilityStateChange);
+        window.visualViewport?.removeEventListener("resize", this.resizeToWindow);
+        (window as any).duelGame = null;
+        this.scene?.end();
+        this.messaging.dismount();
+        this.controller?.dismount();
+        this.app.destroy({
+            removeView: true
+        }, {
+            children: false,
+            context: true,
+            texture: false,
+            textureSource: false,
+            style: false
+        });
+    }
 }
+
+Object.defineProperty(window, "duelScene", {
+    get: () => (window as any).duelGame.scene
+});

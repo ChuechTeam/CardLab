@@ -5,7 +5,14 @@
 import {Container, EventEmitter, FederatedPointerEvent, Point, Rectangle} from "pixi.js";
 import {GameScene} from "src/duel/game/GameScene.ts";
 
-export function placeInRectCenter(obj: { x: number, y: number, width: number, height: number }, rect: Rectangle) {
+export function placeInRectCenter(obj: { x: number, y: number, width: number, height: number }, rect: Rectangle,
+                                  scaleDown=false) {
+    const scale = scaleDown ? Math.min(rect.width / obj.width, rect.height / obj.height) : 1;
+    if (scale < 1) {
+        obj.width *= scale;
+        obj.height *= scale;
+    }
+    
     obj.x = rect.x + (rect.width - obj.width) / 2;
     obj.y = rect.y + (rect.height - obj.height) / 2;
 }
@@ -25,6 +32,26 @@ export function easeExp(t: number, k: number) {
 
 export function easeExpRev(t: number, k: number) {
     return easeExp(1-t, -k);
+}
+
+export function lerp(a: number, b: number, t: number) {
+    return a + t * (b - a);
+}
+
+export function clerp(a: number, b: number, t: number) {
+    return lerp(a & 0xFF, b & 0xFF, t)
+        | (lerp((a >> 8) & 0xFF, (b >> 8) & 0xFF, t) << 8)
+        | (lerp((a >> 16) & 0xFF, (b >> 16) & 0xFF, t) << 16);
+}
+
+// Taken from https://theorangeduck.com/page/spring-roll-call
+function fast_negexp(x: number)
+{
+    return 1.0 / (1.0 + x + 0.48*x*x + 0.235*x*x*x);
+}
+export function damper(x: number, g: number, halflife: number, dt: number, eps=1e-5)
+{
+    return lerp(x, g, 1.0-fast_negexp((0.69314718056 * dt) / (halflife + eps)));
 }
 
 function listen<T extends EventEmitter.ValidEventTypes, 

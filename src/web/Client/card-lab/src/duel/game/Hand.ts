@@ -37,11 +37,10 @@ export class Hand extends Container {
         this.cards.splice(idx, 1);
         this.repositionCards();
     }
-
-    // todo: physics-based animation instead of teleport
-    repositionCards() {
+    
+    repositionCards(instant=false) {
         if (this.cards.length == 1) {
-            this.cards[0].moveToHand(new Point(this.position.x, this.position.y), HAND_CARD_Z, this.flipped, this);
+            this.cards[0].moveToHand(new Point(this.position.x, this.position.y), HAND_CARD_Z, this.flipped, this, instant);
             return
         }
 
@@ -54,7 +53,7 @@ export class Hand extends Container {
         for (let i = 0; i < this.cards.length; i++) {
             const card = this.cards[i];
             const pos = this.toWorld(new Point(xStart + xInc * i, 0))
-            card.moveToHand(pos, HAND_CARD_Z - i, this.flipped, this);
+            card.moveToHand(pos, HAND_CARD_Z - i, this.flipped, this, instant);
         }
     }
 

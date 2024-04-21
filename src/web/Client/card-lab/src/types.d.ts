@@ -5,7 +5,7 @@
  */
 
 declare interface Player {
-    id: string,
+    id: number,
     name: string
 }
 
@@ -17,55 +17,172 @@ declare interface CardDefinition {
     name: string,
     description: string,
     lore: string,
-    type?: "unit",
+    type: "unit" | "spell",
+    requirement: CardRequirement,
     attack: number,
     health: number,
     cost: number,
+    archetype: string | null,
+    author: string | null,
     script: CardScript | null,
     traits?: any[] // todo
 }
+
+declare type CardRequirement = "none" | "singleSlot" | "singleEntity"
 
 declare interface CardScript {
     handlers: CardEventHandler[]
 }
 
+/*
+ * Basic Enums
+ */
+
+declare type ScriptableAttribute = "health" | "attack" | "cost"
+declare type FilterOp = "greater" | "lower" | "equal"
+declare type CardMoveKind = "played" | "discarded" | "drawn"
+declare type GameTeam = "self" | "enemy" | "ally" | "any"
+declare type EntityType = "unit" | "card"
+declare type UnitDirection = "left" | "right" | "up" | "down"
+declare type ConditionalTarget = "me" | "source" | "target"
+
 /* Base stuff & types */
 
-declare type CardEventHandlerBase<I extends CardEventType> = {
-    event: I,
-    actions: CardAction[]
-}
-declare type CardEventType = CardEventHandler["event"]
+declare type ScriptEventBase<I extends string> = { type: I }
+declare type ScriptEventType = ScriptEvent["type"]
+declare type CardEventOf<T> = Extract<ScriptEvent, { type: T }>
 
-declare type CardActionBase<I extends string> = { type: I }
-declare type CardActionType = CardAction["type"]
+declare type ScriptActionBase<I extends string> = { type: I }
+declare type ScriptActionType = ScriptAction["type"]
+declare type ScriptActionOf<T> = Extract<ScriptAction, { type: T }>
 
 declare type TargetBase<I extends string> = { type: I }
 declare type TargetType = Target["type"]
+declare type TargetOf<T> = Extract<Target, { type: T }>
+
+declare type FilterBase<I extends string> = { type: I }
+declare type FilterType = Filter["type"]
+declare type FilterOf<T> = Extract<Target, { type: T }>
 
 /* Card events */
 
-declare type CardEventHandler =
-    | CardEventHandlerBase<"whenISpawn">
+declare type CardEventHandler = {
+    event: ScriptEvent,
+    actions: ScriptAction[]
+}
+
+declare type ScriptEvent =
+    | ScriptEventBase<"postSpawn">
+    | ScriptEventBase<"postUnitEliminated"> & {
+    team: GameTeam
+}
+    | ScriptEventBase<"postUnitKill">
+    | ScriptEventBase<"postUnitHurt"> & {
+    team: GameTeam,
+    dealt: boolean
+}
+    | ScriptEventBase<"postUnitHeal"> & {
+    team: GameTeam,
+    dealt: boolean
+}
+    | ScriptEventBase<"postUnitAttack"> & {
+    team: GameTeam,
+    dealt: boolean
+}
+    | ScriptEventBase<"postUnitNthAttack"> & {
+    n: number
+}
+    | ScriptEventBase<"postNthCardPlay"> & {
+    n: number
+}
+    | ScriptEventBase<"postCardMove"> & {
+    kind: CardMoveKind
+}   | ScriptEventBase<"postTurn"> & {
+    team: GameTeam
+}
+
 
 /* Card actions */
 
-declare type CardAction =
-    | CardActionBase<"drawCard"> & {
-    numCards: number
+
+declare type ScriptAction =
+    | ScriptActionBase<"draw"> & {
+    n: number,
+    filters: Filter[]
 }
-    | CardActionBase<"hurt"> & {
+    | ScriptActionBase<"discard"> & {
+    n: number,
+    myHand: boolean
+    filters: Filter[]
+}
+    | ScriptActionBase<"modifier"> & {
+    isBuff: boolean,
+    value: number,
+    attr: ScriptableAttribute,
+    target: Target,
+    duration: number
+}
+    | ScriptActionBase<"hurt"> & {
+    damage: number,
     target: Target
-    damage: number
 }
-    | CardActionBase<"winGame">
+    | ScriptActionBase<"heal"> & {
+    damage: number,
+    target: Target
+}
+    | ScriptActionBase<"attack"> & {
+    target: Target
+}
+    | ScriptActionBase<"singleConditional"> & {
+    target: ConditionalTarget,
+    conditions: Filter[],
+    actions: ScriptAction[]
+} | ScriptActionBase<"multiConditional"> & {
+    minUnits: number,
+    team: GameTeam,
+    conditions: Filter[],
+    actions: ScriptAction[]
+} | ScriptActionBase<"deploy"> & {
+    filters: Filter[]
+    direction: UnitDirection
+}
 
 /* Card targets */
 
 declare type Target =
-    | TargetBase<"randomEnemy">
-    | TargetBase<"enemyCore">
-    | TargetBase<"myCore">
+    | TargetBase<"me">
+    | TargetBase<"core"> & {
+    enemy: boolean
+}
+    | TargetBase<"source">
+    | TargetBase<"target">
+    | TargetBase<"query"> & {
+    kind: EntityType,
+    team: GameTeam,
+    filters: Filter[],
+    n: number
+}
+    | TargetBase<"nearbyAlly"> & {
+    direction: UnitDirection
+}
+
+
+/* Filters */
+
+declare type Filter =
+    | FilterBase<"cardType"> & {
+    kind: "unit" | "spell"
+} | FilterBase<"attr"> & {
+    attr: ScriptableAttribute,
+    op: FilterOp,
+    value: number
+} | FilterBase<"wounded">
+    | FilterBase<"adjacent">
+    | FilterBase<"archetype"> & {
+    archetype: string
+}
+
+/* Payloads */
 
 declare interface CardValidationSummary {
     definitionValid: boolean,
@@ -84,6 +201,11 @@ declare interface CardBalanceEntry {
     subEntries: CardBalanceEntry[]
 }
 
+declare interface DownloadablePack {
+    defPath: string,
+    resPath: string
+}
+
 /**
  * Phases
  */
@@ -91,9 +213,11 @@ declare interface CardBalanceEntry {
 // PhaseName is necessary here because not all phases have states right now
 declare type PhaseName =
     | "waitingForPlayers"
+    | "tutorial"
     | "creatingCards"
-    | "postCreate"
+    | "preparation"
     | "ended"
+    | "duels"
     | "terminated"
 
 declare type WaitingForPlayersPhaseState = {
@@ -110,9 +234,23 @@ declare type CreatingCardPhaseState = {
     } | null
 }
 
+declare type TutorialPhaseState = {
+    type: "tutorial",
+    started: boolean
+}
+
+declare type PreparationPhaseState = {
+    type: "preparation",
+    status: "waitingLastUploads" | "compilingPack" | "ready"
+    yourOpponent: string | null
+}
+
 declare type PhaseState =
     | WaitingForPlayersPhaseState
     | CreatingCardPhaseState
+    | TutorialPhaseState
+    | PreparationPhaseState
+    | null
 
 /**
  * Messages
@@ -127,21 +265,57 @@ declare type LobbyPlayerUpdatedMessage = {
 
 declare type SwitchedPhaseMessage = {
     type: "switchedPhase",
-    phaseName: PhaseName,
-    phaseState: PhaseState
+    name: PhaseName,
+    state: PhaseState
 }
 
 declare type WelcomeMessage = {
     type: "welcome",
+    tempId: number,
+    permId: string
+    pack: DownloadablePack | null,
+    duel: PartialDuelWelcome | null,
+    duelRequireSessionPack: boolean
     me: Player | null,
     phaseName: PhaseName,
     phaseState: PhaseState
+}
+
+declare type PackAvailableMessage = {
+    type: "packAvailable",
+    pack: DownloadablePack
+}
+
+declare type SessionDuelStartedMessage = {
+    type: "sessionDuelStarted",
+    requireSessionPack: boolean
+    welcome: PartialDuelWelcome
+}
+
+declare type SessionDuelEndedMessage = {
+    type: "sessionDuelEnded"
+}
+
+declare type TutorialStartedMessage = {
+    type: "tutorialStarted"
+}
+
+declare type PhaseStateUpdatedMessage = {
+    type: "phaseStateUpdated"
+    state: PhaseState
 }
 
 declare type LabMessage =
     | LobbyPlayerUpdatedMessage
     | SwitchedPhaseMessage
     | WelcomeMessage
+    | PackAvailableMessage
+    | SessionDuelStartedMessage
+    | SessionDuelEndedMessage
+    | TutorialStartedMessage
+    | PhaseStateUpdatedMessage
     | DuelMessage
 
 declare type MessageType = LabMessage["type"]
+
+declare type PartialDuelWelcome = Omit<DuelMessageOf<"duelWelcome">, "type">
