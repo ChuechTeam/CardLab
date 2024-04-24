@@ -15,6 +15,11 @@ using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (Environment.GetEnvironmentVariable("CL_APPSETTINGS") is { } path)
+{
+    builder.Configuration.AddJsonFile(path, false);
+}
+
 // Add services to the container.
 builder.Services.AddAuthentication()
     .AddScheme<GameAuthenticationOptions, GameAuthenticationHandler>("Game", o => { });
@@ -56,18 +61,27 @@ builder.Services.AddHostedService<GamePackCompileWorker>();
 builder.Services.AddViteServices(opt => { opt.PackageDirectory = "Client/card-lab"; });
 
 var app = builder.Build();
+var isDev = app.Environment.IsDevelopment();
 
 // Compile all base packs before launching the app. Always does that works in development mode.
 // In production, the deployment script should run the app with "--compile" before bundling the container.
 var basePackRegistry = app.Services.GetRequiredService<BasePackRegistry>();
-if (args.ElementAtOrDefault(0) == "--compile" || app.Environment.IsDevelopment())
+if (args.ElementAtOrDefault(0) == "--compile" || isDev)
 {
-    var assetsDir = Path.Combine(app.Environment.ContentRootPath, "Game/BasePacks/Assets");
+    string assetsDir;
+    if (isDev)
+    {
+        assetsDir = Path.Combine(app.Environment.ContentRootPath, "Game/BasePacks/Assets");
+    }
+    else
+    {
+        assetsDir = args.ElementAtOrDefault(1) ?? throw new InvalidOperationException("No assets directory provided.");
+    }
     
     await basePackRegistry.CompilePack(BasePack1.PackId, BasePack1.Name, BasePack1.PackVersion,
         BasePack1.GetCards(assetsDir), "basePack1");
 
-    if (!app.Environment.IsDevelopment())
+    if (!isDev)
     {
         return;
     }
@@ -79,7 +93,7 @@ else
 
 
 // Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
+if (!isDev)
 {
     app.UseExceptionHandler("/Error");
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.

@@ -3,7 +3,6 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
-using NuGet.Packaging.Licenses;
 
 namespace CardLab.Game.AssetPacking;
 

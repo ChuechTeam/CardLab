@@ -1,4 +1,6 @@
-﻿namespace CardLab.Game.AssetPacking;
+﻿using System.Threading.Channels;
+
+namespace CardLab.Game.AssetPacking;
 
 public class GamePackCompileWorker(
     GamePackCompileQueue queue, 
@@ -9,22 +11,30 @@ public class GamePackCompileWorker(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var (req, src) = await queue.Channel.Reader.ReadAsync(stoppingToken);
             try
             {
-                logger.LogInformation("Picking up queued pack work {Id}", req.PackId);
-                var pack = await compiler.CompileAsync(req, stoppingToken);
-                src.SetResult(pack);
+                var (req, src) = await queue.Channel.Reader.ReadAsync(stoppingToken);
+                try
+                {
+                    logger.LogInformation("Picking up queued pack work {Id}", req.PackId);
+                    var pack = await compiler.CompileAsync(req, stoppingToken);
+                    src.SetResult(pack);
+                }
+                catch (OperationCanceledException)
+                {
+                    logger.LogInformation("Compilation of pack {Id} was canceled", req.PackId);
+                    src.SetCanceled(stoppingToken);
+                }
+                catch (Exception e)
+                {
+                    logger.LogError(e, "Failed to compile pack {Id}", req.PackId);
+                    src.SetException(e);
+                }
             }
-            catch (OperationCanceledException)
+            catch (ChannelClosedException)
             {
-                logger.LogInformation("Compilation of pack {Id} was canceled", req.PackId);
-                src.SetCanceled(stoppingToken);
-            }
-            catch (Exception e)
-            {
-                logger.LogError(e, "Failed to compile pack {Id}", req.PackId);
-                src.SetException(e);
+                logger.LogInformation("Game compile queue channel closed, stopping...");
+                return;
             }
         }
     }

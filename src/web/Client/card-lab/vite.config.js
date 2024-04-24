@@ -11,12 +11,7 @@ export default defineConfig({
                 assetFileNames: `assets/[name].[ext]`
             }
         },
-        assetsInlineLimit: (filePath, content) => {
-            if (filePath.endsWith('.css')) {
-                return false
-            }
-            return content.length < 8192
-        },
+        assetsInlineLimit: 8192
     },
     server: {
         host: true

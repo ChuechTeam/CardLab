@@ -1,8 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Microsoft.AspNetCore.Mvc.Routing;
-using NuGet.Packaging;
 
 namespace CardLab.Game.Duels;
 

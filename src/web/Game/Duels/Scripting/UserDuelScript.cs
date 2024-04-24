@@ -1,6 +1,5 @@
 ﻿using System.Collections.Immutable;
 using CardLab.Game.AssetPacking;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CardLab.Game.Duels.Scripting;
 

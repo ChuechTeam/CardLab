@@ -1,7 +1,5 @@
 ﻿using System.Collections.Immutable;
 using System.Text;
-using Microsoft.Build.Exceptions;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using static CardLab.Game.CardModule.LangFR.LangFlags;
 
 namespace CardLab.Game;

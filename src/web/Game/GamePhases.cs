@@ -1,8 +1,6 @@
 ﻿using System.Collections.Immutable;
-using System.Reflection.Metadata.Ecma335;
 using CardLab.Game.AssetPacking;
 using CardLab.Game.Communication;
-using NuGet.ProjectModel;
 
 namespace CardLab.Game;
 

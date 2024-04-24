@@ -25,7 +25,7 @@ def compile_packs(publish_dir):
     if not os.path.exists(cl_dll):
         raise Exception("No CardLab.dll found in publish directory {}".format(publish_dir))
 
-    subprocess.call(["dotnet", cl_dll, "--compile"],
+    subprocess.call(["dotnet", cl_dll, "--compile", os.path.join(proj_dir, "Game/BasePacks/Assets")],
                     shell=True)
 
 
