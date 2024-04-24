@@ -1,21 +1,21 @@
 ﻿import { defineConfig } from 'vite'
 export default defineConfig({
     build: {
-        // No need for manifest, we use fixed names
-        manifest: false,
+        manifest: true,
         rollupOptions: {
             // overwrite default .html entry
-            input: 'src/game.ts',
+            input: ['src/game.ts', 'src/style.css'],
             output: {
                 entryFileNames: `scripts/[name].js`,
                 chunkFileNames: `scripts/chunks/[name].js`,
-                assetFileNames: `assets/[name].[ext]`,
-                manualChunks: {
-                    blockly: ['blockly/core'],
-                    pixi: ['pixi.js'],
-                    duel: ['./src/duel/duel.ts', './src/duel/duelTest.ts']
-                }
+                assetFileNames: `assets/[name].[ext]`
             }
+        },
+        assetsInlineLimit: (filePath, content) => {
+            if (filePath.endsWith('.css')) {
+                return false
+            }
+            return content.length < 8192
         },
     },
     server: {

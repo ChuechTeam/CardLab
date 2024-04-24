@@ -36,6 +36,10 @@ builder.Services.AddRouting(r =>
     r.LowercaseUrls = true;
     r.LowercaseQueryStrings = true;
 });
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+});
 
 builder.Services.AddOptions<GameRequestQueue>(GameRequestQueue.Options.Section);
 builder.Services.AddSingleton<ServerState>();
@@ -49,21 +53,30 @@ builder.Services.AddHostedService<GamePackCompileWorker>();
 // builder.Services.AddSingleton<GameRequestQueue>();
 // builder.Services.AddHostedService<GameRequestWorker>();
 
-builder.Services.AddViteServices(opt =>
-{
-    opt.PackageDirectory = "Client/card-lab";
-});
+builder.Services.AddViteServices(opt => { opt.PackageDirectory = "Client/card-lab"; });
 
 var app = builder.Build();
 
-// Compile all base packs before launching the app. Only works in development mode for now!
-// Later on we should just read all the compiled packs in production mode, and run the app
-// to compile the packs before deploying.
+// Compile all base packs before launching the app. Always does that works in development mode.
+// In production, the deployment script should run the app with "--compile" before bundling the container.
 var basePackRegistry = app.Services.GetRequiredService<BasePackRegistry>();
+if (args.ElementAtOrDefault(0) == "--compile" || app.Environment.IsDevelopment())
+{
+    var assetsDir = Path.Combine(app.Environment.ContentRootPath, "Game/BasePacks/Assets");
+    
+    await basePackRegistry.CompilePack(BasePack1.PackId, BasePack1.Name, BasePack1.PackVersion,
+        BasePack1.GetCards(assetsDir), "basePack1");
 
-var assetsDir = Path.Combine(app.Environment.ContentRootPath, "Game/BasePacks/Assets");
-await basePackRegistry.CompilePack(BasePack1.PackId, BasePack1.Name, BasePack1.PackVersion,
-    BasePack1.GetCards(assetsDir), "basePack1");
+    if (!app.Environment.IsDevelopment())
+    {
+        return;
+    }
+}
+else
+{
+    await basePackRegistry.FindPacks();
+}
+
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -79,6 +92,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseResponseCompression();
 
 var clTypes = new FileExtensionContentTypeProvider
 {
@@ -99,7 +113,7 @@ app.UseStaticFiles(new StaticFileOptions
 {
     ContentTypeProvider = clTypes,
     FileProvider = new PhysicalFileProvider(packsPath),
-    RequestPath = new PathString("/"+WebGamePacker.WebSubDir)
+    RequestPath = new PathString("/" + WebGamePacker.WebSubDir)
 });
 
 app.UseRouting();

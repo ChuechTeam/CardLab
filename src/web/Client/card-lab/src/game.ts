@@ -16,6 +16,7 @@ import {PreparationHostView} from "src/views/PreparationHostView.ts";
 import {PreparationPlayerView} from "src/views/PreparationPlayerView.ts";
 import {CreatingCardsHostView} from "src/views/CreatingCardsHostView.ts";
 import {DuelPlayerView} from "src/views/DuelPlayerView.ts";
+//import "src/style.css";
 
 const baseUrl = window.location.origin;
 type PackDownTask = { progress: PackDownloadProgress; promise: Promise<DuelGamePack> };

@@ -4,10 +4,5 @@
 @* JS will inject stuff in the game-container div *@
 
 @section Scripts {
-    <environment include="Development">
-        <script type="module" src="@ViewData["ViteBase"]/src/game.ts"></script>
-    </environment>
-    <environment include="Production">
-        <script src="~/client/scripts/game.js" type="module" asp-append-version="true"></script>
-    </environment>
+    <script type="module" vite-src="~/src/game.ts"></script>
 }

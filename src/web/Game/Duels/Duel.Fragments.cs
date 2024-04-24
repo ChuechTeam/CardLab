@@ -123,23 +123,23 @@ public sealed partial class Duel
         {
             var state = State;
             var nextTurn = state.Turn + 1;
-            var energy = Math.Min(Duel.Settings.MaxEnergy, state.GetPlayer(player).Attribs.GetMaxEnergy() + 1);
+            var energy = Math.Min(Duel.Settings.MaxEnergy, state.GetPlayer(Player).Attribs.GetMaxEnergy() + 1);
 
             ApplyDelta(new SwitchTurnDelta
             {
                 NewTurn = nextTurn,
-                WhoPlays = player
+                WhoPlays = Player
             });
 
             NotifyScriptableEntities();
 
-            var pid = DuelIdentifiers.Create(DuelEntityType.Player, (int)player);
+            var pid = DuelIdentifiers.Create(DuelEntityType.Player, (int)Player);
             ApplyFrag(new FragSetAttribute(pid, DuelBaseAttrs.MaxEnergy, energy));
             ApplyFrag(new FragSetAttribute(pid, DuelBaseAttrs.Energy, energy));
             ApplyFrag(new FragSetAttribute(pid, DuelBaseAttrs.CardsPlayedThisTurn, 0));
 
             // Refresh all units inaction turns and action count
-            foreach (var id in state.GetPlayer(player).ExistingUnits)
+            foreach (var id in state.GetPlayer(Player).ExistingUnits)
             {
                 var u = State.FindUnit(id)!;
 
@@ -204,7 +204,7 @@ public sealed partial class Duel
             {
                 if (SpecificCardId is not { } id
                     || State.FindCard(id) is not { } card
-                    || card.Location != PlayerDeckLoc(player))
+                    || card.Location != PlayerDeckLoc(Player))
                 {
                     return false;
                 }
@@ -216,7 +216,7 @@ public sealed partial class Duel
         protected override bool Run()
         {
             var ps = State.GetPlayer(Player);
-            var playerHand = player == PlayerIndex.P1 ? DuelCardLocation.HandP1 : DuelCardLocation.HandP2;
+            var playerHand = Player == PlayerIndex.P1 ? DuelCardLocation.HandP1 : DuelCardLocation.HandP2;
             int i = 0;
             for (; i < DeckNum; i++)
             {

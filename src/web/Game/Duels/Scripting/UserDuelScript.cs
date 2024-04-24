@@ -333,7 +333,6 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                 }
 
                 var whoseHand = disc.MyHand ? MyPlayerIdx : AdvPlayerIdx;
-                var handLoc = Duel.PlayerHandLoc(whoseHand);
                 var gone = PickRandomCards(HandCards(whoseHand), disc.Filters, disc.N);
 
                 foreach (var card in gone)

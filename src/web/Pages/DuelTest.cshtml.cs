@@ -3,10 +3,15 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace CardLab.Pages;
 
-public class DuelTest : PageModel
+public class DuelTest(IWebHostEnvironment hostEnv) : PageModel
 {
-    public void OnGet([FromRoute] int playerIndex)
+    public IActionResult OnGet([FromRoute] int playerIndex)
     {
+        if (hostEnv.IsDevelopment())
+        {
+            return NotFound();
+        }
         ViewData["PlayerIndex"] = playerIndex;
+        return Page();
     }
 }

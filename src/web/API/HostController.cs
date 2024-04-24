@@ -13,7 +13,7 @@ namespace CardLab.API
     public class HostController : ControllerBase
     {
         [HttpPost("start-game")]
-        public async Task<IActionResult> StartGame()
+        public IActionResult StartGame()
         {
             var user = (GameUserPrincipal)User;
 

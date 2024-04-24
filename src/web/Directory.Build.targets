@@ -1,0 +1,13 @@
+﻿<Project>
+    <Target Name="CLFinalizePublish" BeforeTargets="AfterPublish">
+        <ItemGroup>
+            <PublishDir Include="$(PublishDir)" />
+        </ItemGroup>
+        <PropertyGroup>
+            <PythonScript>$(MSBuildProjectDirectory)/deploy.py</PythonScript>
+        </PropertyGroup>
+        
+        <Message Text="Running deploy.py" Importance="high" />
+        <Exec Command="python3 $(PythonScript) --publish-dir %(PublishDir.FullPath) build_vite compile_packs" />
+    </Target>
+</Project>

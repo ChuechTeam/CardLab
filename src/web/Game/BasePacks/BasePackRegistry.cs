@@ -53,7 +53,75 @@ public sealed class BasePackRegistry(
         _loadedPacks[id] = new LoadedPack(pack, defFileRel.Replace('\\', '/'), resFileRel.Replace('\\', '/'));
     }
 
-    // todo: method to add preexisting pack from filesystem
+    public async Task FindPacks()
+    {
+        var packsDir = Path.Combine(webEnv.WebRootPath, WebRootSubDir);
+        var found = new Dictionary<string, (string? def, string? res)>();
+
+        if (Directory.Exists(packsDir))
+        {
+            foreach (var file in Directory.EnumerateFiles(packsDir))
+            {
+                var ext = Path.GetExtension(file);
+                bool isRes = ext == "." + GamePack.PackResFileExt;
+                bool isDef = ext == "." + GamePack.PackDefFileExt;
+
+                if (isRes || isDef)
+                {
+                    var name = Path.GetFileNameWithoutExtension(ext);
+                    if (!found.TryGetValue(name, out var value))
+                    {
+                        value = (def: null, res: null);
+                        found[name] = value;
+                    }
+
+                    if (isRes)
+                    {
+                        found[name] = value with { res = file };
+                    }
+                    else
+                    {
+                        found[name] = value with { def = file };
+                    }
+                }
+            }
+        }
+        
+        foreach (var (name, (defFile, resFile)) in found)
+        {
+            if (defFile is null)
+            {
+                logger.LogWarning("Found resource file {ResFile} without definition file", resFile);
+                continue;
+            }
+
+            if (resFile is null)
+            {
+                logger.LogWarning("Found definition file {DefFile} without resource file", defFile);
+                continue;
+            }
+
+            await using var def = File.OpenRead(defFile);
+            var pack = await JsonSerializer.DeserializeAsync<GamePack>(def, jsonOptions.Value.JsonSerializerOptions);
+
+            if (pack is null)
+            {
+                logger.LogWarning("Invalid pack definition file {DefFile}", defFile);
+                continue;
+            }
+
+            var defRel = Path.Combine(WebRootSubDir, name + "." + GamePack.PackDefFileExt);
+            var resRel = Path.Combine(WebRootSubDir, name + "." + GamePack.PackResFileExt);
+            if (!_loadedPacks.TryAdd(pack.Id, new LoadedPack(pack, defRel, resRel)))
+            {
+                logger.LogWarning("Duplicate pack ID: {Id}", pack.Id);
+            }
+            else
+            {
+                logger.LogInformation("Loaded pack {Id} ({Name}) from base packs folder", pack.Id, pack.Name);
+            }
+        }
+    }
 
     public GamePack? GetPack(Guid id)
     {

@@ -29,12 +29,7 @@
 </div>
 
 @section Scripts {
-    <environment include="Development">
-        <script type="module" src="@ViewData["ViteBase"]/src/game.ts"></script>
-    </environment>
-    <environment include="Production">
-        <script src="~/scripts/game.js" type="module" asp-append-version="true"></script>
-    </environment>
+    <script vite-src="~/src/game.ts" type="module"></script>
     <script>
         document.querySelector(".duel-test-fullscreen").addEventListener("click", e => {
         if (!document.fullscreenElement) {
