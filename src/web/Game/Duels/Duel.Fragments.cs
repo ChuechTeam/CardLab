@@ -84,7 +84,7 @@ public sealed partial class Duel
                 return false;
             }
 
-            if (virtualCard is null || State.FindCard(cardId) is null)
+            if (virtualCard is null && State.FindCard(cardId) is null)
             {
                 return false;
             }
@@ -413,6 +413,12 @@ public sealed partial class Duel
                         return false;
                     }
                 }
+                
+                //..And that the unit isn't dying soon.
+                if (u2.DeathPending)
+                {
+                    return false;
+                }
             }
 
             return true;
@@ -735,7 +741,8 @@ public sealed partial class Duel
         }
     }
 
-    public sealed class FragUnitTrigger(int unitId, Action<FragUnitTrigger> action) : DuelFragment
+    public sealed class FragUnitTrigger(int unitId, Action<FragUnitTrigger> action, Func<FragUnitTrigger,
+        bool>? verifier=null) : DuelFragment
     {
         public int UnitId { get; } = unitId;
 
@@ -743,7 +750,7 @@ public sealed partial class Duel
 
         protected override bool Verify()
         {
-            return State.FindUnit(UnitId) != null;
+            return State.FindUnit(UnitId, true) != null && (verifier?.Invoke(this) ?? true);
         }
 
         protected override bool Run()

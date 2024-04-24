@@ -4,6 +4,7 @@ import {Card, CardControlMode, CardVisualData} from "src/duel/game/Card.ts";
 import {DuelController} from "src/duel/control/controller.ts";
 import {Unit, UnitVisualData} from "src/duel/game/Unit.ts";
 import {AttrCompMode, AttrState, attrStateCompare} from "src/duel/game/AttrState.ts";
+import {Point} from "pixi.js";
 
 // Creates all the avatars of the game, i.e., the visual representations of the cards and units.
 // Note that the player is represented as the core.
@@ -11,6 +12,8 @@ export class GameAvatars {
     constructor(public scene: GameScene, public controller: DuelController) {
     }
 
+    deadUnitsPositions = new Map<number, Point>()
+    
     get cards() {
         return this.scene.cards;
     }

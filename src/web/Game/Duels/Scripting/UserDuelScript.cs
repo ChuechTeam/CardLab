@@ -47,7 +47,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
     public override void PostSpawn(DuelFragment frag)
     {
         RegisterScriptEventHandlers();
-        if (_postSpawnActions.Count != 0 && CanStartTrigger(frag))
+        if (_postSpawnActions.Count != 0)
         {
             QueueTrigger(frag, [.._postSpawnActions]);
         }
@@ -65,7 +65,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
 
     public override void PostEliminated(DuelFragment frag)
     {
-        if (_postDeathActions.Count != 0 && CanStartTrigger(frag))
+        if (_postDeathActions.Count != 0)
         {
             QueueTrigger(frag, [.._postDeathActions], true);
         }
@@ -633,15 +633,18 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             case PostUnitEliminatedEvent unitElim:
                 if (unitElim.Team == GameTeam.Self)
                 {
+                    _postDeathActions.AddRange(handler.Actions);
                 }
-
-                ListenFragment<Duel.FragDestroyUnit>(f =>
+                else
                 {
-                    if (State.FindUnit(f.UnitId, true) is { } u && IsInTeam(u, unitElim.Team))
+                    ListenFragment<Duel.FragDestroyUnit>(f =>
                     {
-                        QueueTrigger(f, handler.Actions);
-                    }
-                });
+                        if (State.FindUnit(f.UnitId, true) is { } u && IsInTeam(u, unitElim.Team))
+                        {
+                            QueueTrigger(f, handler.Actions);
+                        }
+                    });
+                }
                 break;
             case PostUnitKillEvent:
                 ListenFragment<Duel.FragDestroyUnit>(f =>
@@ -685,7 +688,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             case PostNthCardPlayEvent nthCard:
                 ListenAttribute(DuelBaseAttrs.CardsPlayedThisTurn, (frag, ent, _, _, newValue) =>
                 {
-                    if (newValue == nthCard.N && ent.Id == entity.Id)
+                    if (newValue == nthCard.N && ent.Id == MyPlayer.Id)
                     {
                         QueueTrigger(frag, handler.Actions);
                     }
@@ -742,28 +745,21 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
 
     private void QueueTrigger(DuelFragment reactingTo, ImmutableArray<CardAction> actions, bool allowDeath = false)
     {
-        if (!CanStartTrigger(reactingTo))
+        if (!CanStartTrigger(reactingTo, allowDeath))
         {
             return;
         }
 
-        if (!allowDeath && Entity.Eliminated)
-        {
-            return;
-        }
-
-        // todo: check the maySucceed inside Verify() of UnitTrigger instead
-        // Do a dry run first.
-        var maySucceed = ExecuteActionSequence(new EventContext(reactingTo, null), actions.AsSpan(), allowDeath);
-        if (!maySucceed)
-        {
-            return;
-        }
-
-        RegisterTriggerExecuted(reactingTo);
+        // Queue a trigger that verifies inside the fragments so we get correct validation,
+        // instead of checking now which might be stale data.
 
         reactingTo.EnqueueFragment(new Duel.FragUnitTrigger(Entity.Id,
-            f => ExecuteActionSequence(new EventContext(reactingTo, f), actions.AsSpan(), allowDeath)));
+            f =>
+            {
+                RegisterTriggerExecuted(reactingTo);
+                ExecuteActionSequence(new EventContext(reactingTo, f), actions.AsSpan(), allowDeath);
+            }, f => CanStartTrigger(reactingTo, allowDeath, true)
+                    && ExecuteActionSequence(new EventContext(reactingTo, null), actions.AsSpan(), allowDeath)));
     }
 
     private void RegisterTriggerExecuted(DuelFragment reactingTo)
@@ -772,7 +768,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         reactingTo.Mutation.UserScriptingState.TotalTriggers++;
     }
 
-    private bool CanStartTrigger(DuelFragment reactingTo)
+    private bool CanStartTrigger(DuelFragment reactingTo, bool allowDeath, bool disableParentCheck = false)
     {
         // Keep a reasonable limit of triggers per iteration.
         var maxTriggersOk =
@@ -782,6 +778,16 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         if (!maxTriggersOk)
         {
             return false;
+        }
+        
+        if (!allowDeath && Entity.Eliminated)
+        {
+            return false;
+        }
+
+        if (disableParentCheck)
+        {
+            return true;
         }
 
         // Then, we need to make sure that any trigger that comes from forbidden fragments
@@ -941,6 +947,11 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         if (team == GameTeam.Self)
         {
             return ent is DuelUnit u && u == Entity;
+        }
+
+        if (team is GameTeam.Ally && ent.Equals(Entity))
+        {
+            return false;
         }
 
         var idx = team == GameTeam.Enemy ? AdvPlayerIdx : MyPlayerIdx;

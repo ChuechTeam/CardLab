@@ -1,21 +1,17 @@
 ﻿import {GameTask} from "src/duel/control/task.ts";
 import {DestroyUnitTask} from "src/duel/control/tasks/DestroyUnitTask.ts";
 import {ScopeTask, SequenceAwareTask} from "src/duel/control/tasks/ScopeTask.ts";
+import {UnitTriggerScopeTask} from "src/duel/control/tasks/UnitTriggerScopeTask.ts";
 
 export class UnitDeathScopeTask extends ScopeTask implements SequenceAwareTask {
     constructor(public preparationTasks: GameTask[] = [],
                 public childTasks: GameTask[] = []) {
         super(preparationTasks, childTasks);
-
-        for (const t of childTasks) {
-            if (t instanceof DestroyUnitTask) {
-                t.playDeathAnim = true;
-            }
-        }
     }
     
     delay = 0.0
     padEnd = false;
+    nextTriggerId = -1;
 
     *run(){
         if (this.delay != 0.0) {
@@ -28,6 +24,10 @@ export class UnitDeathScopeTask extends ScopeTask implements SequenceAwareTask {
     }
     
     sequencePrepare(previous: GameTask | null, next: GameTask | null) {
+        if (next instanceof UnitTriggerScopeTask) {
+            this.nextTriggerId = next.unitId;
+        }
+
         // fix case where death has prep tasks
         if (next instanceof UnitDeathScopeTask) {
             return {runInBackground: true};

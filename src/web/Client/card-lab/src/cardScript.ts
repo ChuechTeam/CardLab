@@ -238,7 +238,7 @@ const blocks: BlockMap = {
                         "type": "input_end_row"
                     },
                     {
-                        "type": "input_filter",
+                        "type": "input_value",
                         "name": "filter",
                         "check": "FilterUnitCompat"
                     },

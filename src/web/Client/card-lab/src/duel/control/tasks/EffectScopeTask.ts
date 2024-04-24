@@ -3,7 +3,7 @@ import {GameTask, GameTaskState} from "src/duel/control/task.ts";
 import {GameAvatars} from "src/duel/control/avatar.ts";
 import {HomingProjectile} from "src/duel/game/HomingProjectile.ts";
 import {KnownLocalDuelCard, LocalEntity} from "src/duel/control/state.ts";
-import {duelLogWarn} from "src/duel/log.ts";
+import {duelLogError, duelLogWarn} from "src/duel/log.ts";
 import {Container, Point} from "pixi.js";
 import {Card} from "src/duel/game/Card.ts";
 
@@ -32,7 +32,11 @@ export class EffectScopeTask extends ScopeTask implements SequenceAwareTask {
 
     * run(): Generator<GameTask> {
         const sourceAv = this.avatars.findEntity(this.sourceId)
-        if (sourceAv === undefined) {
+        let sourcePos = sourceAv?.position
+            ?? this.avatars.deadUnitsPositions.get(this.sourceId);
+
+        if (sourcePos === undefined) {
+            duelLogError(`No source position found for id ${this.sourceId}!`)
             yield* this.runTasks();
             return;
         }
@@ -40,9 +44,9 @@ export class EffectScopeTask extends ScopeTask implements SequenceAwareTask {
         if (this.isSpell && this.isFirstEffect) {
             yield GameTask.wait(0.25)
         }
-        
+
         if (this.startDelay > 0) {
-            yield GameTask.wait(this.startDelay/1000);
+            yield GameTask.wait(this.startDelay / 1000);
         }
 
         if (!this.disableTargeting && this.targets.length !== 0) {
@@ -84,10 +88,13 @@ export class EffectScopeTask extends ScopeTask implements SequenceAwareTask {
             }
 
             let hasAnyCard = avatars.some(x => x instanceof Card)
-            const srcPos = sourceAv.position;
             const positions = [] as Point[]
-            
-            function updatePositions() {
+
+            const updatePositions = () => {
+                if (sourceAv !== undefined){
+                    sourcePos = sourceAv.position;
+                }
+                
                 positions.length = avatars.length;
                 for (let i = 0; i < positions.length; i++) {
                     positions[i] = visiblePos(avatars[i]);
@@ -96,7 +103,7 @@ export class EffectScopeTask extends ScopeTask implements SequenceAwareTask {
             updatePositions();
 
             const appearInterval = Math.max(0.04, 0.18 - avatars.length * 0.02);
-            this.avatars.scene.effectTargetAnim.show(srcPos, positions, {
+            this.avatars.scene.effectTargetAnim.show(sourcePos, positions, {
                 radius: hasAnyCard ? 60 : 125,
                 appearInterval,
                 targetEntryTime: 0.2,
@@ -108,7 +115,7 @@ export class EffectScopeTask extends ScopeTask implements SequenceAwareTask {
             const task = GameTask.callback(complete => this.avatars.scene.effectTargetAnim.onEnd = complete);
             task.tick = () => {
                 updatePositions()
-                this.avatars.scene.effectTargetAnim.updateSourcePos(srcPos)
+                this.avatars.scene.effectTargetAnim.updateSourcePos(sourcePos!)
                 this.avatars.scene.effectTargetAnim.updateTargetPos(positions)
             }
             yield task;
@@ -123,7 +130,7 @@ export class EffectScopeTask extends ScopeTask implements SequenceAwareTask {
                     const projOptions = {
                         projColor: color,
                         lineColor: color,
-                        startPos: srcPos,
+                        startPos: sourcePos,
                         targetPos,
                         showLine: false,
                         useTime: true,
@@ -153,7 +160,7 @@ export class EffectScopeTask extends ScopeTask implements SequenceAwareTask {
         yield* this.runTasks();
 
         if (this.endDelay > 0) {
-            yield GameTask.wait(this.startDelay/1000);
+            yield GameTask.wait(this.startDelay / 1000);
         }
         yield GameTask.wait(this.hasNext ? 0.5 : 0.1);
     }

@@ -191,6 +191,7 @@ export class DuelController {
             duelLog(`Starting mutation to iteration ${m.iteration} with ${m.deltas.length} deltas`)
 
             this.state.removeDeadUnits();
+            this.avatars.deadUnitsPositions.clear();
             const tree = this.buildMutationTree(m);
             const task = this.applyScope(tree);
             this.propositions = new LocalDuelPropositions(m.propositions);

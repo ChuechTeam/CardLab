@@ -94,6 +94,27 @@ public class Test2SpecialScript(Duel duel, IEntity entity) : DuelScript(duel, en
             });
         }
     }
+
+    public override void PostEliminated(DuelFragment frag)
+    {
+        if (Entity is not DuelUnit du)
+        {
+            return;
+        }
+
+        var enemies = State.GetPlayer(1 - du.Owner).ExistingUnits
+            .ToList();
+        if (enemies.Count != 0)
+        {
+            var randEnemy = enemies[Duel.Rand.Next(enemies.Count)];
+            frag.EnqueueFragment(new Duel.FragUnitTrigger(du.Id, f =>
+            {
+                f.ApplyFrag(new Duel.FragEffect(du.Id, EffectTint.Negative, [
+                    new Duel.FragHurtEntity(null, randEnemy, 1)
+                ]));
+            }));
+        }
+    }
 }
 
 public class EvasionFiscaleSpecialScript : DuelScript<DuelCard>

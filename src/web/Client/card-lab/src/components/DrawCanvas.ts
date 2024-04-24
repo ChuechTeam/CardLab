@@ -75,8 +75,8 @@ export class DrawCanvas extends LabElement {
     
     strokeUpdate(x: number, y: number) {
         if (!this.strokeData.ongoing) { return; }
-        
         if (this.strokeData.prevPoint != null) {
+            this.ctx.lineCap = 'round';
             this.ctx.lineWidth = 2;
             this.ctx.moveTo(this.strokeData.prevPoint.x, this.strokeData.prevPoint.y)
             this.ctx.lineTo(x, y)
