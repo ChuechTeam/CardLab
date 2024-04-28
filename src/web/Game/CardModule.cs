@@ -136,7 +136,7 @@ public sealed partial class CardModule
     {
         var entries = ImmutableArray.CreateBuilder<UsageEntry>();
 
-        int creditsAvailable = cardDef.Cost * 5 * 2 + cardDef.Cost * 3 + 999;
+        int creditsAvailable = cardDef.Cost * 5 * 2 + cardDef.Cost * 3 + 75;
         int creditsUsed = 0;
 
         void AddEntry(in UsageEntry entry)
@@ -183,6 +183,10 @@ public sealed partial class CardModule
 
     public string GenerateCardDescription(CardDefinition def) => LangFR.GenerateCardDescription(def);
     
+    // a+bn+cn(n-1)
+    // a= 50
+    // b=2
+    // c=2
     private static int ActionCost(CardAction act)
     {
         return act switch

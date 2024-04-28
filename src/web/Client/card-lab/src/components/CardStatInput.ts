@@ -7,30 +7,42 @@ const template = registerTemplate('card-stat-input-template',`
 }
 .input {
     display: flex;
-    border: 2px solid black;
-    border-bottom-width: 6px;
 }
 #value {
     flex-grow: 1;
     text-align: center;
     font-size: 1.5em;
+    border: 2px black;
+    border-style: solid none;
+    border-bottom-width: 4px;
 }
 button {
     width: 27.5%;
     
     appearance: none;
-    border: none;
     background: none;
     
     font-weight: bold;
     font-size: 1.2em;
     padding: 0;
+
+    border: 2px solid black;
+    border-bottom-width: 4px;
 }
-#decrement {
-    border-right: 2px solid black;
+button:active {
+    position: relative;
+    margin-top: 2px;
+    border-bottom-width: 2px;
 }
-#increment {
-    border-left: 2px solid black;
+button:active::before {
+	content: " ";
+	position: absolute;
+	z-index: -1;
+	top: -4px;
+	height: 2px;
+	background: rgba(0, 0, 0, 0.125);
+	left: -2px;
+	right: -2px;
 }
 </style>
 <div class="input">

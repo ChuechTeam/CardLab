@@ -2,7 +2,12 @@
 import type {CardLab} from "../game.ts";
 
 const template = registerTemplate('lobby-view-template',`
-<h1>Salut</h1>
+<style>
+:host {
+    padding: 8px;
+}
+</style>
+<h1>Bienvenue !</h1>
 <p id="code-display">Truc</p>
 <ul id="players"></ul>
 <div id="commands-slot"></div>

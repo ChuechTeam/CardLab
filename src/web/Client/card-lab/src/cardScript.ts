@@ -1397,8 +1397,10 @@ export function blocklyWorkspaceToScript(workspace: Blockly.Workspace): CardScri
                 event: event,
                 actions: readActionSequence(block)
             }
-
-            handlers.push(handler)
+            
+            if (handler.actions.length !== 0) {
+                handlers.push(handler)
+            }
         }
 
     return script

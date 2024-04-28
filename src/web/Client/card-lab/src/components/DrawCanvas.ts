@@ -1,104 +1,280 @@
 ﻿import {LabElement} from "../dom.ts";
 
+const style = new CSSStyleSheet()
+style.insertRule(":host { aspect-ratio: 5/3; }");
+
+const MAX_UNDOS = 21;
+
+class Vec2 {
+    constructor(public x: number = 0, public y: number = 0) {
+    }
+
+    add(other: Vec2) {
+        return new Vec2(this.x + other.x, this.y + other.y);
+    }
+
+    sub(other: Vec2) {
+        return new Vec2(this.x - other.x, this.y - other.y);
+    }
+
+    mul(scalar: number) {
+        return new Vec2(this.x * scalar, this.y * scalar);
+    }
+
+    norm() {
+        return Math.sqrt(this.x * this.x + this.y * this.y);
+    }
+
+    normSq() {
+        return this.x * this.x + this.y * this.y;
+    }
+}
+
+export class DrawToolState {
+    thickness = 3;
+    color = "#000000";
+    
+    clone() {
+        const clone = new DrawToolState();
+        clone.thickness = this.thickness;
+        clone.color = this.color;
+        return clone;
+    }
+}
+
+export class UndoStack {
+    images: ImageData[] = [];
+}
+
+class Stroke {
+    points: Vec2[] = [];
+    interpolatedPoints: Vec2[] = [];
+    style: DrawToolState = new DrawToolState();
+    
+    // Internal drawing state
+    circleDist: number
+    incompleteDist = 0
+    
+    constructor(curStyle: DrawToolState) {
+        this.style = curStyle.clone();
+        this.circleDist = strokeCircleDistance(0.7, this.style.thickness);
+    }
+}
+
 export class DrawCanvas extends LabElement {
     canvas: HTMLCanvasElement = null!;
     ctx: CanvasRenderingContext2D = null!;
-    strokeData: {
-        prevPoint: {x: number, y: number} | null,
-        ongoing: boolean
-    } = { prevPoint: null, ongoing: false }
+    stroke: Stroke | null = null;
+
+    toolState = new DrawToolState();
+    undoStack = new UndoStack();
     
+    #enabled = true;
+
     /**
      * Make a new draw canvas for your drawing pleasures
      */
     constructor() {
         super();
     }
-    
+
     connected() {
         const canvas = document.createElement("canvas")
         // Aspect ratio: 1:5/3 <==> 3:5
-        canvas.width = 625
-        canvas.height = 375
+        const resolution = 150;
+        canvas.width = 5 * resolution;
+        canvas.height = 3 * resolution;
         canvas.style.width = '100%';
         canvas.style.height = '100%';
+        canvas.style.touchAction = "none";
         
+        // just in case we have browser issues
+        if ("part" in canvas)
+            canvas.part.add("canvas");
+
         this.dom.appendChild(canvas)
-        
+
         this.canvas = canvas
-        this.ctx = canvas.getContext('2d')!;
-        
+        this.ctx = canvas.getContext('2d', {
+            alpha: false,
+            willReadFrequently: true
+        })!;
+
         this.ctx.fillStyle = "white";
         this.ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-        this.canvas.addEventListener("mousedown", e => {
+        this.canvas.addEventListener("pointerdown", e => {
             this.strokeStart()
         })
-        this.canvas.addEventListener("touchstart", e => {
-            this.strokeStart()
-            e.preventDefault()
-        })
 
-        this.canvas.addEventListener("mousemove", e => {
-            const pos = this.getMousePos(e);
-            this.strokeUpdate(pos.x, pos.y);
+        this.canvas.addEventListener("pointermove", e => {
+            for (let ev of e.getCoalescedEvents()) {
+                const pos = this.getMousePos(ev);
+                this.strokeUpdate(pos.x, pos.y);
+            }
         })
-        this.canvas.addEventListener("touchmove", e => {
-            // Only support single touch for now.
-            const pos = this.getMousePos(e.touches[0]);
-            this.strokeUpdate(pos.x, pos.y);
-            e.preventDefault()
+        
+        this.canvas.addEventListener("pointerup", e => {
+            this.strokeEnd()
         });
-
-        this.canvas.addEventListener("mouseup", e => {
+        document.addEventListener("pointerup", e => {
             this.strokeEnd()
         })
-        this.canvas.addEventListener("touchend", e => {
-            this.strokeEnd()
-            e.preventDefault()
-        });
 
-        document.addEventListener("mouseup", e => { this.strokeEnd() })
-        document.addEventListener("touchend", e => { this.strokeEnd() })
+        this.dom.adoptedStyleSheets.push(style);
+    }
+
+    clear(pushToUndo=false) {
+        this.ctx.fillStyle = "#ffffff";
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        if (pushToUndo) {
+            this.pushToUndoStack();
+        }
+    }
+
+    undo() {
+        const length = this.undoStack.images.length;
+        if (length <= 1) {
+            return;
+        }
+        this.undoStack.images.pop();
+        this.rebuildFromUndoStack();
+        this.dispatchEvent(new CustomEvent("undoStackUpdated"));
     }
     
+    load(img: CanvasImageSource) {
+        this.ctx.drawImage(img, 0, 0);
+        this.resetUndoStack();
+    }
+    
+    get enabled() { return this.#enabled; }
+    set enabled(val: boolean) {
+        this.#enabled = val;
+        
+        if (val) {
+            this.canvas.style.pointerEvents = "auto";
+        } else {
+            this.canvas.style.pointerEvents = "none";
+            this.strokeEnd();
+        }
+    }
+
     strokeReset() {
-        this.strokeData = {
-            prevPoint: null,
-            ongoing: false,
-        }
+        this.stroke = null;
+        this.ctx.closePath();
     }
-    
+
     strokeStart() {
-        this.strokeData.ongoing = true;
-    }
-    
-    strokeUpdate(x: number, y: number) {
-        if (!this.strokeData.ongoing) { return; }
-        if (this.strokeData.prevPoint != null) {
-            this.ctx.lineCap = 'round';
-            this.ctx.lineWidth = 2;
-            this.ctx.moveTo(this.strokeData.prevPoint.x, this.strokeData.prevPoint.y)
-            this.ctx.lineTo(x, y)
-            this.ctx.stroke()
+        if (this.undoStack.images.length === 0) {
+            // Undo stack not yet initialized with the root image, build it!
+            this.resetUndoStack();
         }
-        this.strokeData.prevPoint = {x, y}
+        
+        this.stroke = new Stroke(this.toolState);
+        this.updateStrokeStyle(this.stroke);
+        this.ctx.beginPath();
     }
-    
+
+    strokeUpdate(x: number, y: number) {
+        if (this.stroke === null) {
+            return;
+        }
+
+        const p = new Vec2(x, y);
+        this.stroke.points.push(p);
+
+        const toDraw = [] as Vec2[];
+        if (this.stroke.points.length == 1) {
+            toDraw.push(p);
+        } else {
+            const prev = this.stroke.points[this.stroke.points.length - 2];
+            const dist = prev.sub(p).norm();
+            const iterations = Math.floor((dist + this.stroke.incompleteDist) / this.stroke.circleDist);
+            for (let i = 0; i < iterations; i++) {
+                const interp = plerp(prev, p, i / iterations);
+                toDraw.push(interp);
+                this.stroke.interpolatedPoints.push(interp);
+            }
+
+            if (toDraw.length === 0) {
+                this.stroke.incompleteDist += dist;
+            } else {
+                this.stroke.incompleteDist = 0;
+            }
+        }
+        
+        if (toDraw.length !== 0) {
+            this.ctx.beginPath();
+            for (const point of toDraw) {
+                this.ctx.ellipse(point.x, point.y,
+                    this.toolState.thickness, this.toolState.thickness, 0, 0, 2 * Math.PI);
+            }
+            this.ctx.fill();
+            this.ctx.closePath();
+        }
+    }
+
     strokeEnd() {
-        if (this.strokeData.ongoing) {
+        if (this.stroke && this.stroke.points.length > 0) {
+            this.pushToUndoStack()
             this.dispatchEvent(new Event("stroke-ended"));
         }
+        
+
         this.strokeReset()
+    }
+
+    updateStrokeStyle(stroke: Stroke) {
+        this.ctx.fillStyle = stroke.style.color;
+        this.ctx.lineWidth = stroke.style.thickness;
+        this.ctx.lineCap = "round";
+        this.ctx.lineJoin = "round"
+    }
+
+    pushToUndoStack() {
+        if (this.undoStack.images.length >= MAX_UNDOS - 1) {
+            this.undoStack.images.shift();
+        }
+        this.undoStack.images.push(this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height));
+        this.dispatchEvent(new CustomEvent("undoStackUpdated"));
+    }
+    
+    resetUndoStack() {
+        this.undoStack.images.length = 0;
+        this.pushToUndoStack();
+        this.dispatchEvent(new CustomEvent("undoStackUpdated"));
+    }
+    
+    rebuildFromUndoStack() {
+        if (this.undoStack.images.length !== 0) {
+            this.ctx.putImageData(this.undoStack.images[this.undoStack.images.length - 1], 0, 0);
+        }
     }
 
     getMousePos(e: MouseEvent | Touch) {
         const rect = this.canvas.getBoundingClientRect();
-        return {
-            x: (e.clientX - rect.left) / (rect.right - rect.left) * this.canvas.width,
-            y: (e.clientY - rect.top) / (rect.bottom - rect.top) * this.canvas.height
-        };
+        return new Vec2(
+            (e.clientX - rect.left) / (rect.right - rect.left) * this.canvas.width,
+            (e.clientY - rect.top) / (rect.bottom - rect.top) * this.canvas.height
+        );
     }
 }
 
 customElements.define("draw-canvas", DrawCanvas)
+
+function plerp(a: Vec2, b: Vec2, t: number): Vec2 {
+    return a.add(b.sub(a).mul(t));
+}
+
+// t: target area
+// r: circle radius
+// returns --> euclidean distance between circles (min 0.05) 
+function strokeCircleDistance(t: number, r: number) {
+    // Too far, select max possible distance.
+    if (t >= 2*r*r) {
+        return 2*r;
+    }
+    
+    return Math.max(0.05, Math.pow(r*t, 1/3));
+}

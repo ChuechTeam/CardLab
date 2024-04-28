@@ -16,7 +16,7 @@ export function importGlobalStyles(shadowDom: ShadowRoot) {
     // TODO: inspect performance impact?
     const linkNodes = document.head.querySelectorAll('link[rel="stylesheet"]');
     for (const n of linkNodes) {
-        shadowDom.appendChild(n.cloneNode(true));
+        shadowDom.appendChild(n.cloneNode(false));
     }
 }
 
@@ -40,14 +40,25 @@ sharedStyle.insertRule(":host { display: block; }");
 export class LabElement extends HTMLElement {
     dom: ShadowRoot = null!
     importGlobalStyles = false
+    useDefaultHostStyle = true
+    connectedOnce = false;
     // nodePropMap?: Record<string, string>
     // Set by the decorator using the prototype
+    
     private connectedCallback() {
+        if (this.connectedOnce) {
+            this.reconnected();
+            return;
+        }
+        
+        this.connectedOnce = true;
         this.dom = this.attachShadow({mode: 'open'});
         if (this.importGlobalStyles) {
             importGlobalStyles(this.dom)
         }
-        this.dom.adoptedStyleSheets.push(sharedStyle);
+        if (this.useDefaultHostStyle) {
+            this.dom.adoptedStyleSheets.push(sharedStyle);
+        }
 
         this.init();
         this.render();
@@ -71,6 +82,8 @@ export class LabElement extends HTMLElement {
 
     connected() {
     }
+    
+    reconnected() {}
 
     disconnected() {
     }

@@ -140,7 +140,7 @@ export class CardLab extends EventTarget {
         }
 
         if (this.view !== null) {
-            this.gameContainer.appendChild(this.view)
+            this.gameContainer.prepend(this.view)
 
             let child = this.gameContainer.firstChild
             let nextChild;

@@ -12,9 +12,10 @@ import {CardScriptEditor} from "src/components/CardScriptEditor.ts";
 import * as Blockly from "blockly/core";
 import type {CardLab} from "src/game.ts";
 import {gameStorageStore, gameStorageLoad, gameSessionLocalInvalidated} from "src/localSave.ts"
+import {DrawCanvasControls} from "src/components/DrawCanvasControls.ts";
+import "src/components/DrawCanvasControls.ts";
 
-const template = registerTemplate('card-editor-template', `
-<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+const template = registerTemplate('card-editor-template', `<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
     <symbol viewBox="0 0 104.85 144.56" id="card-svg-bg">
         <defs>
             <style>
@@ -68,122 +69,358 @@ const template = registerTemplate('card-editor-template', `
     </symbol>
 </svg>
 <style>
-.card-editor {
-    margin: 16px 8px;
-}
-.game-card {
-    margin-bottom: 8px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-.stats-inputs {
-    display: grid;  
-    grid-auto-flow: column;
-    
-    grid-template-rows: auto auto;
-    grid-template-columns: 1fr 1fr 1fr;
-    
-    column-gap: 16px;
-    row-gap: 4px;
-    
-    text-align: center;
-    
-    margin-bottom: 8px;
-}
-.stats-inputs span {
-    text-align: center;
-    font-weight: bold;
-}
-#name-input {
+    .card-editor {
+        margin: 6px 12px;
+    }
 
-}
-.name-input-block {
-    display: flex;
+    .game-card {
+        max-height: 85vh;
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+    }
+
+    .stats-inputs {
+        display: grid;
+        grid-auto-flow: column;
+
+        grid-template-rows: auto auto;
+        grid-template-columns: 1fr 1fr 1fr;
+
+        column-gap: 16px;
+        row-gap: 4px;
+
+        text-align: center;
+
+        margin-bottom: 8px;
+    }
+
+    .stats-inputs span {
+        text-align: center;
+        font-weight: bold;
+        align-self: end;
+    }
+
+    .input-block {
+        display: flex;
+
+        margin-bottom: 8px;
+    }
+
+    .input-block span {
+        margin-right: 12px;
+        align-self: center;
+        font-weight: bold;
+        flex-shrink: 0;
+    }
+
+    .input-block input {
+        flex-grow: 1;
+        font-size: 1.2em;
+        font-family: "Chakra Petch", sans-serif;
+        padding-right: 0;
+        width: 100%;
+    }
     
-    margin-bottom: 8px;
-    margin-right: 6px;
-}
-.name-input-block span {
-    margin-right: 12px;
-    align-self: center;
-    font-weight: bold;
-    flex-shrink: 0;
-}
-#name-input {
-    flex-grow: 1;
-    font-size: 1.2em;
-    font-family: "Chakra Petch", sans-serif;
-    padding-right:0;    
-    width: 100%;
-}
-#balance-overview { 
-    margin: 8px 0;
-}
-#script-editor {
-    margin-bottom: 8px;
-}
+    #name-input:placeholder-shown {
+        border: 2px red solid;
+        border-radius: 2px;
+    }
+
+    #balance-overview {
+        margin: 8px 0 2px;
+    }
+
+    #edit-buttons {
+        margin-top: 16px;
+        margin-bottom: 8px;
+        display: flex;
+        flex-direction: column;
+        row-gap: 8px;
+    }
+
+    #edit-buttons .cl-button {
+        font-weight: bold;
+    }
+
+    dialog {
+        padding: 0;
+        border: 2px solid black;
+    }
+
+    #script-editor {
+        height: 85vh;
+        width: 97vw;
+    }
+
+    #script-dialog {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        right: 0;
+
+        z-index: 10;
+    }
+
+    dialog::backdrop {
+        background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    .hacky-backdrop {
+        display: none;
+    }
+
+    #script-dialog[open] + .hacky-backdrop {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        right: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+
+        z-index: 9;
+    }
+
+    dialog > header {
+        display: flex;
+        align-items: center;
+        border-bottom: 6px solid black;
+    }
+
+    dialog > header > .-label {
+        flex-grow: 1;
+        font-weight: bold;
+        text-align: center;
+        padding: 2px 0;
+    }
+
+    dialog > header > .-close-button {
+        align-self: stretch;
+        border: none;
+        background-color: transparent;
+        font-size: 1.25em;
+        border-left: 2px solid black;
+        padding: 3px 12px;
+    }
+
+    #script-dialog-credit {
+        border-right: 2px solid black;
+        align-self: stretch;
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        column-gap: 12px;
+        font-size: 1.1em;
+    }
+
+    #script-dialog-credit.state-valid {
+        background-color: #2f972f;
+        color: white;
+    }
+
+    #script-dialog-credit.state-invalid {
+        background-color: #cc0909;
+        color: white;
+    }
+
+    #script-dialog-credit[updating] {
+        opacity: 0.6;
+    }
+
+    #script-dialog-credit-val {
+        font-family: "Chakra Petch", sans-serif;
+        font-weight: bold;
+        margin-top: 3px;
+    }
+    
+    #draw-dialog {
+        max-width: unset;
+        max-height: unset;
+    }
+    
+    #draw-dialog > .-contents {
+        width: 94vw;
+        height: 80vh;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px;
+        justify-content: space-evenly;
+    }
+    
+    #draw-dialog > .-contents > .-controls {
+        flex-grow: 0;
+        flex-basis: 250px;
+    }   
+    
+    #draw-dialog-slot {
+        aspect-ratio: 5/3;
+        max-width: 100%;
+        max-height: 100%;
+    }
+    
+    #draw-dialog-slot #card-canvas {
+        max-height: 100%;
+        max-width: 100%;
+    }
+    
+    #draw-dialog-slot #card-canvas::part(canvas) {
+        border: 2px solid black;
+    }
+
+    .def-grid {
+        display: block;
+    }
+
+    @media (orientation: landscape) {
+        .def-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            grid-template-rows: auto auto auto auto;
+            column-gap: 8px;
+        }
+
+        .game-card {
+            grid-row: 1/5;
+            grid-column: 1;
+            max-height: 70vh;
+            margin: 0;
+        }
+
+        .input-block.-name {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .input-block.-archetype {
+            grid-column: 2;
+            grid-row: 2;
+        }
+
+        .stats-inputs {
+            grid-column: 2;
+            grid-row: 3;
+        }
+
+        #edit-buttons {
+            grid-column: 2;
+            grid-row: 4;
+
+            flex-direction: row;
+            column-gap: 8px;
+
+            margin: 0;
+        }
+
+        #edit-buttons button {
+            font-size: 0.9em;
+            flex-grow: 1;
+        }
+        
+        #draw-dialog > .-contents {
+            flex-direction: row-reverse;
+            justify-content: unset;
+            align-items: center;
+        }
+        
+        #draw-dialog > .-contents > .-controls {
+            flex-grow: 1;
+        }
+    }
+
 </style>
 <div class="card-editor">
-    <div class="game-card">
-        <svg class="-bg" viewBox="0 0 104.85 144.56">
-            <use href="#card-svg-bg"/>
-            <foreignObject height="100%" width="100%">
-                <div xmlns="http://www.w3.org/1999/xhtml" class="game-card-fields">
-                    <div class="-header">
-                        <div class="-name" id="card-name">Carte sympa</div>
-                        <div class="-cost" id="card-cost">8</div>
-                    </div>
-                    <div class="-image">
-                        <draw-canvas class="-draw-canvas" id="card-canvas"></draw-canvas>
-                    </div>
-                    <div class="-desc" id="card-desc">
-                        <div>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla nec purus feugiat, molestie
-                            ipsum et, consequat nibh. Etiam non elit dui. Nullam vel eros sit amet arcu vestibulum
-                            accumsan in in leo.
+    <div class="def-grid">
+        <div class="game-card">
+            <svg class="-bg" viewBox="0 0 104.85 144.56">
+                <use href="#card-svg-bg"/>
+                <foreignObject height="100%" width="100%">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="game-card-fields">
+                        <div class="-header">
+                            <div class="-name" id="card-name">Carte sympa</div>
+                            <div class="-cost" id="card-cost">8</div>
+                        </div>
+                        <div class="-image" id="card-image-slot">
+                            <draw-canvas class="-draw-canvas" id="card-canvas"></draw-canvas>
+                        </div>
+                        <div class="-desc" id="card-desc">
+                        </div>
+                        <div class="-attribs">
+                            <div class="-attack">
+                                <svg class="-shape" viewBox="0 0 23 16.36">
+                                    <use href="#card-svg-attr"/>
+                                </svg>
+                                <div class="-val" id="card-attack">5</div>
+                            </div>
+                            <div class="-archetype" id="card-archetype"></div>
+                            <div class="-health">
+                                <svg class="-shape" viewBox="0 0 23 16.36">
+                                    <use href="#card-svg-attr"/>
+                                </svg>
+                                <div class="-val" id="card-health">5</div>
+                            </div>
                         </div>
                     </div>
-                    <div class="-attribs">
-                        <div class="-attack">
-                            <svg class="-shape" viewBox="0 0 23 16.36">
-                                <use href="#card-svg-attr"/>
-                            </svg>
-                            <div class="-val" id="card-attack">5</div>
-                        </div>
-                        <div class="-health">
-                            <svg class="-shape" viewBox="0 0 23 16.36">
-                                <use href="#card-svg-attr"/>
-                            </svg>
-                            <div class="-val" id="card-health">5</div>
-                        </div>
-                    </div>
-                </div>
-            </foreignObject>
-        </svg>
+                </foreignObject>
+            </svg>
+        </div>
+        <div class="input-block -name">
+            <span>Nom :</span>
+            <input type="text" id="name-input" placeholder="[Aucun]" maxlength="24"/>
+        </div>
+        <div class="input-block -archetype">
+            <span>Archétype :</span>
+            <input type="text" id="archetype-input" placeholder="[Aucun]" maxlength="24"/>
+        </div>
+        <div class="stats-inputs">
+            <span>Coût</span>
+            <card-stat-input id="cost-input" value="8"></card-stat-input>
+
+            <span>Attaque</span>
+            <card-stat-input id="attack-input" value="7"></card-stat-input>
+
+            <span>Santé</span>
+            <card-stat-input id="health-input" value="6"></card-stat-input>
+        </div>
+        <div id="edit-buttons">
+            <button class="cl-button" id="draw-button">🖌️ Dessiner l'image</button>
+            <button class="cl-button" id="script-button">📝 Modifier le script</button>
+        </div>
     </div>
-    <div class="name-input-block">
-        <span>Nom :</span>
-        <input type="text" id="name-input"/>
-    </div>
-    <div class="stats-inputs">
-       <span>Coût</span>
-       <card-stat-input id="cost-input" value="8"></card-stat-input>
-       
-       <span>Attaque</span>
-       <card-stat-input id="attack-input" value="7"></card-stat-input>
-       
-       <span>Santé</span>
-       <card-stat-input id="health-input" value="6"></card-stat-input>
-    </div>
-    <card-script-editor id="script-editor"></card-script-editor>
     <balance-overview id="balance-overview"></balance-overview>
+    <dialog id="script-dialog">
+        <header>
+            <div class="-credit" id="script-dialog-credit">
+                <lab-icon icon="credit-coin"></lab-icon>
+                <span id="script-dialog-credit-val">0</span>
+            </div>
+            <div class="-label">Éditeur de script</div>
+            <button class="-close-button">✖</button>
+        </header>
+        <card-script-editor id="script-editor"></card-script-editor>
+    </dialog>
+    <div class="hacky-backdrop"></div>
+    <dialog id="draw-dialog">
+        <header>
+            <div class="-label">Dessin de l'illustration</div>
+            <button class="-close-button">✖</button>
+        </header>
+        <div class="-contents">
+            <div id="draw-dialog-slot"></div>
+            <draw-canvas-controls class="-controls" id="draw-controls"></draw-canvas-controls>
+        </div>
+    </dialog>
 </div>
 `)
 
 export class CardEditor extends LabElement {
     delayedImgUpload = runAfterDelay({
         func: () => this.uploadCardImage(),
-        delay: 3000
+        delay: 10000
     })
     delayedDefUpdate = runAfterDelay({
         func: () => this.uploadDefinitionServer(),
@@ -195,18 +432,33 @@ export class CardEditor extends LabElement {
     @fromDom("card-attack") attackTxt: HTMLElement = null!
     @fromDom("card-health") healthTxt: HTMLElement = null!
     @fromDom("card-desc") descTxt: HTMLInputElement = null!
+    @fromDom("card-archetype") archetypeTxt: HTMLElement = null!
 
     @fromDom("name-input") nameInput: HTMLInputElement = null!
+    @fromDom("archetype-input") archetypeInput: HTMLInputElement = null!
     @fromDom("cost-input") costInput: CardStatInput = null!
     @fromDom("attack-input") attackInput: CardStatInput = null!
     @fromDom("health-input") healthInput: CardStatInput = null!
-
+    
     @fromDom("card-canvas") cardCanvas: DrawCanvas = null!
     @fromDom("script-editor") scriptEditor: CardScriptEditor = null!
     @fromDom("balance-overview") balanceOverview: BalanceOverview = null!
+    
+    @fromDom("draw-button") drawButton: HTMLButtonElement = null!
+    @fromDom("draw-dialog") drawDialog: HTMLDialogElement = null!
+    @fromDom("draw-controls") drawControls: DrawCanvasControls = null!
+    @fromDom("draw-dialog-slot") drawDialogSlot: HTMLElement = null!
+    @fromDom("card-image-slot") cardImageSlot: HTMLElement = null!
+    
+    @fromDom("script-button") scriptButton: HTMLButtonElement = null!
+    @fromDom("script-dialog") scriptDialog: HTMLDialogElement = null!
+    @fromDom("script-dialog-credit") scriptCredit: HTMLElement = null!
+    @fromDom("script-dialog-credit-val") scriptCreditVal: HTMLElement = null!
 
     localScriptSaveKey: string
     localImgSaveKey: string
+    archetypeDirty = false
+    nameDirty = false
 
     constructor(public card: CardDefinition, public cardIndex: number) {
         super();
@@ -226,9 +478,34 @@ export class CardEditor extends LabElement {
             input.addEventListener('decrement', () => this.addToStat(input, -1))
             input.addEventListener('increment', () => this.addToStat(input, 1))
         }
+        
         this.nameInput.addEventListener('input', () => {
             this.card.name = this.nameInput.value
-            this.updateDefinition()
+            this.nameDirty = true
+            this.updateDefinitionDom()
+        })
+        this.archetypeInput.addEventListener("input", () => {
+            const arch = this.sanitizeArchetype(this.archetypeInput.value);
+            if (arch !== this.card.archetype) {
+                this.card.archetype = arch;
+                this.archetypeDirty = true;
+                this.updateDefinitionDom()
+            }
+        })
+
+        this.nameInput.addEventListener('blur', () => {
+            if (this.nameDirty) {
+                this.card.name = this.card.name.trim()
+                this.updateDefinition(false)
+                this.nameDirty = false;
+            }
+        })
+        this.archetypeInput.addEventListener("blur", () => {
+            if (this.archetypeDirty) {
+                this.updateDefinition(false);
+                this.archetypeDirty = false;
+            }
+            this.archetypeInput.value = this.card.archetype ?? "";
         })
 
         this.cardCanvas.addEventListener("stroke-ended", e => {
@@ -244,6 +521,34 @@ export class CardEditor extends LabElement {
                 this.saveScriptLocally()
             }
         })
+        this.scriptButton.addEventListener("click", e => {
+            this.scriptDialog.show();
+            this.scriptEditor.updateBlocklyDivPosition();
+            this.scriptEditor.updateBlocklyDivSize();
+        })
+        
+        this.drawButton.addEventListener("click", this.showDrawDialog.bind(this));
+        this.drawDialog.addEventListener("close", () => {
+            this.cardImageSlot.appendChild(this.cardCanvas);
+            this.cardCanvas.enabled = false;
+            
+            this.delayedImgUpload.run(true);
+        })
+        this.cardCanvas.enabled = false;
+        
+        this.dom.querySelector(".hacky-backdrop")?.addEventListener("click", e => {
+            this.scriptDialog.close()
+        });
+        
+        for (const x of this.dom.querySelectorAll("dialog")) {
+            x.addEventListener("click", e => {
+                if (e.target instanceof HTMLButtonElement && e.target.classList.contains("-close-button")) {
+                    x.close();
+                }
+            })
+        }
+        
+        this.drawControls.link(this.cardCanvas);
 
         if (!gameSessionLocalInvalidated) {
             this.loadScriptLocally();
@@ -252,26 +557,34 @@ export class CardEditor extends LabElement {
     }
 
     disconnected() {
-        // Upload the image before entering the next phase
-        // ...It's a bit fragile though, we'll sort it later
-        this.uploadCardImage().then(() => {
-            console.log("cool! the image still got uploaded!")
-        })
+        // Upload the image and definition before entering the next phase
+        this.delayedImgUpload.run(true);
+        this.delayedDefUpdate.run(true);
     }
 
+    showDrawDialog() {
+        this.drawDialog.showModal();
+        this.drawDialogSlot.appendChild(this.cardCanvas);
+        this.cardCanvas.enabled = true;
+    }
+    
     updateDefinition(dom = true) {
         if (dom) {
             this.updateDefinitionDom()
         }
+        this.balanceOverview.triggerUpdatePending();
+        this.scriptCredit.setAttribute("updating", "1");
         this.delayedDefUpdate.run()
     }
 
     updateDefinitionDom() {
         this.nameTxt.textContent = this.card.name;
         this.descTxt.textContent = this.card.description;
+        this.descTxt.style.fontSize = this.descriptionFontSize(this.card.description);
         this.costTxt.textContent = this.card.cost.toString();
         this.attackTxt.textContent = this.card.attack.toString();
         this.healthTxt.textContent = this.card.health.toString();
+        this.archetypeTxt.textContent = this.card.archetype ?? "";
 
         this.costInput.value = this.card.cost;
         this.attackInput.value = this.card.attack;
@@ -279,16 +592,30 @@ export class CardEditor extends LabElement {
         if (this.nameInput.value !== this.card.name) {
             this.nameInput.value = this.card.name;
         }
+        if (this.archetypeInput.value !== this.card.archetype) {
+            this.archetypeInput.value = this.card.archetype ?? "";
+        }
     }
 
     async uploadDefinitionServer() {
         const result = await gameApi.cards.update(this.cardIndex, this.card)
         console.log(`Uploaded card definition ${this.cardIndex}, we got: `, result)
 
-        this.balanceOverview.updateData(result.balance)
+        this.balanceOverview.updateData({ ...result })
+        this.updateScriptDialog(result.balance);
         this.card.description = result.description
         this.card.archetype = result.archetype
         this.updateDefinitionDom()
+    }
+
+    updateScriptDialog(balance: CardBalanceSummary) {
+        this.scriptCreditVal.textContent = `${balance.creditsUsed}/${balance.creditsAvailable}`;
+        if (balance.creditsUsed <= balance.creditsAvailable) {
+            this.scriptCredit.className = "state-valid";
+        } else {
+            this.scriptCredit.className = "state-invalid";
+        }
+        this.scriptCredit.removeAttribute("updating");
     }
 
     addToStat(inputSrc: CardStatInput, delta: number) {
@@ -359,7 +686,7 @@ export class CardEditor extends LabElement {
         const img = new Image();
         img.src = b64;
         img.onload = () => {
-            this.cardCanvas.ctx.drawImage(img, 0, 0);
+            this.cardCanvas.load(img);
         }
     }
 
@@ -385,6 +712,21 @@ export class CardEditor extends LabElement {
             Blockly.serialization.workspaces.load(data, this.scriptEditor.workspace);
         } catch (e) {
             console.error("Error loading script from local storage", e)
+        }
+    }
+    
+    descriptionFontSize(str: string): string {
+        let val = 1.2;
+        val -= Math.min(0.5, 0.1*Math.floor(str.length / 40));
+        return `${val}em`;
+    }
+    
+    sanitizeArchetype(a: string): string | null {
+        const s = a.trim();
+        if (s == "") {
+            return null;
+        } else {
+            return s;
         }
     }
 }

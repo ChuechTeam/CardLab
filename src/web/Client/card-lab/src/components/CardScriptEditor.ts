@@ -10,6 +10,8 @@ export class CardScriptEditor extends LabElement {
     sizeObs: ResizeObserver = new ResizeObserver(() => this.updateBlocklyDivSize());
     posObs: ResizeObserver = new ResizeObserver(() => this.updateBlocklyDivPosition());
 
+    prevScript: string | null = null;
+    
     constructor() {
         super();
     }
@@ -22,14 +24,15 @@ export class CardScriptEditor extends LabElement {
         // 3. Move and resize it to the placeholder div when layout changes (that's the hard part)
 
         this.blocklyDiv = document.createElement('div');
-        this.blocklyDiv.style.height = '500px';
-        this.blocklyDiv.style.position = 'absolute';
+        this.blocklyDiv.style.position = 'fixed';
+        this.blocklyDiv.style.zIndex = '999';
 
         this.blocklyPlaceholder = document.createElement('div');
-        this.blocklyPlaceholder.style.height = '500px';
+        this.blocklyPlaceholder.style.height = '100%';
+        this.blocklyPlaceholder.style.width = '100%';
 
         this.dom.appendChild(this.blocklyPlaceholder);
-
+        
         this.workspace = Blockly.inject(this.blocklyDiv, {
             toolbox: blocklyToolbox,
             renderer: "zelos",
@@ -39,7 +42,7 @@ export class CardScriptEditor extends LabElement {
             move: {
                 scrollbars: {
                     horizontal: true,
-                    vertical: false
+                    vertical: true
                 },
                 drag: true,
                 wheel: false
@@ -61,18 +64,23 @@ export class CardScriptEditor extends LabElement {
         this.workspace.addChangeListener(e => {
             if (this.workspace.isDragging()) {
                 return;
-            }
-            
+            } 
+
             if (e.type === Blockly.Events.BLOCK_CHANGE
                 || e.type === Blockly.Events.BLOCK_DELETE
-                || (e.type === Blockly.Events.BLOCK_MOVE &&
-                    (e as Blockly.Events.BlockMove).newParentId != null
-                    || (e as Blockly.Events.BlockMove).oldParentId != null)) {
-                this.dispatchEvent(new CustomEvent('script-updated', {
-                    detail: {
-                        script: blocklyWorkspaceToScript(this.workspace)
-                    }
-                }));
+                || e.type === Blockly.Events.BLOCK_MOVE) {
+                const script = blocklyWorkspaceToScript(this.workspace);
+                
+                // quick and dirty equality check
+                const jsonScript = JSON.stringify(script);
+                if (this.prevScript !== jsonScript) {
+                    this.prevScript = jsonScript;
+                    this.dispatchEvent(new CustomEvent('script-updated', {
+                        detail: {
+                            script: script
+                        }
+                    }));
+                }
             }
         })
 
@@ -89,7 +97,7 @@ export class CardScriptEditor extends LabElement {
         // 2. Update the blockly div position when the window is scrolled, which is usually why
         // the element moves, BUT it can also move due to other effects 
         // (like an element being resized on top of it).
-        document.addEventListener('scroll', () => this.updateBlocklyDivPosition());
+        window.addEventListener('scroll', () => this.updateBlocklyDivPosition(), true);
 
         // 3. To *try* handling cases where scroll is not enough, we'll observe the game container's
         // size changes. It's very likely that it changes when something else contained inside

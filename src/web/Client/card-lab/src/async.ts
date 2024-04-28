@@ -6,14 +6,14 @@
         func: func,
         delay: delay,
 
-        run() {
+        run(now=false) {
             if (this.runningPromise !== null) {
                 this.queued = true
                 return;
             }
 
             clearTimeout(this.handle!)
-            this.handle = setTimeout(async () => {
+            const func = async () => {
                 // Convert to a promise if not already one
                 this.runningPromise = Promise.resolve(this.func())
                 try {
@@ -21,13 +21,20 @@
                 } finally {
                     this.runningPromise = null;
                 }
-                
+
                 if (this.queued) {
                     this.queued = false
                     this.handle = null
                     this.run()
                 }
-            }, this.delay);
+            }
+            
+            if (now) {
+                this.handle = null;
+                this.runningPromise = func();
+            } else {
+                this.handle = setTimeout(func, this.delay);
+            }
         }
     }
 }
@@ -38,5 +45,5 @@ export type RunAfterDelayState = {
     runningPromise: Promise<any> | null;
     queued: boolean;
     handle: number | null;
-    run(): void
+    run(now?: boolean): void
 } 
