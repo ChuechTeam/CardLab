@@ -6,7 +6,7 @@ const template = registerTemplate('player-card-workshop-template', `
 <style>
 #navigator {
     width: 100%;
-    height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
 }
@@ -47,7 +47,7 @@ const template = registerTemplate('player-card-workshop-template', `
 <div id="navigator">
     <div id="card-editors"></div>
     <div id="controls">
-        <button id="prev">⬅</button>
+        <button id="prev" style="transform: scaleX(-1);">➡</button>
         <div id="editor-label">Carte 1/2</div>
         <button id="next">➡</button>
     </div>

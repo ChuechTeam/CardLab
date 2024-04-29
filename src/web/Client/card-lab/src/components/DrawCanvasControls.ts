@@ -74,7 +74,7 @@ const template = registerTemplate("draw-canvas-controls", /* html */`<style>
     }
 
     .pickable-color.picked {
-        --picked-width: 4px;
+        --picked-width: 3px;
         border-color: #0077cc;
         border-width: var(--picked-width);
         width: calc(var(--color-full-radius) - var(--picked-width) * 2);
@@ -86,14 +86,20 @@ const template = registerTemplate("draw-canvas-controls", /* html */`<style>
         content: "";
         position: absolute;
         --width: 1px;
-        --rad: calc(var(--color-full-radius) - var(--width) * 2);
-        left: calc(var(--picked-width) * -1);
-        top: calc(var(--picked-width) * -1);
+        --off: 1px;
+        --tot-off: calc(var(--picked-width) * -1 - var(--width) * 2);
+        /*--rad: calc(var(--color-full-radius) - var(--width) * 2);*/
+        /*left: calc(var(--picked-width) * -1);*/
+        /*top: calc(var(--picked-width) * -1);*/
         background-color: transparent;
-        border: var(--width) solid #80cbff;
+        border: var(--width) solid #004d75;
+        left: var(--tot-off);
+        bottom: var(--tot-off);
+        right: var(--tot-off);
+        top: var(--tot-off);
         border-radius: 100%;
-        width: var(--rad);
-        height: var(--rad);
+        /*width: var(--rad);*/
+        /*height: var(--rad);*/
     }
 
     .pickable-color.-custom {
@@ -130,8 +136,9 @@ const template = registerTemplate("draw-canvas-controls", /* html */`<style>
     .colors {
         display: flex;
         flex-wrap: wrap;
-        column-gap: 6px;
-        row-gap: 6px;
+        column-gap: 7px;
+        row-gap: 7px;
+        padding-bottom: 2px;
     }
 
     /* Hacky but it's the best we can do */

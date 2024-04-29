@@ -74,7 +74,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     }
 
     .game-card {
-        max-height: 85vh;
+        max-height: 85dvh;
         margin-bottom: 8px;
         display: flex;
         justify-content: center;
@@ -151,8 +151,8 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     }
 
     #script-editor {
-        height: 85vh;
-        width: 97vw;
+        height: 85dvh;
+        width: 97dvw;
     }
 
     #script-dialog {
@@ -243,8 +243,8 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     }
     
     #draw-dialog > .-contents {
-        width: 94vw;
-        height: 80vh;
+        width: 94dvw;
+        height: 80dvh;
         display: flex;
         flex-direction: column;
         gap: 8px;
@@ -287,7 +287,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         .game-card {
             grid-row: 1/5;
             grid-column: 1;
-            max-height: 70vh;
+            max-height: 70dvh;
             margin: 0;
         }
 
@@ -522,9 +522,11 @@ export class CardEditor extends LabElement {
             }
         })
         this.scriptButton.addEventListener("click", e => {
-            this.scriptDialog.show();
-            this.scriptEditor.updateBlocklyDivPosition();
-            this.scriptEditor.updateBlocklyDivSize();
+            this.showFullscreen(() => {
+                this.scriptDialog.show();
+                this.scriptEditor.updateBlocklyDivPosition();
+                this.scriptEditor.updateBlocklyDivSize();
+            });
         })
         
         this.drawButton.addEventListener("click", this.showDrawDialog.bind(this));
@@ -563,9 +565,20 @@ export class CardEditor extends LabElement {
     }
 
     showDrawDialog() {
-        this.drawDialog.showModal();
-        this.drawDialogSlot.appendChild(this.cardCanvas);
-        this.cardCanvas.enabled = true;
+        this.showFullscreen(() =>{
+            this.drawDialog.showModal();
+            this.drawDialogSlot.appendChild(this.cardCanvas);
+            this.cardCanvas.enabled = true;
+        });
+    }
+    
+    showFullscreen(thenShow: () => any) {
+        const container = document.body;
+        if (container === null || document.fullscreenElement !== null) {
+            thenShow();
+        } else {
+            container.requestFullscreen().finally(thenShow);
+        }
     }
     
     updateDefinition(dom = true) {
