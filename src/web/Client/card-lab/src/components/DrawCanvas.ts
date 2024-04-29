@@ -100,8 +100,7 @@ export class DrawCanvas extends LabElement {
             willReadFrequently: true
         })!;
 
-        this.ctx.fillStyle = "white";
-        this.ctx.fillRect(0, 0, canvas.width, canvas.height)
+        this.clear();
 
         this.canvas.addEventListener("pointerdown", e => {
             this.strokeStart()

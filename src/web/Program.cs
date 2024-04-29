@@ -6,6 +6,7 @@ using CardLab.Game.AssetPacking;
 using CardLab.Game.BasePacks;
 using CardLab.Game.Duels;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using Vite.AspNetCore.Extensions;
@@ -46,7 +47,6 @@ builder.Services.AddResponseCompression(options =>
     options.EnableForHttps = true;
 });
 
-builder.Services.AddOptions<GameRequestQueue>(GameRequestQueue.Options.Section);
 builder.Services.AddSingleton<ServerState>();
 builder.Services.AddSingleton<CardModule>();
 builder.Services.AddSingleton<BasePackRegistry>();
@@ -55,6 +55,7 @@ builder.Services.AddSingleton<GamePackCompiler>();
 builder.Services.AddSingleton<GamePackCompileQueue>();
 builder.Services.AddSingleton<WebGamePacker>();
 builder.Services.AddHostedService<GamePackCompileWorker>();
+//builder.Services.AddOptions<GameRequestQueue>(GameRequestQueue.Options.Section);
 // builder.Services.AddSingleton<GameRequestQueue>();
 // builder.Services.AddHostedService<GameRequestWorker>();
 

@@ -32,6 +32,11 @@ html {
     font-family: system-ui;
 }
 
+#game-container {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
 .game-card {
     display: block;
 

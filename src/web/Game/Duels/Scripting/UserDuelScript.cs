@@ -113,12 +113,20 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                     ScriptableAttribute.Cost => DuelBaseAttrs.Cost,
                     _ => throw new ArgumentOutOfRangeException(nameof(attr), attr, null)
                 };
-                if (!ent.Attribs.Registered(attrId))
+
+                // Special case for the Cost attribute, so we retrieve it from the card.
+                var attribs = ent.Attribs;
+                if (attrId == DuelBaseAttrs.Cost && ent is DuelUnit u)
+                {
+                    attribs = u.OriginStats;
+                }
+                
+                if (!attribs.Registered(attrId))
                 {
                     continue;
                 }
 
-                int cur = ent.Attribs.GetActual(attrId);
+                int cur = attribs.GetActual(attrId);
                 bool pass = op switch
                 {
                     FilterOp.Greater => cur > value,

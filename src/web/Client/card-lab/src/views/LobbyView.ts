@@ -6,6 +6,10 @@ const template = registerTemplate('lobby-view-template',`
 :host {
     padding: 8px;
 }
+#code-display {
+    user-select: all;
+    -webkit-user-select: all;
+}
 </style>
 <h1>Bienvenue !</h1>
 <p id="code-display">Truc</p>

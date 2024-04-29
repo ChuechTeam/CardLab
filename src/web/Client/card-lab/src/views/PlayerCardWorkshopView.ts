@@ -13,6 +13,7 @@ const template = registerTemplate('player-card-workshop-template', `
 
 #card-editors {
     overflow-y: scroll;
+    flex-grow: 1;
 }
 
 #controls {
@@ -20,6 +21,7 @@ const template = registerTemplate('player-card-workshop-template', `
     border-top: 2px solid black;
     z-index: 1;
     flex-shrink: 0;
+    flex-grow: 0;
     
     display: flex;
     background-color: white;

@@ -89,7 +89,7 @@ export class BalanceOverview extends LabElement {
             this.pointsDisplay.textContent = `${balance.creditsUsed}/${balance.creditsAvailable}`
             
             const defOk = validation.definitionValid;
-            const balOk = balance.creditsUsed <= balance.creditsAvailable;
+            const balOk = balance.creditsUsed <= balance.creditsAvailable && balance.creditsUsed >= 0;
             
             const issueNodes = [...validation.errors.map(issue => {
                 const li = document.createElement('li');
@@ -104,14 +104,23 @@ export class BalanceOverview extends LabElement {
                 this.box.className = "state-invalid";
                 
                 if (!balOk) {
-                    this.titleHeader.textContent = "Carte trop forte !";
-                    
-                    const node = document.createElement('li');
-                    node.append("Votre carte a dépensé trop de crédits ");
-                    node.append(new LabIcon("credit-coin"));
-                    node.append(". Essayez de réduire les statistiques de votre carte, d'ajouter des conditions," +
-                        " ou d'utiliser des évènements moins fréquents.");
-                    issueNodes.push(node);
+                    if (balance.creditsUsed >= 0) {
+                        this.titleHeader.textContent = "Carte trop forte !";
+
+                        const node = document.createElement('li');
+                        node.append("Votre carte a dépensé trop de crédits ");
+                        node.append(new LabIcon("credit-coin"));
+                        node.append(". Essayez de réduire les statistiques de votre carte, d'ajouter des conditions," +
+                            " ou d'utiliser des évènements moins fréquents.");
+                        issueNodes.push(node);
+                    } else {
+                        this.titleHeader.textContent = "Carte trop faible !";
+
+                        const node = document.createElement('li');
+                        node.append("Votre carte est trop néfaste pour le joueur ! Augmentez les statistiques de vos cartes, " +
+                            "ou ajoutez des actions plus puissantes et bénéfiques pour le joueur.");
+                        issueNodes.push(node);
+                    }
                 } else {
                     this.titleHeader.textContent = "Carte invalide !";
                 }

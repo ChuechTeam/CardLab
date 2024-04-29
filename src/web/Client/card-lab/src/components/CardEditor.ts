@@ -243,7 +243,8 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     }
     
     #draw-dialog > .-contents {
-        width: 94dvw;
+        --width: 94dvw;
+        width: var(--width);
         height: 80dvh;
         display: flex;
         flex-direction: column;
@@ -320,18 +321,21 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
             font-size: 0.9em;
             flex-grow: 1;
         }
-        
+
         #draw-dialog > .-contents {
             flex-direction: row-reverse;
             justify-content: unset;
             align-items: center;
+            
+            --half-excess: max(0px, calc( 4px + ( var(--width) / 2 + (env(safe-area-inset-left, 0px) - 50dvw) ) ) );
+            width: calc(var(--width) - var(--half-excess));
+            margin-left: var(--half-excess);
         }
         
         #draw-dialog > .-contents > .-controls {
             flex-grow: 1;
         }
     }
-
 </style>
 <div class="card-editor">
     <div class="def-grid">
@@ -521,13 +525,7 @@ export class CardEditor extends LabElement {
                 this.saveScriptLocally()
             }
         })
-        this.scriptButton.addEventListener("click", e => {
-            this.showFullscreen(() => {
-                this.scriptDialog.show();
-                this.scriptEditor.updateBlocklyDivPosition();
-                this.scriptEditor.updateBlocklyDivSize();
-            });
-        })
+        this.scriptButton.addEventListener("click", this.showScriptDialog.bind(this));
         
         this.drawButton.addEventListener("click", this.showDrawDialog.bind(this));
         this.drawDialog.addEventListener("close", () => {
@@ -537,6 +535,12 @@ export class CardEditor extends LabElement {
             this.delayedImgUpload.run(true);
         })
         this.cardCanvas.enabled = false;
+        
+        // Click-to-edit-events
+        this.cardImageSlot.addEventListener("click", this.showDrawDialog.bind(this));
+        this.nameTxt.addEventListener("click", () => this.nameInput.focus());
+        this.archetypeTxt.addEventListener("click", () => this.archetypeInput.focus());
+        this.descTxt.addEventListener("click", this.showScriptDialog.bind(this));
         
         this.dom.querySelector(".hacky-backdrop")?.addEventListener("click", e => {
             this.scriptDialog.close()
@@ -569,6 +573,14 @@ export class CardEditor extends LabElement {
             this.drawDialog.showModal();
             this.drawDialogSlot.appendChild(this.cardCanvas);
             this.cardCanvas.enabled = true;
+        });
+    }
+    
+    showScriptDialog() {
+        this.showFullscreen(() => {
+            this.scriptDialog.show();
+            this.scriptEditor.updateBlocklyDivPosition();
+            this.scriptEditor.updateBlocklyDivSize();
         });
     }
     
@@ -623,7 +635,7 @@ export class CardEditor extends LabElement {
 
     updateScriptDialog(balance: CardBalanceSummary) {
         this.scriptCreditVal.textContent = `${balance.creditsUsed}/${balance.creditsAvailable}`;
-        if (balance.creditsUsed <= balance.creditsAvailable) {
+        if (balance.creditsUsed <= balance.creditsAvailable && balance.creditsUsed >= 0) {
             this.scriptCredit.className = "state-valid";
         } else {
             this.scriptCredit.className = "state-invalid";

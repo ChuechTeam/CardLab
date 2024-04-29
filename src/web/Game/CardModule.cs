@@ -9,16 +9,9 @@ public sealed partial class CardModule
 {
     public record ValidationSummary(bool DefinitionValid, ImmutableArray<string> Errors);
 
-    public record UsageSummary(int CreditsAvailable, int CreditsUsed, ImmutableArray<UsageEntry> Entries)
+    public record UsageSummary(int CreditsAvailable, int CreditsUsed)
     {
-        public bool Balanced => CreditsUsed <= CreditsAvailable;
-    }
-
-    public readonly record struct UsageEntry(string Name, int Credits, ImmutableArray<UsageEntry> SubEntries)
-    {
-        public UsageEntry(string Name, int Credits) : this(Name, Credits, ImmutableArray<UsageEntry>.Empty)
-        {
-        }
+        public bool Balanced => CreditsUsed <= CreditsAvailable && CreditsUsed >= 0;
     }
 
     public static string SanitizeString(string str)
@@ -132,66 +125,5 @@ public sealed partial class CardModule
         return new ValidationSummary(errors.Count == 0, errors.ToImmutable());
     }
 
-    public UsageSummary CalculateCardBalance(CardDefinition cardDef)
-    {
-        var entries = ImmutableArray.CreateBuilder<UsageEntry>();
-
-        int creditsAvailable = cardDef.Cost * 5 * 2 + cardDef.Cost * 3 + 75;
-        int creditsUsed = 0;
-
-        void AddEntry(in UsageEntry entry)
-        {
-            entries.Add(entry);
-            creditsUsed += entry.Credits;
-        }
-
-        AddEntry(new UsageEntry($"Attaque : {cardDef.Attack} points", cardDef.Attack * 5));
-        AddEntry(new UsageEntry($"Santé : {cardDef.Health} points", cardDef.Health * 5));
-
-        if (cardDef.Script is not null)
-        {
-            foreach (var evHandler in cardDef.Script.Handlers)
-            {
-                if (evHandler.Actions.Any())
-                {
-                    AddEntry(CalculateEventUsage(evHandler));
-                }
-            }
-        }
-
-        return new UsageSummary(creditsAvailable, creditsUsed, entries.ToImmutable());
-    }
-
-    private UsageEntry CalculateEventUsage(CardEventHandler handler)
-    {
-        var entries = ImmutableArray.CreateBuilder<UsageEntry>();
-        int creditsUsed = 0;
-
-        void AddEntry(in UsageEntry entry)
-        {
-            entries.Add(entry);
-            creditsUsed += entry.Credits;
-        }
-
-        foreach (var act in handler.Actions)
-        {
-            AddEntry(new UsageEntry(LangFR.ActionName(act), ActionCost(act)));
-        }
-
-        return new UsageEntry($"Déclencheur : « {LangFR.EventName(handler.Event)} »", creditsUsed, entries.ToImmutable());
-    }
-
     public string GenerateCardDescription(CardDefinition def) => LangFR.GenerateCardDescription(def);
-    
-    // a+bn+cn(n-1)
-    // a= 50
-    // b=2
-    // c=2
-    private static int ActionCost(CardAction act)
-    {
-        return act switch
-        {
-            _ => 0
-        };
-    }
 }
