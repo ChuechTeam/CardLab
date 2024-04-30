@@ -705,8 +705,8 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                 {
                     bool run = move.Kind switch
                     {
-                        CardMoveKind.Played => f.Parent is Duel.ActPlayCard pc
-                                               && pc.Player == MyPlayerIdx,
+                        CardMoveKind.Played => f.Parent is Duel.FragUseCard uc 
+                                               && uc.Player == MyPlayerIdx,
                         CardMoveKind.Discarded => f.NewLocation == DuelCardLocation.Discarded
                                                   && f.PrevLocation == Duel.PlayerHandLoc(MyPlayerIdx),
                         CardMoveKind.Drawn => f.Parent is Duel.FragDrawCards dc

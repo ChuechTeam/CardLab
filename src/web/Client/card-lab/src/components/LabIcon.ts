@@ -1,7 +1,8 @@
 ﻿import {LabElement} from "src/dom.ts";
 import {string} from "blockly/core/utils";
 import creditCoin from "src/res/credit-coin.svg";
-export type IconType = "credit-coin";
+import upload from "src/res/upload.svg"
+export type IconType = "credit-coin" | "upload";
 
 const style = new CSSStyleSheet()
 style.insertRule("img { width: 100%; vertical-align: text-bottom; }");
@@ -21,6 +22,8 @@ export class LabIcon extends LabElement {
     render() {
         this.dom.adoptedStyleSheets.push(style)
         this.img = this.dom.appendChild(document.createElement("img"));
+        if ("part" in this.img)
+            this.img.part.add("img");
     }
     
     connected() {
@@ -39,6 +42,9 @@ export class LabIcon extends LabElement {
             switch (this.icon) {
                 case "credit-coin":
                     this.img.src = creditCoin;
+                    break;
+                case "upload":
+                    this.img.src = upload;
                     break;
                 default:
                     this.img.src = "";

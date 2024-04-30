@@ -12,6 +12,8 @@ public sealed partial class Duel
 {
     public sealed class FragUseCard(int cardId, PlayerIndex player) : DuelFragment
     {
+        public PlayerIndex Player { get; set; } = player;
+        
         public static bool CanUseInHand(Duel duel, int cardId, PlayerIndex player)
         {
             var playerSt = duel.State.GetPlayer(player);
@@ -21,7 +23,7 @@ public sealed partial class Duel
         
         protected override bool Verify()
         {
-            var playerSt = State.GetPlayer(player);
+            var playerSt = State.GetPlayer(Player);
             if (!playerSt.Hand.Contains(cardId))
             {
                 return false;
@@ -39,7 +41,7 @@ public sealed partial class Duel
         protected override bool Run()
         {
             // todo: better validation.
-            var playerSt = State.GetPlayer(player);
+            var playerSt = State.GetPlayer(Player);
             var card = State.FindCard(cardId)!;
 
             ApplyFrag(new FragSetAttribute(playerSt.Id, DuelBaseAttrs.Energy,

@@ -142,9 +142,9 @@ export class DrawCanvas extends LabElement {
         this.dispatchEvent(new CustomEvent("undoStackUpdated"));
     }
     
-    load(img: CanvasImageSource) {
+    load(img: HTMLImageElement) {
         this.ctx.drawImage(img, 0, 0);
-        this.resetUndoStack();
+        this.pushToUndoStack();
     }
     
     get enabled() { return this.#enabled; }

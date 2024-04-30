@@ -22,7 +22,7 @@ public sealed partial class CardModule
                 foreach (var action in handler.Actions)
                 {
                     var ctx = new BalanceEvalContext(handler.Event, action);
-                    creditsUsed += ActionCost(ref ctx) * w;
+                    creditsUsed += (int)(ActionCost(ref ctx) * w);
                 }
             }
         }
@@ -30,9 +30,33 @@ public sealed partial class CardModule
         return new UsageSummary(creditsAvailable, creditsUsed);
     }
 
-    private static int EventCostWeight(CardEvent ev)
+    private static float EventCostWeight(CardEvent ev)
     {
-        return 1;
+        return ev switch
+        {
+            PostTurnEvent (var team) => team == GameTeam.Any ? 1.75f : 1.0f,
+            PostSpawnEvent => 0.5f,
+            PostUnitKillEvent => 0.7f,
+            PostUnitHurtEvent (var team, _) => 0.9f * TeamFreq(team),
+            PostUnitHealEvent (var team, _) => 0.6f * TeamFreq(team),
+            PostUnitAttackEvent (var team, var dealt) => 0.8f * TeamFreq(team),
+            PostUnitNthAttackEvent (var n) => n switch
+            {
+                <= 0 => 1.0f,
+                _ => 1.0f/n
+            },
+            _ => 1.0f
+        };
+
+        static float TeamFreq(GameTeam team)
+        {
+            return team switch
+            {
+                GameTeam.Enemy or GameTeam.Ally => 1.5f,
+                GameTeam.Any => 2.0f,
+                GameTeam.Self => 1.0f
+            };
+        }
     }
 
     private static TargetEvaluation EvaluateTarget(Target target, ref readonly BalanceEvalContext ctx)

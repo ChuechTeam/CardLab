@@ -272,6 +272,23 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     #draw-dialog-slot #card-canvas::part(canvas) {
         border: 2px solid black;
     }
+    
+    #draw-upload-button {
+        align-self: stretch;
+        border: none;
+        background-color: transparent;
+        font-size: 1.3em;
+        border-right: 2px solid black;
+        padding: 3px 12px;
+        
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    #draw-upload-button lab-icon::part(img) {
+        display: block;
+    }
 
     .def-grid {
         display: block;
@@ -410,6 +427,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     <div class="hacky-backdrop"></div>
     <dialog id="draw-dialog">
         <header>
+            <button id="draw-upload-button"><lab-icon icon="upload"></lab-icon></button>
             <div class="-label">Dessin de l'illustration</div>
             <button class="-close-button">✖</button>
         </header>
@@ -418,6 +436,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
             <draw-canvas-controls class="-controls" id="draw-controls"></draw-canvas-controls>
         </div>
     </dialog>
+    <input hidden type="file" accept="image/*" id="draw-upload-input">
 </div>
 `)
 
@@ -451,6 +470,8 @@ export class CardEditor extends LabElement {
     @fromDom("draw-button") drawButton: HTMLButtonElement = null!
     @fromDom("draw-dialog") drawDialog: HTMLDialogElement = null!
     @fromDom("draw-controls") drawControls: DrawCanvasControls = null!
+    @fromDom("draw-upload-button") drawUploadButton: HTMLButtonElement = null!;
+    @fromDom("draw-upload-input") drawUploadInput: HTMLInputElement = null!;
     @fromDom("draw-dialog-slot") drawDialogSlot: HTMLElement = null!
     @fromDom("card-image-slot") cardImageSlot: HTMLElement = null!
     
@@ -534,6 +555,25 @@ export class CardEditor extends LabElement {
             
             this.delayedImgUpload.run(true);
         })
+        this.drawUploadButton.addEventListener("click", () => {
+            this.drawUploadInput.click();
+        })
+        this.drawUploadInput.addEventListener("input", () => {
+            const f = this.drawUploadInput.files?.item(0)
+            if (f != null) {
+                const img = new Image();
+                const url = URL.createObjectURL(f);
+                img.src = url;
+                img.onload = () => {
+                    try {
+                        this.cardCanvas.load(img);
+                    } finally {
+                        URL.revokeObjectURL(url)
+                    }
+                };
+                img.onerror = () => URL.revokeObjectURL(url);
+            }
+        });
         this.cardCanvas.enabled = false;
         
         // Click-to-edit-events
