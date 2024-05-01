@@ -4,7 +4,7 @@ using static CardLab.Game.CardModule.LangFR.LangFlags;
 
 namespace CardLab.Game;
 
-public sealed partial class CardModule
+public static partial class CardModule
 {
     public static class LangFR
     {

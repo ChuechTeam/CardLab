@@ -7,7 +7,7 @@ const template = registerTemplate("draw-canvas-controls", /* html */`<style>
         flex-direction: column;
         gap: 8px;
         
-        --color-radius: 28px;
+        --color-radius: var(--color-radius-custom, 28px);
         --color-border-width: 2px;
         --color-full-radius: calc(var(--color-radius) + var(--color-border-width) * 2);
         --drawer-padding: 3px;
@@ -136,8 +136,8 @@ const template = registerTemplate("draw-canvas-controls", /* html */`<style>
     .colors {
         display: flex;
         flex-wrap: wrap;
-        column-gap: 7px;
-        row-gap: 7px;
+        column-gap: 6px;
+        row-gap: 6px;
         padding-bottom: 2px;
     }
 

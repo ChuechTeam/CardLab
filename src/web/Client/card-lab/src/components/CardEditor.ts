@@ -75,11 +75,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
 
     .game-card {
         max-height: 85dvh;
-        margin-bottom: 8px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        flex-direction: column;
+        margin: auto;
     }
 
     .stats-inputs {
@@ -87,7 +83,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         grid-auto-flow: column;
 
         grid-template-rows: auto auto;
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: minmax(min-content, 0.5fr) 1fr 1fr;
 
         column-gap: 16px;
         row-gap: 4px;
@@ -204,7 +200,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         background-color: transparent;
         font-size: 1.25em;
         border-left: 2px solid black;
-        padding: 3px 12px;
+        padding: 1px 12px;
     }
 
     #script-dialog-credit {
@@ -240,6 +236,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     #draw-dialog {
         max-width: unset;
         max-height: unset;
+        overflow: hidden;
     }
     
     #draw-dialog > .-contents {
@@ -258,28 +255,19 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         flex-basis: 250px;
     }   
     
-    #draw-dialog-slot {
-        aspect-ratio: 5/3;
+    #draw-dialog #card-canvas {
         max-width: 100%;
         max-height: 100%;
-    }
-    
-    #draw-dialog-slot #card-canvas {
-        max-height: 100%;
-        max-width: 100%;
-    }
-    
-    #draw-dialog-slot #card-canvas::part(canvas) {
         border: 2px solid black;
     }
-    
+
     #draw-upload-button {
         align-self: stretch;
         border: none;
         background-color: transparent;
         font-size: 1.3em;
         border-right: 2px solid black;
-        padding: 3px 12px;
+        padding: 1px 12px;
         
         display: flex;
         justify-content: center;
@@ -293,20 +281,29 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     .def-grid {
         display: block;
     }
-
+    
+    .game-card-container {
+       margin-bottom: 12px;
+    }
+    
     @media (orientation: landscape) {
         .def-grid {
             display: grid;
             grid-template-columns: 1fr 2fr;
             grid-template-rows: auto auto auto auto;
-            column-gap: 8px;
+            column-gap: 20px;
         }
 
-        .game-card {
+        .game-card-container {
             grid-row: 1/5;
             grid-column: 1;
             max-height: 70dvh;
-            margin: 0;
+            width: 100%;
+            margin-bottom: 0;
+        }
+        
+        .game-card {
+            max-height: 100%;
         }
 
         .input-block.-name {
@@ -353,14 +350,28 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
             flex-grow: 1;
         }
     }
+    @media (max-height: 320px) and (orientation: landscape),
+     (max-height: 600px) and (orientation: portrait) {
+        #draw-controls {
+            font-size: 0.8em;
+        }
+    }
+    
+    @media (max-height: 290px) and (orientation: landscape),
+     (max-height: 560px) and (orientation: portrait) {
+        #draw-controls {
+            --color-radius-custom: 16px;
+        }
+    }
 </style>
 <div class="card-editor">
     <div class="def-grid">
+        <div class="game-card-container">
         <div class="game-card">
             <svg class="-bg" viewBox="0 0 104.85 144.56">
                 <use href="#card-svg-bg"/>
-                <foreignObject height="100%" width="100%">
-                    <div xmlns="http://www.w3.org/1999/xhtml" class="game-card-fields">
+            </svg>
+            <div xmlns="http://www.w3.org/1999/xhtml" class="game-card-fields">
                         <div class="-header">
                             <div class="-name" id="card-name">Carte sympa</div>
                             <div class="-cost" id="card-cost">8</div>
@@ -386,8 +397,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
                             </div>
                         </div>
                     </div>
-                </foreignObject>
-            </svg>
+        </div>
         </div>
         <div class="input-block -name">
             <span>Nom :</span>
@@ -399,7 +409,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         </div>
         <div class="stats-inputs">
             <span>Coût</span>
-            <card-stat-input id="cost-input" value="8"></card-stat-input>
+            <card-stat-input id="cost-input" value="8" immutable></card-stat-input>
 
             <span>Attaque</span>
             <card-stat-input id="attack-input" value="7"></card-stat-input>
@@ -431,8 +441,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
             <div class="-label">Dessin de l'illustration</div>
             <button class="-close-button">✖</button>
         </header>
-        <div class="-contents">
-            <div id="draw-dialog-slot"></div>
+        <div class="-contents" id="draw-dialog-contents">
             <draw-canvas-controls class="-controls" id="draw-controls"></draw-canvas-controls>
         </div>
     </dialog>
@@ -472,7 +481,7 @@ export class CardEditor extends LabElement {
     @fromDom("draw-controls") drawControls: DrawCanvasControls = null!
     @fromDom("draw-upload-button") drawUploadButton: HTMLButtonElement = null!;
     @fromDom("draw-upload-input") drawUploadInput: HTMLInputElement = null!;
-    @fromDom("draw-dialog-slot") drawDialogSlot: HTMLElement = null!
+    @fromDom("draw-dialog-contents") drawDialogContents: HTMLElement = null!
     @fromDom("card-image-slot") cardImageSlot: HTMLElement = null!
     
     @fromDom("script-button") scriptButton: HTMLButtonElement = null!
@@ -611,7 +620,7 @@ export class CardEditor extends LabElement {
     showDrawDialog() {
         this.showFullscreen(() =>{
             this.drawDialog.showModal();
-            this.drawDialogSlot.appendChild(this.cardCanvas);
+            this.drawDialogContents.prepend(this.cardCanvas);
             this.cardCanvas.enabled = true;
         });
     }
@@ -625,11 +634,18 @@ export class CardEditor extends LabElement {
     }
     
     showFullscreen(thenShow: () => any) {
+        // If fullscreen is not supported, just show the dialog
+        // (i'm doing a demi ton of checks just in case iOS safari does wild stuff)
+        if (!("fullscreenElement" in document) || 
+            !("fullscreenEnabled" in document) || !document.fullscreenEnabled) {
+            thenShow();
+        }
+        
         const container = document.body;
         if (container === null || document.fullscreenElement !== null) {
             thenShow();
         } else {
-            container.requestFullscreen().finally(thenShow);
+            container.requestFullscreen().catch().finally(thenShow);
         }
     }
     

@@ -85,14 +85,14 @@ public static class GameSessionRules
 
     // Builds decks for N players.
     // Decks are built with the following requirements:
-    // - The deck contains all cards created by players; with exactly one copy.
+    // - The deck contains all cards created by players; with one ore more copies.
     // - The deck contains X% of spells (as per the settings)
     //   Spells are chosen randomly from the base pack, each player has a unique set of spells.
     // - The deck contains sequences of M cards that are of the same archetype.
     //   Those sequences can be "interrupted" by spells and archetype-less cards,
     //   but the archetype will still be the same.
     public static ImmutableArray<QualCardRef>[]
-        MakeNDecks(GamePack sessionPack, GamePack basePack, int n, ref readonly Settings settings)
+        MakeNDecks(GamePack sessionPack, GamePack basePack, int n, ref readonly DeckSettings settings)
     {
         const uint noCard = uint.MaxValue;
         const int noPacket = -1;
@@ -167,7 +167,7 @@ public static class GameSessionRules
         }
 
         nonArchCards = nonArchCards[..numNonArch];
-        
+
         // Then, we'll make "packets" of cards that are of the same archetype.
         // The seqPackets span will contain sequences of cards that are of the same archetype.
         // If there's not enough cards, the id will be UINT32_MAX.
@@ -189,11 +189,12 @@ public static class GameSessionRules
                 iSeq++;
             }
         }
-        
+
         // Spells don't use pools since they are unique to each player.
         // There could be more spells than numSpells, so overallocate a bit, we'll slice after
         int spellsInPack = basePack.Cards.Length;
-        Span<uint> spellCards = spellsInPack <= StackAllocMaxNum ? stackalloc uint[spellsInPack] : new uint[spellsInPack];
+        Span<uint> spellCards =
+            spellsInPack <= StackAllocMaxNum ? stackalloc uint[spellsInPack] : new uint[spellsInPack];
         int numSpellCards = 0;
         foreach (var asset in basePack.Cards)
         {
@@ -205,7 +206,7 @@ public static class GameSessionRules
         }
 
         spellCards = spellCards[..numSpellCards];
-        
+
         // Now we can finally create all the arrays and pools we need.
         // Pool of indices to the packet array.
         Pool<int> archPacketPool = new(numArchPackets <= StackAllocMaxNum
@@ -223,10 +224,11 @@ public static class GameSessionRules
             // Reset any state from the previous run.
             for (int j = 0; j < numArchPackets; j++)
             {
-                archPacketPool.Span[j] = j*numArchSeq;
+                archPacketPool.Span[j] = j * numArchSeq;
             }
+
             archPacketPool.Refilled();
-            
+
             nonArchCards.CopyTo(nonArchPool.Span);
             nonArchPool.Refilled();
 
@@ -239,7 +241,7 @@ public static class GameSessionRules
             {
                 int remaining = numTot - j - 1;
                 int rnd = random.Next(remaining);
-                
+
                 // First try picking up a spell card.
                 if (remainingSpellCards > 0 && rnd < remainingSpellCards)
                 {
@@ -247,7 +249,7 @@ public static class GameSessionRules
                     remainingSpellCards--;
                     continue;
                 }
-                
+
                 // Else, try picking up a non-archetype card.
                 rnd -= remainingSpellCards;
                 if (nonArchPool.Num > 0 && rnd < nonArchPool.Num)
@@ -255,7 +257,7 @@ public static class GameSessionRules
                     deck[j] = new QualCardRef(sessionPack.Id, nonArchPool.Pick(rnd));
                     continue;
                 }
-                
+
                 // Otherwise, this is where we take a card from the same-archetype packet.
                 Debug.Assert(curPacketStart != noPacket);
 
@@ -270,7 +272,7 @@ public static class GameSessionRules
                 }
             }
         }
-        
+
         // Phew, we can now transform those into immutable arrays
 
         var immut = new ImmutableArray<QualCardRef>[n];
@@ -282,19 +284,22 @@ public static class GameSessionRules
         return immut;
     }
 
-    public static (Player, Player)[] AssociatePlayersInAFairDuel(ImmutableDictionary<int, Player> players, out Player? loner)
+    public static (Player, Player)[] AssociatePlayersInAFairDuel(ImmutableDictionary<int, Player> players,
+        out Player? loner)
     {
         // fairness? nope, it's just random
         var numPlayers = players.Count;
-        var numPairs = numPlayers/2;
+        var numPairs = numPlayers / 2;
         var pairs = new (Player, Player)[numPairs];
-        var playerPool = new Pool<int>(numPlayers <= StackAllocMaxNum ? stackalloc int[numPlayers] : new int[numPlayers], true);
+        var playerPool =
+            new Pool<int>(numPlayers <= StackAllocMaxNum ? stackalloc int[numPlayers] : new int[numPlayers], true);
         int i = 0;
         foreach (var key in players.Keys)
         {
             playerPool.Span[i] = key;
             i++;
         }
+
         playerPool.Refilled();
 
         var random = new Random();
@@ -306,8 +311,124 @@ public static class GameSessionRules
         loner = playerPool.Num == 0 ? null : players[playerPool.Span[0]];
         return pairs;
     }
-    
-    public readonly record struct Settings
+
+    // if randomize is false, the array will be filled in order.
+    public static int[] DistributeCardCosts(int numCards, ref readonly CostSettings settings, bool randomize = true)
+    {
+        var rnd = new Random();
+
+        var highNum = numCards / 2;
+        var lowNum = numCards - highNum;
+
+        var lowPool = new Pool<int>(lowNum <= StackAllocMaxNum ? stackalloc int[lowNum] : new int[lowNum], true);
+        var highPool = new Pool<int>(highNum <= StackAllocMaxNum ? stackalloc int[highNum] : new int[highNum], true);
+
+        FillPool(ref lowPool, settings.LowWeights, 1);
+        FillPool(ref highPool, settings.HighWeights, 1 + settings.LowWeights.Length);
+
+        var costs = new int[numCards];
+        if (randomize)
+        {
+            // Parity check:
+            // If numCards is odd, we start with the low pool, since N_low = N_high + 1
+            // If numCards is even, then it doesn't change anything, N_low = N_high
+            for (int i = 0; i < numCards; i++)
+            {
+                if (i % 2 == 0)
+                {
+                    costs[i] = lowPool.Pick(rnd);
+                }
+                else
+                {
+                    costs[i] = highPool.Pick(rnd);
+                }
+            }
+        }
+        else
+        {
+            int i = 0;
+            foreach (var v in lowPool.Span)
+            {
+                costs[i++] = v;
+            }
+
+            foreach (var v in highPool.Span)
+            {
+                costs[i++] = v;
+            }
+        }
+
+        return costs;
+
+        static void FillPool(ref Pool<int> p, ImmutableArray<int> weights, int costStart)
+        {
+            var cNum = p.Span.Length;
+            var wNum = weights.Length;
+
+            int wtot = 0;
+            foreach (var w in weights)
+            {
+                wtot += w;
+            }
+
+            // First, we do some sort of pessimistic distribution: we calculate the proportion of items
+            // of the same cost, then we add its "guaranteed" minimum to the pool.
+            // We use integer arithmetic, as it's sufficient and provides safe guarantees over
+            // floating point arithmetic.
+
+            // This array gives us the fractional part of missing elements, multiplied by wTot
+            // (similar to fixed-point arithmetic).
+            // remainingElements[i] = floor(el[i]) * wNum
+            Span<int> remainingElements = wNum <= StackAllocMaxNum ? stackalloc int[wNum] : new int[wNum];
+            int filled = 0;
+
+            for (var i = 0; i < wNum; i++)
+            {
+                var weight = weights[i];
+                var cost = costStart + i;
+
+                // percentage = weight/wtot
+                // elements = percentage*cNum
+                // Reorder the formula to avoid floating point arithmetic AND integer truncation.
+
+                var elements = (cNum * weight) / wtot;
+                remainingElements[i] = (cNum * weight) % wtot;
+
+                for (int j = 0; j < elements; j++)
+                {
+                    p.Span[filled] = cost;
+                    filled++;
+                }
+            }
+            
+            // Then, we'll pick the remaining elements, by order of fractional part.
+
+            // Remain is guaranteed to be in [0, cNum]. The proof is left as an exercise to the reader. 
+            int remain = cNum - filled;
+            for (int i = 0; i < remain; i++)
+            {
+                // Find the element with the maximum fractional part and add it to the pool.
+                int wMaxIdx = 0;
+                float wMaxVal = remainingElements[0];
+                for (int j = 1; j < wNum; j++)
+                {
+                    if (remainingElements[j] > wMaxVal)
+                    {
+                        wMaxIdx = j;
+                        wMaxVal = remainingElements[j];
+                    }
+                }
+
+                p.Span[filled] = costStart + wMaxIdx;
+                filled++;
+                remainingElements[wMaxIdx] = 0;
+            }
+
+            p.Refilled();
+        }
+    }
+
+    public readonly record struct DeckSettings
     {
         // How many cards in a row should be of the same archetype in a player's deck
         public required ushort ArchetypeSequenceLength { get; init; }
@@ -315,8 +436,38 @@ public static class GameSessionRules
         // The percentage of the deck being filled with random spells from the base pack.
         // in [0, MaxSpellProportion]
         public required double SpellProportion { get; init; }
-        
+
         public required int UserCardCopies { get; init; }
+    }
+
+    public readonly record struct CostSettings
+    {
+        // First element: weight for cost 1
+        // N-th element: weight for cost N
+
+        // Low: [1, 5]
+        public required ImmutableArray<int> LowWeights { get; init; }
+
+        // High: [6, 10]
+        public required ImmutableArray<int> HighWeights { get; init; }
+
+        public static CostSettings Symmetric(params int[] low)
+        {
+            var lowBuilder = ImmutableArray.CreateBuilder<int>(low.Length);
+            var highBuilder = ImmutableArray.CreateBuilder<int>(low.Length);
+
+            for (int i = 0; i < low.Length; i++)
+            {
+                lowBuilder.Add(low[i]);
+                highBuilder.Add(low[low.Length - i - 1]);
+            }
+
+            return new CostSettings
+            {
+                LowWeights = lowBuilder.ToImmutable(),
+                HighWeights = highBuilder.ToImmutable()
+            };
+        }
     }
 
     private ref struct Pool<T>(Span<T> span, bool depleted)

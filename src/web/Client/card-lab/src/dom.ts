@@ -88,7 +88,7 @@ export class LabElement extends HTMLElement {
     disconnected() {
     }
 
-    attributeChanged(name: string, oldValue: string, newValue: string) {
+    attributeChanged(name: string, oldValue: string | null, newValue: string | null) {
     }
 
     resolveFromDomFields() {

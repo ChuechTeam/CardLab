@@ -1,11 +1,12 @@
 ﻿using System.Collections.Immutable;
 using CardLab.Game.Duels;
+using Microsoft.CodeAnalysis;
 
 namespace CardLab.Game;
 
-public sealed partial class CardModule
+public static partial class CardModule
 {
-    public UsageSummary CalculateCardBalance(CardDefinition cardDef)
+    public static UsageSummary CalculateCardBalance(CardDefinition cardDef)
     {
         int creditsAvailable = AllocatedScriptCredits(cardDef.Cost) + AllocatedStatCredits(cardDef.Cost);
         int creditsUsed = 0;
@@ -39,11 +40,26 @@ public sealed partial class CardModule
             PostUnitKillEvent => 0.7f,
             PostUnitHurtEvent (var team, _) => 0.9f * TeamFreq(team),
             PostUnitHealEvent (var team, _) => 0.6f * TeamFreq(team),
-            PostUnitAttackEvent (var team, var dealt) => 0.8f * TeamFreq(team),
+            PostUnitAttackEvent (var team, _) => 0.8f * TeamFreq(team),
             PostUnitNthAttackEvent (var n) => n switch
             {
                 <= 0 => 1.0f,
+                1 => 0.7f,
+                2 => 0.45f,
+                3 => 0.3f,
                 _ => 1.0f/n
+            },
+            PostNthCardPlayEvent (var n) => n switch
+            {
+                <= 1 => 0.9f,
+                _ => Decay(n-1, 0.7f) //n >= 2 
+            },
+            PostCardMoveEvent (var mk) => mk switch
+            {
+                CardMoveKind.Played => 1.5f,
+                CardMoveKind.Drawn => 1.3f,
+                CardMoveKind.Discarded => 0.5f,
+                _ => 1.0f
             },
             _ => 1.0f
         };
@@ -54,8 +70,15 @@ public sealed partial class CardModule
             {
                 GameTeam.Enemy or GameTeam.Ally => 1.5f,
                 GameTeam.Any => 2.0f,
-                GameTeam.Self => 1.0f
+                GameTeam.Self => 1.0f,
+                _ => 0.0f
             };
+        }
+
+        static float Decay(int x, float valueAt1)
+        {
+            float invVal = 1 / valueAt1;
+            return 1.0f / (invVal * x + 1);
         }
     }
 
@@ -203,7 +226,7 @@ public sealed partial class CardModule
         {
             const int coverableVals = 12; // Includes 0! ==> [0, n-1]
             const int avgStat = 5;
-            const float powerPerStatPt = 6.0f;
+            const float powerPerStatPt = 3.0f;
             const float minProb = 0.05f;
 
             var coveredVals = filter.Op switch
@@ -250,7 +273,7 @@ public sealed partial class CardModule
     private static float FilterPowerWeight(ImmutableArray<Filter> filters, float probFalloffThresh,
         ref readonly BalanceEvalContext ctx)
     {
-        const float intensity = 1.25f;
+        const float intensity = 1.5f;
 
         float power = 1.0f;
         for (var i = 0; i < filters.Length; i++)
@@ -288,9 +311,9 @@ public sealed partial class CardModule
             HurtAction a => 35 * Math.Max(0, a.Damage) * TargetWeight(a.Target, TargetWeightMode.EnemyBenefit, in ctx),
             HealAction a => 25 * Math.Max(0, a.Damage) * TargetWeight(a.Target, TargetWeightMode.AllyBenefit, in ctx),
             AttackAction a => 20 * TargetWeight(a.Target, TargetWeightMode.EnemyBenefit, in ctx),
-            DrawCardAction a => 30 * a.N * FilterPowerWeight(a.Filters, 0.25f, in ctx),
+            DrawCardAction a => 30 * a.N * FilterPowerWeight(a.Filters, 0.15f, in ctx),
             DiscardCardAction a => 30 * a.N * FilterPowerWeight(a.Filters, 0.35f, in ctx) * (a.MyHand ? -0.75f : 1.0f),
-            DeployAction a => 90 * FilterPowerWeight(a.Filters, 0.25f, in ctx),
+            DeployAction a => 90 * FilterPowerWeight(a.Filters, 0.15f, in ctx),
             ModifierAction a => Modifier(a, in ctx),
             SingleConditionalAction a => SingleCondition(a, ref ctx),
             MultiConditionalAction a => MultiCondition(a, ref ctx),

@@ -11,11 +11,9 @@ namespace CardLab.API;
 [Route("api/game/[controller]")]
 [ApiController]
 [Authorize]
-public class CardsController(CardModule cardModule, ILogger<CardsController> logger) : ControllerBase
+public class CardsController(ILogger<CardsController> logger) : ControllerBase
 {
-    // Limit the image size to 1 MB, which is larger than the maximum size of a
-    // raw bitmap image of size 300x500 (600000 bytes).
-    private const int MaxCardImageSize = 1024 * 1024; // 1 MB
+    private const int MaxCardImageSize = 2 * 1024 * 1024; // 2 MB
 
     [HttpPost("{index:int}/image")]
     public async Task<IActionResult> PostCardImage([FromForm(Name = "image")] IFormFile file, int index)
@@ -84,7 +82,6 @@ public class CardsController(CardModule cardModule, ILogger<CardsController> log
         string Name,
         string Lore,
         string? Archetype,
-        int Cost,
         int Attack,
         int Health,
         CardScript? Script);
@@ -128,20 +125,19 @@ public class CardsController(CardModule cardModule, ILogger<CardsController> log
             Archetype = archetype,
             NormalizedArchetype = archetype != null ? CardModule.NormalizeArchetype(archetype) : null,
             Author = player.Name,
-            Cost = card.Cost,
             Attack = card.Attack,
             Health = card.Health,
             Script = card.Script
         };
 
         CardModule.UsageSummary? balance = null;
-        var validation = cardModule.ValidateDefinition(definition, out var preventsBalanceCalc);
+        var validation = CardModule.ValidateDefinition(definition, out var preventsBalanceCalc);
         if (!preventsBalanceCalc)
         {
-            balance = cardModule.CalculateCardBalance(definition);
+            balance = CardModule.CalculateCardBalance(definition);
             definition = definition with
             {
-                Description = cardModule.GenerateCardDescription(definition)
+                Description = CardModule.GenerateCardDescription(definition)
             };
         }
 

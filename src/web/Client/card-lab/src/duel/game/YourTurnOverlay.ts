@@ -48,7 +48,7 @@ export class YourTurnOverlay extends Container {
         this.scene.game.app.ticker.add(this.tick, this);
         this.on("destroyed", () => this.scene.game.app.ticker.remove(this.tick, this));
         
-        this.zIndex = 500;
+        this.zIndex = 50000; // todo: make it less ridiculous
     }
 
     show() {

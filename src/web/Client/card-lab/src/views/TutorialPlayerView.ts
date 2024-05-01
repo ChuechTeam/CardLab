@@ -28,12 +28,18 @@ color: white;
 font-size: 0.75em;
 pointer-events: none;
 }
+fullscreen-button {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+}
 </style>
 <div id="prep-mode">
     <h2 id="prep-title">Bienvenue !</h2>
 </div>
 <div id="duel-mode">
     <div id="tuto-title">Mode tutoriel</div>
+    <fullscreen-button></fullscreen-button>
     <slot name="duel"></slot>
 </div>
 `)

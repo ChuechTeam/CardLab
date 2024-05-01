@@ -1,4 +1,5 @@
 ﻿import {LabElement} from "../dom.ts";
+import {fitImageCover} from "src/util.ts";
 
 const style = new CSSStyleSheet()
 style.insertRule(":host { aspect-ratio: 5/3; }");
@@ -87,6 +88,7 @@ export class DrawCanvas extends LabElement {
         canvas.style.width = '100%';
         canvas.style.height = '100%';
         canvas.style.touchAction = "none";
+        canvas.style.display = "block";
         
         // just in case we have browser issues
         if ("part" in canvas)
@@ -107,7 +109,11 @@ export class DrawCanvas extends LabElement {
         })
 
         this.canvas.addEventListener("pointermove", e => {
-            for (let ev of e.getCoalescedEvents()) {
+            let evs = [e];
+            if ("getCoalescedEvents" in e) { // safari doesn't support it :(
+                evs = e.getCoalescedEvents();
+            }
+            for (let ev of evs) {
                 const pos = this.getMousePos(ev);
                 this.strokeUpdate(pos.x, pos.y);
             }
@@ -143,7 +149,18 @@ export class DrawCanvas extends LabElement {
     }
     
     load(img: HTMLImageElement) {
-        this.ctx.drawImage(img, 0, 0);
+        const w = img.naturalWidth
+        const h = img.naturalHeight
+        
+        if (w === this.canvas.width && h === this.canvas.height) {
+            this.ctx.drawImage(img, 0, 0);
+        } else {
+            // Custom image, we need to find the right rectangle to take from (to get the right aspect raito)
+            // and scale up from there.
+            const { x, y, width, height } = fitImageCover(w, h, this.canvas.width, this.canvas.height);
+            this.ctx.drawImage(img, x, y, width, height, 0, 0, this.canvas.width, this.canvas.height);
+        }
+        
         this.pushToUndoStack();
     }
     

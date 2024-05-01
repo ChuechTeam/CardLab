@@ -40,7 +40,7 @@ const LAY_ANIM_TIME = 0.2;
 const DISCARD_ANIM_TIME = 0.5;
 const ALTERATION_ANIM_TIME = 1.5;
 
-const NAME_RECT = new Rectangle(0, 0, cx(78), cy(16.5));
+const NAME_RECT = new Rectangle(cx(3), 0, cx(73), cy(16.5));
 const COST_RECT = new Rectangle(cx(76), cy(0.5), cx(24), cy(16));
 
 const ATTR_TEXT_STYLE = new TextStyle({

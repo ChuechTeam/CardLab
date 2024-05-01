@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.Runtime.InteropServices;
 using CardLab.Game.AssetPacking;
 using CardLab.Game.Communication;
 
@@ -138,6 +139,36 @@ public sealed record CreatingCardsPhase(GameSession Session) : GamePhase(Session
     public override void OnStart()
     {
         Session.EnableCardUpdates();
+
+        // Assign card costs to everyone.
+        var cpp = Session.CardsPerPlayer;
+        var settings = new GameSessionRules.CostSettings
+        {
+            LowWeights = [20, 30, 40, 60, 50],
+            HighWeights = [50, 40, 30, 20, 10]
+        };
+        
+        // The costs array is in the following format: [low, high, low, high, ...]
+        // Since we usually have 2 cards per player, each player will have an equal amount of low/high cards.
+        var costs = GameSessionRules.DistributeCardCosts(Session.Players.Count * cpp, in settings);
+
+        int i = 0;
+        foreach (var player in Session.Players.Values)
+        {
+            var cards = new CardDefinition[cpp];
+            for (int j = 0; j < cpp; j++)
+            {
+                cards[j] = new CardDefinition
+                {
+                    Cost = costs[i],
+                    Attack = costs[i],
+                    Health = costs[i]
+                };
+                i++;
+            }
+
+            player.Cards = ImmutableCollectionsMarshal.AsImmutableArray(cards);
+        }
     }
 
     public override PhaseStatePayload GetStateForHost()
@@ -166,7 +197,7 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
     private readonly Dictionary<Player, Player> _opponentMap = new(); // Cache for state
     public (Player, Player)[] DuelPairs { get; private set; } = null!;
     public ImmutableArray<QualCardRef>[]? DuelDecks { get; private set; } = null;
-    
+
     public bool OpponentsRevealed { get; private set; } = false;
 
     public override void OnStart()
@@ -226,7 +257,7 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
                 1,
                 packCards.MoveToImmutable()
             ).ContinueWith(PackTaskComplete, this);
-            
+
             Session.SendPhaseUpdateMessages();
         }
     }
@@ -248,14 +279,14 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
                 var pack = packTask.Result;
                 sess.MakePackAvailable(pack);
 
-                var settings = new GameSessionRules.Settings
+                var settings = new GameSessionRules.DeckSettings
                 {
                     ArchetypeSequenceLength = 4,
                     SpellProportion = 0.2,
                     UserCardCopies = 2
                 };
                 me.DuelDecks = GameSessionRules.MakeNDecks(pack.Pack, sess.BasePack, sess.Players.Count, in settings);
-                
+
                 me._status = Status.Ready;
                 sess.SendPhaseUpdateMessages();
             }
@@ -275,7 +306,7 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
         {
             return;
         }
-        
+
         OpponentsRevealed = true;
         Session.SendPhaseUpdateMessages();
     }
@@ -284,12 +315,12 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
     {
         return new PreparationStatePayload(State, null);
     }
-    
+
     public override IEnumerable<PhaseStatePayload> GetStateForPlayers(IEnumerable<Player> players)
     {
         foreach (var player in players)
         {
-            yield return new PreparationStatePayload(State, 
+            yield return new PreparationStatePayload(State,
                 OpponentsRevealed ? _opponentMap.GetValueOrDefault(player)?.Name : null);
         }
     }
@@ -302,7 +333,8 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
     }
 }
 
-public sealed record DuelsPhase(GameSession Session,
+public sealed record DuelsPhase(
+    GameSession Session,
     (Player, Player)[] Pairs,
     ImmutableArray<QualCardRef>[] Decks) : GamePhase(Session, GamePhaseName.Duels)
 {
@@ -320,4 +352,3 @@ public sealed record DuelsPhase(GameSession Session,
 public sealed record EndedPhase(GameSession Session) : GamePhase(Session, GamePhaseName.Ended);
 
 public sealed record TerminatedPhase(GameSession Session) : GamePhase(Session, GamePhaseName.Terminated);
-

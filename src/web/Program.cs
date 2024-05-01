@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CardLab.Auth;
@@ -6,11 +7,9 @@ using CardLab.Game.AssetPacking;
 using CardLab.Game.BasePacks;
 using CardLab.Game.Duels;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using Vite.AspNetCore.Extensions;
-using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 [assembly: ApiController]
 
@@ -29,7 +28,13 @@ builder.Services.AddAuthorization(o =>
     o.AddPolicy("InGame", p => { p.RequireAuthenticatedUser(); });
     o.AddPolicy("Host", p => { p.RequireClaim("IsHost", "true"); });
 });
-builder.Services.AddRazorPages(options => { options.Conventions.AuthorizeFolder("/Game", "InGame"); });
+
+var b = builder.Services
+    .AddRazorPages(options => { options.Conventions.AuthorizeFolder("/Game", "InGame"); });
+#if DEBUG
+b.AddRazorRuntimeCompilation();
+#endif
+
 var configJson = (JsonSerializerOptions o) =>
 {
     var conv = new JsonStringEnumConverter(JsonNamingPolicy.CamelCase);
@@ -48,9 +53,7 @@ builder.Services.AddResponseCompression(options =>
 });
 
 builder.Services.AddSingleton<ServerState>();
-builder.Services.AddSingleton<CardModule>();
 builder.Services.AddSingleton<BasePackRegistry>();
-builder.Services.AddSingleton<GlobalDuelTest>();
 builder.Services.AddSingleton<GamePackCompiler>();
 builder.Services.AddSingleton<GamePackCompileQueue>();
 builder.Services.AddSingleton<WebGamePacker>();
@@ -58,6 +61,11 @@ builder.Services.AddHostedService<GamePackCompileWorker>();
 //builder.Services.AddOptions<GameRequestQueue>(GameRequestQueue.Options.Section);
 // builder.Services.AddSingleton<GameRequestQueue>();
 // builder.Services.AddHostedService<GameRequestWorker>();
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSingleton<GlobalDuelTest>();
+}
 
 builder.Services.AddViteServices(opt => { opt.PackageDirectory = "Client/card-lab"; });
 

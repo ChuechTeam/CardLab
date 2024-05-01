@@ -28,7 +28,7 @@ public sealed class BasePackRegistry(
         {
             throw new InvalidOperationException($"Pack with id {id} (name={name}) already exists");
         }
-        
+
         logger.LogInformation("Compiling base pack {Id} ({Name})", id, name);
 
         var defFileRel = Path.Combine(WebRootSubDir, $"{fileName}.{GamePack.PackDefFileExt}");
@@ -68,7 +68,7 @@ public sealed class BasePackRegistry(
 
                 if (isRes || isDef)
                 {
-                    var name = Path.GetFileNameWithoutExtension(ext);
+                    var name = Path.GetFileNameWithoutExtension(file);
                     if (!found.TryGetValue(name, out var value))
                     {
                         value = (def: null, res: null);
@@ -86,7 +86,7 @@ public sealed class BasePackRegistry(
                 }
             }
         }
-        
+
         foreach (var (name, (defFile, resFile)) in found)
         {
             if (defFile is null)
@@ -110,8 +110,8 @@ public sealed class BasePackRegistry(
                 continue;
             }
 
-            var defRel = Path.Combine(WebRootSubDir, name + "." + GamePack.PackDefFileExt);
-            var resRel = Path.Combine(WebRootSubDir, name + "." + GamePack.PackResFileExt);
+            var defRel = WebRootSubDir + "/" + name + "." + GamePack.PackDefFileExt;
+            var resRel = WebRootSubDir + "/" + name + "." + GamePack.PackResFileExt;
             if (!_loadedPacks.TryAdd(pack.Id, new LoadedPack(pack, defRel, resRel)))
             {
                 logger.LogWarning("Duplicate pack ID: {Id}", pack.Id);

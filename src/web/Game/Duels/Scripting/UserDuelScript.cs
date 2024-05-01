@@ -227,7 +227,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                     var all = State.Units.Values;
                     allSameTeam = t.Team switch
                     {
-                        GameTeam.Ally => all.Where(x => x.Owner == Entity.Owner),
+                        GameTeam.Ally => all.Where(x => x.Owner == Entity.Owner && x.Id != Entity.Id),
                         GameTeam.Enemy => all.Where(x => x.Owner != Entity.Owner),
                         _ => all
                     };
@@ -883,8 +883,8 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         {
             UnitDirection.Right => new(1, 0),
             UnitDirection.Left => new(-1, 0),
-            UnitDirection.Up => new(0, -1),
-            UnitDirection.Down => new(0, 1),
+            UnitDirection.Up => new(0, 1),
+            UnitDirection.Down => new(0, -1),
             _ => new(999, 999) // panic!
         };
         var newPos = vec + dp;

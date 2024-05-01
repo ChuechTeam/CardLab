@@ -5,7 +5,7 @@ using CardLab.API;
 
 namespace CardLab.Game;
 
-public sealed partial class CardModule
+public static partial class CardModule
 {
     public record ValidationSummary(bool DefinitionValid, ImmutableArray<string> Errors);
 
@@ -73,7 +73,7 @@ public sealed partial class CardModule
         return stringBuilder.ToString().Normalize(NormalizationForm.FormC);
     }
 
-    public ValidationSummary ValidateDefinition(CardDefinition cardDef, out bool preventsBalanceCalc)
+    public static ValidationSummary ValidateDefinition(CardDefinition cardDef, out bool preventsBalanceCalc)
     {
         var errors = ImmutableArray.CreateBuilder<string>();
         preventsBalanceCalc = false;
@@ -125,5 +125,5 @@ public sealed partial class CardModule
         return new ValidationSummary(errors.Count == 0, errors.ToImmutable());
     }
 
-    public string GenerateCardDescription(CardDefinition def) => LangFR.GenerateCardDescription(def);
+    public static string GenerateCardDescription(CardDefinition def) => LangFR.GenerateCardDescription(def);
 }

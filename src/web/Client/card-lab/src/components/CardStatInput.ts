@@ -21,6 +21,7 @@ button {
     
     appearance: none;
     background: none;
+    color: black;
     
     font-weight: bold;
     font-size: 1.2em;
@@ -44,8 +45,19 @@ button:active::before {
 	left: -2px;
 	right: -2px;
 }
+
+#root.immutable button {
+    display: none;
+}
+
+#root.immutable #value {
+    border-color: black;
+    color: white;
+    background-color: black;
+}
+
 </style>
-<div class="input">
+<div class="input" id="root">
     <button id="decrement">−</button>
     <div id="value">99</div>
     <button id="increment">+</button>
@@ -53,6 +65,7 @@ button:active::before {
 `)
 
 export class CardStatInput extends LabElement {
+    @fromDom("root") root: HTMLElement = null!
     @fromDom("value") valueNode: HTMLElement = null!
     @fromDom("decrement") decrementButton: HTMLElement = null!
     @fromDom("increment") incrementButton: HTMLElement = null!
@@ -85,15 +98,28 @@ export class CardStatInput extends LabElement {
         this.incrementButton.addEventListener('click', () => {
             this.dispatchEvent(new Event("increment"))
         });
+        
+        this.updateStyle()
     }
     
     updateValueText(val: string | null) {
         this.valueNode.textContent = val;
     }
     
-    attributeChanged(name: string, oldValue: string, newValue: string) {
+    updateStyle() {
+        if (this.hasAttribute("immutable")) {
+            this.root.classList.add("immutable")
+        } else {
+            this.root.classList.remove("immutable")
+        }
+    }
+    
+    attributeChanged(name: string, oldValue: string | null, newValue: string | null) {
         if (name === 'value' && this.valueNode !== null) {
             this.updateValueText(newValue);
+        }
+        if (name === 'immutable' && this.valueNode !== null) {
+            this.updateStyle();
         }
     }
     

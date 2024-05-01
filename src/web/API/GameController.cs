@@ -57,6 +57,15 @@ public class GameController(
         var player = user.Player;
 
         var userSocket = player?.Socket ?? session.HostSocket;
+
+        // First check if the socket is closed to avoid opening a websocket for nothing.
+        if (userSocket.Closed)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+        
+        using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
         
         var conn = userSocket.StartConnection();
         if (conn is null)
@@ -65,8 +74,6 @@ public class GameController(
             return;
         }
         var (send, id, connectionReplacedToken) = conn.Value;
-        
-        using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
         
         // We have to do this very ugly stuff so we don't get locks locking for nothing when processing the duel msg.
         int wId;

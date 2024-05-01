@@ -16,15 +16,21 @@ import {PreparationHostView} from "src/views/PreparationHostView.ts";
 import {PreparationPlayerView} from "src/views/PreparationPlayerView.ts";
 import {CreatingCardsHostView} from "src/views/CreatingCardsHostView.ts";
 import {DuelPlayerView} from "src/views/DuelPlayerView.ts";
+import {ConnectionIssuesBanner} from "src/components/ConnectionIssuesBanner.ts";
 //import "src/style.css";
 
 const baseUrl = window.location.origin;
 type PackDownTask = { progress: PackDownloadProgress; promise: Promise<DuelGamePack> };
+type ReconnectionState = { handle: number; interval: number; queue: MessageQueue }
 
 const basePackUrl = {
     def: new URL("/basePacks/basePack1.labdef", baseUrl).toString(),
     res: new URL("/basePacks/basePack1.labres", baseUrl).toString()
 }
+
+const BASE_RECONNECT_INTERVAL = 1000; // ms
+const INC_RECONNECT_INTERVAL = 1000; // ms
+const MAX_RECONNECT_INTERVAL = 30000; // ms
 
 export class CardLab extends EventTarget {
     gameContainer: HTMLElement
@@ -56,6 +62,9 @@ export class CardLab extends EventTarget {
     statusOverlay: StatusOverlay
     basePackDownloadUI: PackDownloadStatus
     sessionPackDownloadUI: PackDownloadStatus
+    connectionIssuesBanner: ConnectionIssuesBanner
+
+    reconnectionState: ReconnectionState | null = null;
 
     constructor(helloResponse: WelcomeMessage, socket: WebSocket) {
         super();
@@ -82,8 +91,10 @@ export class CardLab extends EventTarget {
 
         this.sessionPackDownloadUI = new PackDownloadStatus();
         this.basePackDownloadUI = new PackDownloadStatus();
+        this.connectionIssuesBanner = new ConnectionIssuesBanner();
         this.statusOverlay.appendChild(this.sessionPackDownloadUI);
         this.statusOverlay.appendChild(this.basePackDownloadUI);
+        this.statusOverlay.appendChild(this.connectionIssuesBanner);
 
         if (!this.isHost) {
             this.downloadBasePack().then(() => console.log("Init: Base pack downloaded!"));
@@ -126,8 +137,7 @@ export class CardLab extends EventTarget {
             } else {
                 this.view = new DuelPlayerView(this);
             }
-        }
-        else {
+        } else {
             this.view = null;
         }
 
@@ -156,20 +166,102 @@ export class CardLab extends EventTarget {
         }
     }
 
+    /*
+     * Networking stuff
+     */
+
     prepareSocket() {
-        // Add all the event listeners for debugging
-        this.socket.addEventListener("open", () => console.log("Socket opened"));
-        this.socket.addEventListener("close", () => console.log("Socket closed"));
-        this.socket.addEventListener("error", () => console.log("Socket error"));
+        this.socket.addEventListener("close", e => {
+            if (!socketHandleSpecialExit(e)) {
+                this.beginReconnection()
+            }
+        });
+        this.socket.addEventListener("error", this.beginReconnection.bind(this));
         this.socket.addEventListener("message", async (e) => {
             console.log("Socket message", e.data)
-            this.handleMessage(e.data)
+            this.handleMessage(JSON.parse(e.data))
         });
     }
 
-    handleMessage(strMessage: string) {
-        const message = JSON.parse(strMessage) as LabMessage
+    beginReconnection() {
+        if (this.reconnectionState !== null) {
+            throw new Error("Cannot reconnect while reconnecting; that doesn't make any sense!");
+        }
 
+        this.reconnectionState = {
+            handle: setInterval(this.reconnectAttempt.bind(this), BASE_RECONNECT_INTERVAL),
+            interval: BASE_RECONNECT_INTERVAL,
+            queue: new MessageQueue()
+        };
+        this.connectionIssuesBanner.show();
+    }
+
+    reconnectAttempt() {
+        const socket = socketMake();
+        const state = this.reconnectionState;
+        
+        if (state === null) {
+            throw new Error("Can't attempt to reconnect with no reconnection state");
+        }
+
+        const closeListener = (e: CloseEvent) => {
+            clear();
+            if (!socketHandleSpecialExit(e)) {
+                this.continueReconnection();
+            }
+        };
+        const errListener = () => {
+            clear();
+            this.continueReconnection();
+        };
+        const msgListener = (e: MessageEvent) => {
+            if (state === this.reconnectionState) {
+                const m = JSON.parse(e.data) as LabMessage;
+                if (m.type !== "welcome") {
+                    state.queue.push(m);
+                } else {
+                    clear();
+                    
+                    this.exitReconnection(socket);
+                    this.handleMessage(m);
+                    this.handleMessageQueue(state.queue);
+                }
+            }
+        };
+        
+        function clear() {
+            socket.removeEventListener("close", closeListener);
+            socket.removeEventListener("error", errListener);
+            socket.removeEventListener("message", msgListener);
+        }
+        
+        socket.addEventListener("close", closeListener);
+        socket.addEventListener("error", errListener);
+        socket.addEventListener("message", msgListener)
+    }
+
+    continueReconnection() {
+        const s = this.reconnectionState;
+        if (s === null) {
+            throw new Error("Cannot continue reconnection when not reconnecting.");
+        }
+
+        clearInterval(s.handle);
+        s.interval = Math.min(s.interval + INC_RECONNECT_INTERVAL, MAX_RECONNECT_INTERVAL);
+        s.handle = setInterval(this.reconnectAttempt.bind(this), s.interval);
+
+        console.log(`Continuing reconnection (interval=${s.interval})...`);
+    }
+
+    exitReconnection(socket: WebSocket) {
+        clearInterval(this.reconnectionState?.handle);
+        this.reconnectionState = null;
+        this.socket = socket;
+        this.prepareSocket();
+        this.connectionIssuesBanner.hide();
+    }
+
+    handleMessage(message: LabMessage) {
         if (message.type === 'lobbyPlayerUpdated') {
             const phState = this.phaseState as WaitingForPlayersPhaseState;
             if (message.kind === 'quit') {
@@ -235,28 +327,39 @@ export class CardLab extends EventTarget {
             state.started = true;
         } else if (message.type === "phaseStateUpdated") {
             this.phaseState = message.state;
-        }
-        else if (message.type.startsWith("duel")) {
+        } else if (message.type.startsWith("duel")) {
             const msg = message as DuelMessage
             this.ongoingDuel?.messaging.receiveMessage(msg);
         }
-        
+
         if (this.view !== null
             && 'labMessageReceived' in this.view
             && typeof this.view.labMessageReceived === 'function') {
             this.view.labMessageReceived(message)
         }
     }
+    
+    handleMessageQueue(mq: MessageQueue) {
+        mq.flush(this.handleMessage.bind(this))
+    }
 
     sendMessage(msg: LabMessage) {
         this.socket.send(JSON.stringify(msg))
     }
+
+    /*
+     * Commands
+     */
 
     startGame() {
         gameApi.host.startGame()
             .then((_) => console.log("Game started"))
             .catch((e) => console.error("Failed to start game", e));
     }
+
+    /*
+     * Duel and various downloads
+     */
 
     retryLoadingDuel() {
         if (this.duelState === "loading") {
@@ -292,9 +395,10 @@ export class CardLab extends EventTarget {
         this.basePackDownloadUI.showProgress("Téléchargement des ressources de base", prog);
 
         try {
-            const prom = await packProm;
+            const pack = await packProm;
+            this.basePack = pack;
             this.basePackDownloadUI.hide();
-            return prom;
+            return pack;
         } finally {
             this.basePackDownload = null;
         }
@@ -319,9 +423,10 @@ export class CardLab extends EventTarget {
         this.sessionPackDownloadUI.showProgress("Téléchargement des cartes des joueurs", prog);
 
         try {
-            const prom = await packProm;
+            const pack = await packProm;
+            this.sessionPack = pack;
             this.sessionPackDownloadUI.hide();
-            return prom;
+            return pack;
         } finally {
             this.sessionPackDownload = null;
         }
@@ -411,8 +516,7 @@ export class CardLab extends EventTarget {
                 this.ongoingDuel.loaded.game.dismount();
             } catch (e) {
                 console.error("Failed to dismount duel.", e);
-            }
-            finally {
+            } finally {
                 this.ongoingDuel.loaded.element.remove();
             }
         } else if (this.ongoingDuel.loadTask !== null) {
@@ -447,46 +551,95 @@ export class CardLab extends EventTarget {
     }
 }
 
+function socketMake() {
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    return new WebSocket(`${protocol}://${window.location.host}/api/game/ws`);
+}
+
+enum SocketExitCode {
+    CONNECTION_REPLACED = 3001,
+    SERVER_SHUTTING_DOWN = 3002,
+    KICKED = 3003,
+}
+
+function socketExitCode(e: CloseEvent): SocketExitCode | null {
+    if (e.code === 3001 || e.code === 3002 || e.code === 3003) {
+        return e.code;
+    } else {
+        return null;
+    }
+}
+
+// True when the user should be redirected to the main page.
+function socketHandleSpecialExit(e: CloseEvent): boolean {
+    const code = socketExitCode(e);
+
+    switch (code) {
+        case SocketExitCode.CONNECTION_REPLACED:
+            alert("Vous avez été déconnecté car vous vous êtes connecté avec un autre appareil.");
+            break;
+        case SocketExitCode.SERVER_SHUTTING_DOWN:
+            alert("Le serveur va bientôt s'arrêter. Vous avez été déconnecté.");
+            break;
+        case SocketExitCode.KICKED:
+            alert("Vous avez été expulsé de la partie.");
+            break;
+        default:
+            return false;
+    }
+
+    window.location.href = baseUrl;
+    return true;
+}
+
+class MessageQueue {
+    messages: LabMessage[] = []; // stored in the opposite direction! last item = last to be processed
+    push(m: LabMessage) { this.messages.push(m); }
+    flush(f: (m: LabMessage) => void) {
+        while (this.messages.length > 0) {
+            f(this.messages.pop()!);
+        }
+    }
+}
+
 const gameContainer = document.getElementById("game-container");
 if (gameContainer !== null) {
     gameContainer.textContent = "Connexion au serveur...";
 
     let socket: WebSocket | null = null;
-    try {
-        const domainRoot = window.location.host;
-        socket = new WebSocket(`ws://${domainRoot}/api/game/ws`);
-    } catch (e) {
-        console.error("Connection to web socket failed.", e);
-        gameContainer.textContent
-            = "Connexion échouée. Rafraîchissez la page svp c'est pas encore implémenté de réessayer..."
-        // TODO: Retry and tell the user that something is going wrong
-    }
+    socket = socketMake();
 
     if (socket !== null) {
+        const queue = new MessageQueue()
+        
         const initMessageListener = (e: MessageEvent) => {
             const parsed = JSON.parse(e.data)
 
             if (parsed.type === 'welcome') {
                 socket!.removeEventListener('message', initMessageListener)
+                socket!.removeEventListener('error', errListener)
+                socket!.removeEventListener('close', closeListener)
+                
                 console.log("Received welcome message: ", parsed)
 
                 const lab = new CardLab(parsed, socket!);
+                lab.handleMessageQueue(queue);
                 (window as any).cardLab = lab;
                 lab.renderView();
             } else {
-                // todo queue
+                queue.push(parsed)
             }
         }
-        socket.addEventListener("message", initMessageListener);
-        socket.addEventListener("error", () => { /* TODO RETRY */
-        })
-        socket.addEventListener("close", e => { 
-            if (e.code === 3001 || e.code === 3003) {
-                // Then the user tried to connect with another device or we have been kicked.
-                window.location.href = baseUrl;
+        const errListener = (e: Event) => {}; // todo
+        const closeListener = (e: CloseEvent) => {
+            if (!socketHandleSpecialExit(e)) {
+                // TODO RETRY
             }
-            /* TODO RETRY IF UNEXPECTED */
-        })
+        };
+        
+        socket.addEventListener("message", initMessageListener);
+        socket.addEventListener("error", errListener);
+        socket.addEventListener("close", closeListener); 
     }
 } else {
     tryRunDuelTest();
