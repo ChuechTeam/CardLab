@@ -95,7 +95,8 @@ export class PreparationPlayerView extends LabElement {
             const state = this.cardLab.phaseState as PreparationPhaseState;
             if (this.opponentContainer.className == "" && state.yourOpponent !== null)
             {
-                navigator.vibrate(800); // Immersive!
+                if ("vibrate" in navigator)
+                    navigator.vibrate(800); // Immersive!
             }
             
             this.update(state)

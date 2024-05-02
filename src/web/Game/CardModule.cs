@@ -59,12 +59,7 @@ public static partial class CardModule
         foreach (var c in normalizedString.EnumerateRunes())
         {
             var unicodeCategory = Rune.GetUnicodeCategory(c);
-            if (unicodeCategory is
-                UnicodeCategory.LowercaseLetter 
-                or UnicodeCategory.UppercaseLetter
-                or UnicodeCategory.DashPunctuation
-                or UnicodeCategory.OpenPunctuation
-                or UnicodeCategory.SpaceSeparator)
+            if (unicodeCategory is UnicodeCategory.LowercaseLetter or UnicodeCategory.UppercaseLetter)
             {
                 stringBuilder.Append(Rune.ToLowerInvariant(c));
             }

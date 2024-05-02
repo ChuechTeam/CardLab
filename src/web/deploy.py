@@ -1,7 +1,7 @@
 ﻿import argparse
 import subprocess
 import os
-
+import shutil
 """
 DEPLOY SCRIPT: Used to do various deployment and production related tasks.
 Currently used to run the Vite assets build and compiling base packs.
@@ -13,9 +13,9 @@ proj_dir = os.path.dirname(os.path.realpath(__file__))
 
 def build_vite(publish_dir):
     print("Building Vite bundles...")
-    subprocess.call(["npm", "run", "build", "--", "--outDir", os.path.join(publish_dir, "wwwroot")],
+    subprocess.run([shutil.which("npm"), "run", "build", "--", "--outDir", os.path.join(publish_dir, "wwwroot")],
                     cwd=os.path.join(proj_dir, "Client", "card-lab"),
-                    shell=True)
+                    shell=False)
 
 
 def compile_packs(publish_dir):
@@ -25,8 +25,8 @@ def compile_packs(publish_dir):
     if not os.path.exists(cl_dll):
         raise Exception("No CardLab.dll found in publish directory {}".format(publish_dir))
 
-    subprocess.call(["dotnet", cl_dll, "--compile", os.path.join(proj_dir, "Game/BasePacks/Assets")],
-                    shell=True)
+    subprocess.call([shutil.which("dotnet"), cl_dll, "--compile", os.path.join(proj_dir, "Game/BasePacks/Assets")],
+                    shell=False)
 
 
 arp = argparse.ArgumentParser()

@@ -477,9 +477,13 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
 
                 // I don't want to overcomplicate dry-run checks, so from now on we'll assume there's enough
                 // space in the board.
-                if (ctx.DryRun && pool.Count > 0)
+                if (ctx.DryRun)
                 {
                     return true;
+                }
+                if (pool.Count == 0) 
+                {
+                    return false;
                 }
 
                 var randomPick = pool[Duel.Rand.Next(pool.Count)];
@@ -572,7 +576,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             }
 
             // Return early; we don't want to execute actions when dead EXCEPT for on-death events.
-            if (allowDeath || !Entity.Eliminated)
+            if (allowDeath || Entity.Eliminated)
             {
                 return atLeastOne;
             }

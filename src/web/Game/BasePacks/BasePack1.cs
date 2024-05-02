@@ -23,7 +23,22 @@ public static class BasePack1
             Cost = 1,
             Description = "Rien de spécial",
             Archetype = "Bof bof",
-            NormalizedArchetype = "bof bof"
+            NormalizedArchetype = "bof bof",
+            Script = new CardScript
+            {
+                Handlers =
+                [
+                    new CardEventHandler
+                    {
+                        Event = new PostSpawnEvent(),
+                        Actions =
+                        [
+                            new DrawCardAction(1, [new AdjacentFilter()]),
+                            new HurtAction(3, new CoreTarget(true))
+                        ]
+                    }
+                ]
+            }
         }, 1, Path.Combine(assetsDir, "Pack1/test.png")),
         (new CardDefinition
         {

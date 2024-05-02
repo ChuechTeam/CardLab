@@ -184,8 +184,7 @@ export class DuelGame {
             children: false,
             context: true,
             texture: false,
-            textureSource: false,
-            style: false
+            textureSource: false
         });
     }
 }

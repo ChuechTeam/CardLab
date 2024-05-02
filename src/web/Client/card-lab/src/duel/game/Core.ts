@@ -148,7 +148,7 @@ export class Core extends Container {
 
     reactToHurt() {
         this.hurtAnim.start();
-        if (this.scene.myCore === this) {
+        if (this.scene.myCore === this && "vibrate" in navigator) {
             navigator.vibrate(90); // gotta make the player feel like they're getting hurt!
         }
     }
