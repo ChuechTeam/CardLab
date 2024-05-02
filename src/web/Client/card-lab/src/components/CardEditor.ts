@@ -268,18 +268,10 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         font-size: 1.3em;
         border-right: 2px solid black;
         padding: 1px 12px;
-        
-        display: flex;
-        justify-content: center;
-        align-items: center;
     }
     
-    #draw-upload-button lab-icon::part(img) {
-        display: block;
-    }
-
-    .def-grid {
-        display: block;
+    #draw-upload-button > lab-icon {
+        height: 100%;
     }
     
     .game-card-container {
@@ -419,7 +411,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         </div>
         <div id="edit-buttons">
             <button class="cl-button" id="draw-button">🖌️ Dessiner l'image</button>
-            <button class="cl-button" id="script-button">📝 Modifier le script</button>
+            <button class="cl-button" id="script-button">📝 Modifier les effets</button>
         </div>
     </div>
     <balance-overview id="balance-overview"></balance-overview>
@@ -437,7 +429,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     <div class="hacky-backdrop"></div>
     <dialog id="draw-dialog">
         <header>
-            <button id="draw-upload-button"><lab-icon icon="upload"></lab-icon></button>
+            <button id="draw-upload-button"><lab-icon icon="upload" class="-block"></lab-icon></button>
             <div class="-label">Dessin de l'illustration</div>
             <button class="-close-button">✖</button>
         </header>
@@ -575,7 +567,7 @@ export class CardEditor extends LabElement {
                 img.src = url;
                 img.onload = () => {
                     try {
-                        this.cardCanvas.load(img);
+                        this.cardCanvas.load(img, true);
                     } finally {
                         URL.revokeObjectURL(url)
                     }
@@ -767,7 +759,7 @@ export class CardEditor extends LabElement {
         const img = new Image();
         img.src = b64;
         img.onload = () => {
-            this.cardCanvas.load(img);
+            this.cardCanvas.load(img, false);
         }
     }
 

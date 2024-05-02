@@ -3,37 +3,47 @@
 @{
     ViewData["Title"] = "Accueil";
 }
-
-<h1>CardLab</h1>
-<p>Salut tout le monde !</p>
-<p>Envie de faire tout plein de cartes ?</p>
-@if (!Model.IsInGame)
-{
-    <form method="post" asp-page-handler="create">
-        <button>Créer une salle</button>
-    </form>
-
-    <form method="post" asp-page-handler="join">
-        @if (!string.IsNullOrEmpty(Model.JoinErrMsg))
+<style> body, html, main { margin: 0; height: 100%; }  </style>
+<div id="auth-container">
+    <div id="auth-area">
+        <img class="-logo" src="~/logo.svg"/>
+        @if (!Model.IsInGame)
         {
-            <p style="color: darkred;">@Model.JoinErrMsg</p>
+            <form id="join-form" method="post" asp-page-handler="join">
+                @if (!string.IsNullOrEmpty(Model.JoinErrMsg))
+                {
+                    <p style="color: darkred;">@Model.JoinErrMsg</p>
+                }
+                <label asp-for="JoinCode">Code</label>
+                <input type="text"
+                       id="code-input"
+                       oninput="let p=this.selectionStart;this.value=this.value.toUpperCase();this.setSelectionRange(p, p);"
+                       asp-for="JoinCode"
+                       required/>
+                <label asp-for="PlayerName">Votre nom</label>
+                <input type="text" asp-for="PlayerName" id="name-input" maxlength="24" required/>
+                <button id="join-button" class="cl-button">Rejoindre</button>
+            </form>
         }
-        <p>Code : </p>
-        <input type="text"
-               oninput="let p=this.selectionStart;this.value=this.value.toUpperCase();this.setSelectionRange(p, p);"
-               asp-for="JoinCode"
-               required/>
-        <p>Votre nom : </p>
-        <input type="text" asp-for="PlayerName" required/>
-        <p>
-            <button>Rejoindre</button>
-        </p>
-    </form>
-}
-else
+        else
+        {
+            <div id="in-game-actions">
+                <button onclick="window.location = '@Url.Page("Game/Index")'" class="cl-button">Reprendre la partie</button>
+                <form method="post" asp-page-handler="quit" id="quit-form">
+                    <button class="cl-button -negative" type="button" onclick="quitConfirm()">Quitter la partie</button>
+                </form>
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts
 {
-    <button onclick="window.location = '@Url.Page("Game/Index")'">Reprendre la partie</button>
-    <form method="post" asp-page-handler="quit">
-        <button>Quitter la partie</button>
-    </form>
+    <script>
+        function quitConfirm() {
+            if (confirm("Êtes-vous sûr de vouloir quitter la partie ?")) {
+                document.getElementById("quit-form").submit();
+            }
+        }
+    </script>
 }

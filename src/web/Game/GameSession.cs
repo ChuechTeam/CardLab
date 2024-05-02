@@ -106,6 +106,17 @@ public sealed class GameSession
 
     public Result<Player> AddPlayer(string name)
     {
+        var sanitizedName = name.Trim();
+        if (sanitizedName.Length == 0)
+        {
+            return Result.Fail<Player>("Votre nom est invalide.");
+        }
+
+        if (sanitizedName.Length > 24)
+        {
+            return Result.Fail<Player>("Votre nom est trop long.");
+        }
+        
         lock (Lock)
         {
             if (Phase.Name != GamePhaseName.WaitingForPlayers)
@@ -118,7 +129,7 @@ public sealed class GameSession
 
             var player = new Player(this, id, CardsPerPlayer)
             {
-                Name = name,
+                Name = sanitizedName,
                 LoginToken = UserToken.Generate()
             };
             Players = Players.Add(id, player);

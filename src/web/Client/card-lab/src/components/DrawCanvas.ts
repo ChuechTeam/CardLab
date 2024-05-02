@@ -4,7 +4,7 @@ import {fitImageCover} from "src/util.ts";
 const style = new CSSStyleSheet()
 style.insertRule(":host { aspect-ratio: 5/3; }");
 
-const MAX_UNDOS = 21;
+const MAX_UNDOS = 30;
 
 class Vec2 {
     constructor(public x: number = 0, public y: number = 0) {
@@ -45,6 +45,9 @@ export class DrawToolState {
 
 export class UndoStack {
     images: ImageData[] = [];
+    // null --> not in the middle of the undostack
+    displayedIdx: number | null = null;
+    redoLastImg: ImageData | null = null;
 }
 
 class Stroke {
@@ -130,25 +133,58 @@ export class DrawCanvas extends LabElement {
     }
 
     clear(pushToUndo=false) {
-        this.ctx.fillStyle = "#ffffff";
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
         if (pushToUndo) {
             this.pushToUndoStack();
         }
+        
+        this.ctx.fillStyle = "#ffffff";
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
+    canUndo() {
+        return this.undoStack.images.length !== 0 && this.undoStack.displayedIdx !== 0;
+    }
+    
     undo() {
-        const length = this.undoStack.images.length;
-        if (length <= 1) {
+        if (!this.canUndo()) {
             return;
         }
-        this.undoStack.images.pop();
-        this.rebuildFromUndoStack();
+        
+        if (this.undoStack.displayedIdx === null) {
+            this.undoStack.redoLastImg = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+            this.undoStack.displayedIdx = this.undoStack.images.length-1;
+        } else {
+            this.undoStack.displayedIdx--;
+        }
+
+        const img = this.undoStack.images[this.undoStack.displayedIdx];
+        this.ctx.putImageData(img, 0, 0);
+        
         this.dispatchEvent(new CustomEvent("undoStackUpdated"));
     }
     
-    load(img: HTMLImageElement) {
+    canRedo() {
+        return this.undoStack.displayedIdx !== null;
+    }
+    
+    redo() {
+        if (!this.canRedo()) {
+            return;
+        }
+
+        if (this.undoStack.displayedIdx === this.undoStack.images.length-1) {
+            this.undoStack.displayedIdx = null;
+            this.ctx.putImageData(this.undoStack.redoLastImg!, 0, 0);
+        } else {
+            this.undoStack.displayedIdx!++;
+            const img = this.undoStack.images[this.undoStack.displayedIdx!];
+            this.ctx.putImageData(img, 0, 0);
+        }
+        
+        this.dispatchEvent(new CustomEvent("undoStackUpdated"));
+    }
+    
+    load(img: HTMLImageElement, undoable: boolean) {
         const w = img.naturalWidth
         const h = img.naturalHeight
         
@@ -161,7 +197,9 @@ export class DrawCanvas extends LabElement {
             this.ctx.drawImage(img, x, y, width, height, 0, 0, this.canvas.width, this.canvas.height);
         }
         
-        this.pushToUndoStack();
+        if (undoable) {
+            this.pushToUndoStack();
+        }
     }
     
     get enabled() { return this.#enabled; }
@@ -182,10 +220,8 @@ export class DrawCanvas extends LabElement {
     }
 
     strokeStart() {
-        if (this.undoStack.images.length === 0) {
-            // Undo stack not yet initialized with the root image, build it!
-            this.resetUndoStack();
-        }
+        // Save the image to the stack now!
+        this.pushToUndoStack();
         
         this.stroke = new Stroke(this.toolState);
         this.updateStrokeStyle(this.stroke);
@@ -232,13 +268,17 @@ export class DrawCanvas extends LabElement {
     }
 
     strokeEnd() {
-        if (this.stroke && this.stroke.points.length > 0) {
-            this.pushToUndoStack()
-            this.dispatchEvent(new Event("stroke-ended"));
-        }
-        
+        if (this.stroke !== null) {
+            if (this.stroke.points.length > 0) {
+                this.dispatchEvent(new Event("stroke-ended"));
+                this.dispatchEvent(new Event("undoStackUpdated"));
+            } else {
+                // Remove the last image from the undo stack
+                this.undoStack.images.pop();
+            }
 
-        this.strokeReset()
+            this.strokeReset()
+        }
     }
 
     updateStrokeStyle(stroke: Stroke) {
@@ -253,19 +293,9 @@ export class DrawCanvas extends LabElement {
             this.undoStack.images.shift();
         }
         this.undoStack.images.push(this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height));
+        this.undoStack.displayedIdx = null;
+        this.undoStack.redoLastImg = null;
         this.dispatchEvent(new CustomEvent("undoStackUpdated"));
-    }
-    
-    resetUndoStack() {
-        this.undoStack.images.length = 0;
-        this.pushToUndoStack();
-        this.dispatchEvent(new CustomEvent("undoStackUpdated"));
-    }
-    
-    rebuildFromUndoStack() {
-        if (this.undoStack.images.length !== 0) {
-            this.ctx.putImageData(this.undoStack.images[this.undoStack.images.length - 1], 0, 0);
-        }
     }
 
     getMousePos(e: MouseEvent | Touch) {

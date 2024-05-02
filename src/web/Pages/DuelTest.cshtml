@@ -4,7 +4,8 @@
 @inject BasePackRegistry BasePackRegistry
 @{
     var (defUrl, resUrl) = BasePackRegistry.GetPackUrls(HttpContext, BasePack1.PackId)!.Value;
-    var @base = "ws://" + HttpContext.Request.Host;
+    var protocol = HttpContext.Request.IsHttps ? "wss" : "ws";
+    var @base = $"{protocol}://" + HttpContext.Request.Host;
 }
 <style>
     html, body {margin: 0; padding: 0;}

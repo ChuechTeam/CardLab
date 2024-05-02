@@ -121,9 +121,10 @@ public class GameController(
         {
             var readBuffer = new byte[1024 * 8];
 
+            // Only pass the token to the message sender so we can give our own error codes.
             var receiveTask =
-                webSocket.ReceiveAsync(new ArraySegment<byte>(readBuffer), token);
-            var sendTask = SendMessageInQueue(send, webSocket, jsonOpt.Value.SerializerOptions, default);
+                webSocket.ReceiveAsync(new ArraySegment<byte>(readBuffer), default);
+            var sendTask = SendMessageInQueue(send, webSocket, jsonOpt.Value.SerializerOptions, token);
 
             while (true)
             {
@@ -133,6 +134,15 @@ public class GameController(
                 if (task.Exception is not null)
                 {
                     throw task.Exception;
+                }
+
+                // Then either:
+                // - the UserSocket CancellationToken has been cancelled, or
+                // - the application is stopping
+                if (task.IsCanceled)
+                {
+                    TerminateCancelledSocket();
+                    return;
                 }
 
                 if (task == receiveTask)
@@ -158,11 +168,11 @@ public class GameController(
                     try
                     {
                         var mess = JsonSerializer.Deserialize<LabMessage>(
-                            new ArraySegment<byte>(readBuffer, 0, res.Count), 
+                            new ArraySegment<byte>(readBuffer, 0, res.Count),
                             jsonOpt.Value.SerializerOptions);
-                        if (mess is not null 
+                        if (mess is not null
                             && player is not null
-                            && session.DuelState is {} ds
+                            && session.DuelState is { } ds
                             && ds.PlayerToDuel.TryGetValue(player.Id, out var duelRecipient))
                         {
                             duelRecipient.duel.Routing.ReceiveMessage(duelRecipient.idx, mess);
@@ -170,9 +180,10 @@ public class GameController(
                     }
                     catch (Exception e)
                     {
-                        logger.LogWarning("Json deserialization failed in WebSocket message: {Error}", e);
+                        logger.LogError("Failure while processing WebSocket message: {Error}", e);
                     }
-                    receiveTask = webSocket.ReceiveAsync(new ArraySegment<byte>(readBuffer), token);
+
+                    receiveTask = webSocket.ReceiveAsync(new ArraySegment<byte>(readBuffer), default);
                 }
                 else if (task == sendTask)
                 {
@@ -182,29 +193,25 @@ public class GameController(
 
             logger.LogInformation("Close status received from WebSocket, closing pipeline");
         }
-        catch (AggregateException e) when (e.InnerException is OperationCanceledException or ChannelClosedException)
+        catch (AggregateException e) when (e.InnerException is WebSocketException ex)
         {
-            if (player?.Kicked ?? false)
+            if (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
             {
-                closeStatus = KickedCode;
-                closeDesc = "You have been kicked from the game.";
-            }
-            else if (connectionReplacedToken.IsCancellationRequested || e.InnerException is ChannelClosedException)
-            {
-                logger.LogInformation("WebSocket connection cancelled by UserSocket cancellation");
-                closeStatus = ConnectionReplacedCode;
-                closeDesc = "Another device has been connected to the game.";
+                logger.LogInformation("Websocket connection interrupted prematurely. {Ex}", ex);
             }
             else
             {
-                logger.LogInformation("WebSocket connection cancelled by application shutdown");
-                closeStatus = ServerShuttingDownCode;
-                closeDesc = "The server is shutting down.";
+                logger.LogWarning(ex, "Unexpected WebSocket exception happened (code={Code})", 
+                    ex.WebSocketErrorCode.ToString());
             }
+        }
+        catch (AggregateException e) when (e.InnerException is OperationCanceledException or ChannelClosedException)
+        {
+            TerminateCancelledSocket();
         }
         catch (Exception e)
         {
-            logger.LogWarning("Exception happened during main WebSocket loop: {Ex}", e);
+            logger.LogWarning(e, "Exception happened during main WebSocket loop");
         }
         finally
         {
@@ -221,6 +228,27 @@ public class GameController(
             if (webSocket.State is not WebSocketState.Closed and not WebSocketState.Aborted)
             {
                 await webSocket.CloseAsync(closeStatus, closeDesc, CancellationToken.None);
+            }
+        }
+
+        void TerminateCancelledSocket()
+        {
+            if (player?.Kicked ?? false)
+            {
+                closeStatus = KickedCode;
+                closeDesc = "You have been kicked from the game.";
+            }
+            else if (connectionReplacedToken.IsCancellationRequested)
+            {
+                logger.LogInformation("WebSocket connection cancelled by UserSocket cancellation");
+                closeStatus = ConnectionReplacedCode;
+                closeDesc = "Another device has been connected to the game.";
+            }
+            else
+            {
+                logger.LogInformation("WebSocket connection cancelled by application shutdown");
+                closeStatus = ServerShuttingDownCode;
+                closeDesc = "The server is shutting down.";
             }
         }
     }

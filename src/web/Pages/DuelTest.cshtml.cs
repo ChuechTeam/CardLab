@@ -7,7 +7,7 @@ public class DuelTest(IWebHostEnvironment hostEnv) : PageModel
 {
     public IActionResult OnGet([FromRoute] int playerIndex)
     {
-        if (!hostEnv.IsDevelopment())
+        if (!hostEnv.IsDevelopment() && !hostEnv.IsStaging())
         {
             return NotFound();
         }

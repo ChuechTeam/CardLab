@@ -28,9 +28,19 @@ builder.Services.AddAuthorization(o =>
     o.AddPolicy("InGame", p => { p.RequireAuthenticatedUser(); });
     o.AddPolicy("Host", p => { p.RequireClaim("IsHost", "true"); });
 });
-
+var createGameRoute = builder.Configuration.GetSection("CreateGameRoute").Get<string>() ?? "/create-game";
 var b = builder.Services
-    .AddRazorPages(options => { options.Conventions.AuthorizeFolder("/Game", "InGame"); });
+    .AddRazorPages(options =>
+    {
+        options.Conventions.AuthorizeFolder("/Game", "InGame");
+
+        options.Conventions.AddPageRouteModelConvention("/CreateGame", a =>
+        {
+            a.Selectors.Clear();
+        });
+        options.Conventions.AddPageRoute("/CreateGame", createGameRoute);
+    });
+
 #if DEBUG
 b.AddRazorRuntimeCompilation();
 #endif
@@ -62,7 +72,7 @@ builder.Services.AddHostedService<GamePackCompileWorker>();
 // builder.Services.AddSingleton<GameRequestQueue>();
 // builder.Services.AddHostedService<GameRequestWorker>();
 
-if (builder.Environment.IsDevelopment())
+if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
 {
     builder.Services.AddSingleton<GlobalDuelTest>();
 }

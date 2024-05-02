@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace CardLab.Pages;
 
 [AllowAnonymous]
+[IgnoreAntiforgeryToken(Order = 10001)]
 public class IndexModel : PageModel
 {
     private readonly ILogger<IndexModel> _logger;
@@ -34,16 +35,7 @@ public class IndexModel : PageModel
             IsInGame = true;
         }
     }
-
-    public async Task<IActionResult> OnPostCreate()
-    {
-        GameSession session = _state.CreateSession();
-
-        await HttpContext.SignInAsync("Game", new GameUserPrincipal(session, null));
-
-        return RedirectToPage("/Game/Index");
-    }
-
+    
     public async Task<IActionResult> OnPostJoinAsync()
     {
         if (User.Identity?.IsAuthenticated == true)

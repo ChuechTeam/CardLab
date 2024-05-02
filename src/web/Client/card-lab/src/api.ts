@@ -112,6 +112,10 @@ export const gameApi = {
     }
 }
 
+export function redirectToQuitGame() {
+    window.location.href = new URL("game/quit", baseUrl).toString();
+}
+
 export interface CardUpdateResult {
     validation: CardValidationSummary,
     balance: CardBalanceSummary,

@@ -1,5 +1,7 @@
 ﻿import {registerTemplate, LabElement, fromDom} from "../dom.ts";
 import type {CardLab} from "../game.ts";
+import {redirectToQuitGame} from "src/api.ts";
+import {LobbyPlayer} from "src/components/LobbyPlayer.ts";
 
 const template = registerTemplate('lobby-view-template',`
 <style>
@@ -10,10 +12,15 @@ const template = registerTemplate('lobby-view-template',`
     user-select: all;
     -webkit-user-select: all;
 }
+#players {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
 </style>
 <h1>Bienvenue !</h1>
 <p id="code-display">Truc</p>
-<ul id="players"></ul>
+<div id="players"></div>
 <div id="commands-slot"></div>
 `);
 
@@ -36,6 +43,8 @@ export class LobbyView extends LabElement {
     @fromDom("players") playersNode: HTMLElement = null!
     @fromDom("code-display") codeDisplay: HTMLElement = null!
     @fromDom("start-game") startGameButton: HTMLElement | null = null
+    @fromDom("stop-game") stopGameButton: HTMLElement | null = null
+    @fromDom("quit-game") quitGameButton: HTMLElement | null = null
     
     constructor(cardLab: CardLab) {
         super();
@@ -70,14 +79,17 @@ export class LobbyView extends LabElement {
                 this.cardLab.startGame()
             });
         }
+        const exitBtn = this.quitGameButton ?? this.stopGameButton;
+        if (exitBtn !== null) {
+            exitBtn.addEventListener('click', () => {
+                redirectToQuitGame();
+            });
+        }
     }
     
     updatePlayers() {
-        this.playersNode.replaceChildren(...this.phaseState.players.map(p => {
-            const li = document.createElement('li')
-            li.textContent = p.name
-            return li
-        }))
+        this.playersNode.replaceChildren(...this.phaseState.players
+            .map(p => new LobbyPlayer(p, this.cardLab.isHost, this.cardLab.player?.id === p.id)))
     }
 }
 

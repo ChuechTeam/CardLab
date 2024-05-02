@@ -36,6 +36,8 @@ const template = registerTemplate('player-card-workshop-template', `
     
     font-size: 1.5em;
     overflow: hidden;
+    
+    padding: 4px;
 }
 
 #editor-label {
@@ -45,13 +47,21 @@ const template = registerTemplate('player-card-workshop-template', `
     
     font-weight: bold;
 }
+
+#prev[disabled], #next[disabled] {
+    opacity: 0.6;
+}
+
+#controls lab-icon {
+    height: 100%;
+}
 </style>
 <div id="navigator">
     <div id="card-editors"></div>
     <div id="controls">
-        <button id="prev" style="transform: scaleX(-1);">➡</button>
+        <button id="prev" style="transform: scaleX(-1);"><lab-icon icon="arrow-right" class="-block"></lab-icon></button>
         <div id="editor-label">Carte 1/2</div>
-        <button id="next">➡</button>
+        <button id="next"><lab-icon icon="arrow-right" class="-block"></lab-icon></button>
     </div>
 </div>
 

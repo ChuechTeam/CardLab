@@ -30,13 +30,21 @@ const template = registerTemplate("draw-canvas-controls", /* html */`<style>
         font-size: 1em;
     }
     
-    .buttons {
+    .buttons, .do-buttons {
         display: flex;
         gap: 8px;
     }
 
     .buttons button {
         flex-grow: 1;
+    }
+
+    .do-btn lab-icon {
+        height: 1.5em;
+    }
+    
+    #redo-button lab-icon {
+        transform: scaleX(-1);
     }
 
     .size-row {
@@ -181,7 +189,10 @@ const template = registerTemplate("draw-canvas-controls", /* html */`<style>
     </div>
     <div class="buttons">
         <button class="cl-button" style="background-color: darkred; color: white;" id="clear-button">Effacer</button>
-        <button class="cl-button" id="undo-button">Annuler</button>
+        <div class="do-buttons">
+            <button class="cl-button do-btn" id="undo-button"><lab-icon icon="undo" class="-block"></lab-icon></button>
+            <button class="cl-button do-btn" id="redo-button"><lab-icon icon="undo" class="-block"></lab-icon></button>
+        </div>
     </div>
 </div>
 `);
@@ -195,6 +206,7 @@ export class DrawCanvasControls extends LabElement {
     @fromDom("thick-txt") thickTxt: HTMLSpanElement = null!;
     @fromDom("clear-button") clearButton: HTMLButtonElement = null!;
     @fromDom("undo-button") undoButton: HTMLButtonElement = null!;
+    @fromDom("redo-button") redoButton: HTMLButtonElement = null!;
     @fromDom("color-selector") colorSelector: HTMLElement = null!;
     @fromDom("pickable-custom-color") pickableCustomColor: HTMLElement = null!;
     @fromDom("pickable-colors") pickableColorsContainer: HTMLElement = null!;
@@ -224,6 +236,9 @@ export class DrawCanvasControls extends LabElement {
         })
         this.undoButton.addEventListener("click", i => {
             this.boundCanvas?.undo();
+        })
+        this.redoButton.addEventListener("click", i => {
+            this.boundCanvas?.redo();
         })
         this.colorSelector.addEventListener("click", () => {
             this.colorInput.click();
@@ -280,7 +295,8 @@ export class DrawCanvasControls extends LabElement {
             return;
         }
 
-        this.undoButton.disabled = this.boundCanvas.undoStack.images.length <= 1;
+        this.undoButton.disabled = !this.boundCanvas.canUndo();
+        this.redoButton.disabled = !this.boundCanvas.canRedo();
     }
 
     sliderValToThickness(val: number) {

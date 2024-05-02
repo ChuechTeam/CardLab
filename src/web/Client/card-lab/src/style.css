@@ -244,7 +244,7 @@ html, body, #game-container {
     border: 2px solid black;
     border-bottom: var(--push-border-width) solid black;
 
-    padding: 6px 12px calc(6px + var(--push-border-width) / 2);
+    padding: 6px 12px;
     font-family: inherit;
     font-size: 1em;
     
@@ -260,6 +260,11 @@ html, body, #game-container {
     filter: brightness(75%);
 }
 
+.cl-button.-negative {
+    background-color: darkred; 
+    color: white;
+}
+
 /*
  * Container rules
  */
@@ -267,4 +272,60 @@ html, body, #game-container {
 [data-wants-top-overlay] ~ status-overlay {
     top: 0;
     bottom: auto;
+}
+
+/*
+ * Home page
+ */
+
+#auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
+
+#auth-area {
+    width: 100vw;
+    max-width: 720px;
+    
+    margin: 0 30px;
+}
+
+#auth-area .-logo {
+    width: 100%;
+    display: block;
+    
+    margin-bottom: 24px;
+    aspect-ratio: 146/68;
+}
+
+#join-form input {
+    width: 100%;
+    height: 32px;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+}
+
+#join-form label {
+    font-weight: bold;
+    margin-bottom: 6px;
+    display: block;
+}
+
+#join-button {
+    width: 100%;
+    margin-top: 12px;
+    height: 3em;
+}
+
+#in-game-actions button {
+    width: 100%;
+}
+
+#in-game-actions > button:first-child {
+    margin-bottom: 12px;
+    height: 4em;
+    font-size: 1.25em;
+    font-weight: bold;
 }

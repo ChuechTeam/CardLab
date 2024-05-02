@@ -65,6 +65,7 @@ export class CardLab extends EventTarget {
     connectionIssuesBanner: ConnectionIssuesBanner
 
     reconnectionState: ReconnectionState | null = null;
+    unloading = false;
 
     constructor(helloResponse: WelcomeMessage, socket: WebSocket) {
         super();
@@ -106,6 +107,10 @@ export class CardLab extends EventTarget {
         if (this.ongoingDuel !== null) {
             void this.startLoadingDuel();
         }
+        
+        window.addEventListener("beforeunload", () => {
+            this.unloading = true;
+        })
     }
 
     renderView() {
@@ -184,6 +189,9 @@ export class CardLab extends EventTarget {
     }
 
     beginReconnection() {
+        if (this.unloading) {
+            return; // Don't do anything when quitting the page.
+        }
         if (this.reconnectionState !== null) {
             throw new Error("Cannot reconnect while reconnecting; that doesn't make any sense!");
         }

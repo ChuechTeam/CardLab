@@ -2,12 +2,17 @@
 import creditCoin from "src/res/credit-coin.svg";
 import upload from "src/res/upload.svg"
 import fullscreen from "src/res/fullscreen.svg"
-export type IconType = "credit-coin" | "upload" | "fullscreen";
+import arrowRight from "src/res/arrow-right.svg"
+import undo from "src/res/undo.svg"
+export type IconType = "credit-coin" | "upload" | "fullscreen" | "arrow-right" | "undo";
 
 const style = new CSSStyleSheet()
 style.insertRule("img { width: 100%; vertical-align: text-bottom; }");
 style.insertRule(":host { display: inline-block; width: 1em; }");
+style.insertRule(":host(.-block) { display: block; width: unset; }");
+style.insertRule(":host(.-block) > img { display: block; height: 100%; }");
 
+// Use the -block class to not use inline display.
 export class LabIcon extends LabElement {
     img: HTMLImageElement = null!;
     icon: IconType | null = null;
@@ -48,6 +53,12 @@ export class LabIcon extends LabElement {
                     break;
                 case "fullscreen":
                     this.img.src = fullscreen;
+                    break;
+                case "arrow-right":
+                    this.img.src = arrowRight;
+                    break;
+                case "undo":
+                    this.img.src = undo;
                     break;
                 default:
                     this.img.src = "";
