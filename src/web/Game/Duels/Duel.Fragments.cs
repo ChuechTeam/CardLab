@@ -1165,12 +1165,12 @@ public sealed partial class Duel
         }
     }
 
-    private int AttribClamp(DuelAttributeSetV2 set, DuelAttributeId aid, int val)
+    private int AttribClamp(DuelAttributeSetV2 set, DuelAttributeId aid, int val, IEntity entity)
     {
         switch (aid)
         {
             case DuelBaseAttrs.Health:
-                return Math.Min(val, set[DuelBaseAttrs.MaxHealth]);
+                return entity is DuelCard ? Math.Max(1, val) : Math.Min(val, set[DuelBaseAttrs.MaxHealth]);
             case DuelBaseAttrs.Energy:
                 return Math.Clamp(val, 0, set[DuelBaseAttrs.MaxEnergy]);
             case DuelBaseAttrs.CoreHealth:
@@ -1212,9 +1212,9 @@ public sealed partial class Duel
     private (int baseVal, int actualVal) AttribSet(IEntity entity, DuelAttributeId attrId, int? newBase)
     {
         var attribs = entity.Attribs;
-        var newerBase = newBase is { } nb ? AttribClamp(attribs, attrId, nb) : attribs.Get(attrId).baseVal;
+        var newerBase = newBase is { } nb ? AttribClamp(attribs, attrId, nb, entity) : attribs.Get(attrId).baseVal;
         var newActual = AttribClamp(attribs, attrId,
-            AttribApplyModifiers(attrId, newerBase, entity.Modifiers));
+            AttribApplyModifiers(attrId, newerBase, entity.Modifiers), entity);
 
         attribs.Set(attrId, (newerBase, newActual));
 
