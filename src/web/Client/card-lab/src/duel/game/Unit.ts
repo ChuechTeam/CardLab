@@ -30,7 +30,9 @@ export type UnitVisualData = {
     attack: number,
     attackState: AttrState,
     health: number,
-    healthState: AttrState
+    healthState: AttrState,
+    actionsShown: boolean,
+    actionsLeft: number // < 0 --> waiting
     associatedCardData: CardVisualData
 };
 
@@ -101,6 +103,7 @@ export class Unit extends Container {
     redFlash: Graphics;
     pulseRect: PulsatingRect;
     glossyRect: GlossyRect;
+    actionIndicator: UnitActionIndicator;
 
     attackAttrParent: Container;
     healthAttrParent: Container;
@@ -167,7 +170,7 @@ export class Unit extends Container {
         flash2Visible: false,
         flash2Alpha: 1.0,
         borderWidth: 3,
-        borderTint: 0x000000
+        borderTint: 0x000000 // Also affects the change indicator
     }
     animPropsDirty = false
     superimposedAnimator = new StateAnimPlayer<UnitAnimProps>()
@@ -186,6 +189,7 @@ export class Unit extends Container {
         super();
 
         this.visData = visData;
+        this.boundsArea = new Rectangle(-slotW/2, -slotH/2, slotW, slotH*1.16);
         
         this.root = new Container();
         this.addChild(this.root);
@@ -200,6 +204,13 @@ export class Unit extends Container {
             .stroke({width: this.animatableProps.borderWidth, color: 0xffffff, alignment: 1});
         this.border.tint = this.animatableProps.borderTint;
         this.root.addChild(this.border);
+
+        const actW = slotW*0.25;
+        const actH = slotH*0.25;
+        this.actionIndicator = new UnitActionIndicator(scene, actW, actH, visData.actionsLeft);
+        this.actionIndicator.visible = visData.actionsShown;
+        this.actionIndicator.position.set(slotW - actW/2*0.8, actH/2*0.8);
+        this.root.addChild(this.actionIndicator);
 
         this.whiteFlash = new Graphics()
             .rect(0, 0, slotW, slotH)
@@ -326,6 +337,15 @@ export class Unit extends Container {
                 this.healthAttr.attrState = visData.healthState;
             }
             this.healthAttr.updateText();
+        }
+        
+        if (visData.actionsLeft !== undefined) {
+            this.visData.actionsLeft = visData.actionsLeft;
+            this.actionIndicator.update(visData.actionsLeft);
+        }
+        
+        if (visData.actionsShown !== undefined) {
+            this.actionIndicator.visible = visData.actionsShown;
         }
     }
 
@@ -687,6 +707,7 @@ export class Unit extends Container {
                 || newState.borderWidth !== this.animatableProps.borderWidth
                 || newState.borderTint !== this.animatableProps.borderTint) {
                 this.renderBorder(newState.borderWidth, newState.borderTint)
+                this.actionIndicator.updateTint(newState.borderTint)
             }
         }
 
@@ -973,3 +994,93 @@ export class UnitAttribute extends Container {
     }
 }
 
+type UAIAnimProps = typeof UnitActionIndicator.prototype.animProps;
+
+export class UnitActionIndicator extends Container {
+    root: Container;
+    background: Graphics;
+    text: BitmapText;
+    wait: Graphics
+    
+    actions: number; // < 0 --> waiting
+    
+    animProps = {
+        scale: 1.0
+    }
+    animator = new StateAnimPlayer<UAIAnimProps>()
+    changeAnim: ReturnType<typeof this.makeChangeAnim>
+
+    constructor(public scene: GameScene, width: number, height: number, actions: number) {
+        super();
+
+        this.actions = actions;
+        this.root = new Container()
+        this.addChild(this.root);
+        
+        this.boundsArea = new Rectangle(0, 0, width, height);
+        
+        this.background = new Graphics()
+            .rect(0, 0, width, height)
+            .fill({ color: 0xffffff })
+        this.background.tint = 0x000000;
+        this.root.addChild(this.background);
+        
+        this.wait = new Graphics(this.scene.game.assets.base.waitIcon);
+        this.wait.tint = 0xffffff;
+        placeInRectCenter(this.wait, this.boundsArea.clone().pad(-3, -3), true);
+        this.root.addChild(this.wait);
+        
+        this.text = new BitmapText({
+            style: ATTR_TEXT_STYLE
+        });
+        this.text.tint = 0xffffff;
+        this.root.addChild(this.text);
+        
+        this.root.pivot.set(width / 2, height / 2);
+        
+        this.changeAnim = this.makeChangeAnim();
+        this.animator.register(this.changeAnim);
+        
+        this.update(actions);
+        
+        this.scene.game.app.ticker.add(this.tick, this);
+        this.on("destroyed", () => {
+            this.scene.game.app.ticker.remove(this.tick, this);
+        });
+    }
+    
+    tick(t: Ticker) {
+        const props = this.animator.apply(t.deltaMS/1000, this.animProps);
+        this.root.scale = props.scale;
+    }
+    
+    update(actions: number) {
+        this.actions = actions;
+        if (this.actions < 0) {
+            this.wait.visible = true;
+            this.text.visible = false;
+        } else {
+            this.wait.visible = false;
+            this.text.visible = true;
+            
+            this.text.text = this.actions.toString();
+            placeInRectCenter(this.text, this.boundsArea, true);
+
+            this.text.alpha = this.actions > 0 ? 1.0 : 0.6;
+        }
+        
+    }
+    
+    updateTint(tint: number) {
+        this.background.tint = tint;
+    }
+    
+    makeChangeAnim() {
+        return new StateAnimation<UAIAnimProps>({
+            maxTime: 0.3,
+            update(time: number, state: UAIAnimProps) {
+                state.scale = 1.0 + 0.25*Math.sin(time / this.maxTime * Math.PI);
+            }
+        })
+    }
+}

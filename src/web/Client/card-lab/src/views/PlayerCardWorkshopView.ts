@@ -6,7 +6,7 @@ const template = registerTemplate('player-card-workshop-template', `
 <style>
 #navigator {
     width: 100%;
-    height: 100dvh;
+    height: 100%;
     display: flex;
     flex-direction: column;
 }
@@ -54,6 +54,14 @@ const template = registerTemplate('player-card-workshop-template', `
 
 #controls lab-icon {
     height: 100%;
+}
+
+:host {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
 }
 </style>
 <div id="navigator">

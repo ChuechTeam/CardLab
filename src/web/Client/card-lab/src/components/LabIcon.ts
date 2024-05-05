@@ -1,16 +1,30 @@
-﻿import {LabElement} from "src/dom.ts";
+﻿import {LabElement, LabStyle} from "src/dom.ts";
 import creditCoin from "src/res/credit-coin.svg";
 import upload from "src/res/upload.svg"
 import fullscreen from "src/res/fullscreen.svg"
 import arrowRight from "src/res/arrow-right.svg"
 import undo from "src/res/undo.svg"
-export type IconType = "credit-coin" | "upload" | "fullscreen" | "arrow-right" | "undo";
+import close from "src/res/close.svg"
+export type IconType = "credit-coin" | "upload" | "fullscreen" | "arrow-right" | "undo" | "close";
 
-const style = new CSSStyleSheet()
-style.insertRule("img { width: 100%; vertical-align: text-bottom; }");
-style.insertRule(":host { display: inline-block; width: 1em; }");
-style.insertRule(":host(.-block) { display: block; width: unset; }");
-style.insertRule(":host(.-block) > img { display: block; height: 100%; }");
+const style = new LabStyle(`
+img {
+    width: 100%;
+    vertical-align: text-bottom;
+}
+:host {
+    display: inline-block;
+    width: 1em;
+}
+:host(.-block) {
+    display: block;
+    width: unset;
+}
+:host(.-block) > img {
+    display: block;
+    height: 100%;
+}
+`);
 
 // Use the -block class to not use inline display.
 export class LabIcon extends LabElement {
@@ -25,7 +39,7 @@ export class LabIcon extends LabElement {
     }
     
     render() {
-        this.dom.adoptedStyleSheets.push(style)
+        style.apply(this);
         this.img = this.dom.appendChild(document.createElement("img"));
         if ("part" in this.img)
             this.img.part.add("img");
@@ -59,6 +73,9 @@ export class LabIcon extends LabElement {
                     break;
                 case "undo":
                     this.img.src = undo;
+                    break;
+                case "close":
+                    this.img.src = close;
                     break;
                 default:
                     this.img.src = "";

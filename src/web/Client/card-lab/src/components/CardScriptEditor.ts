@@ -115,6 +115,10 @@ export class CardScriptEditor extends LabElement {
     }
 
     updateBlocklyDivPosition() {
+        if (this.blocklyPlaceholder.offsetParent === null) {
+            return;
+        }
+        
         const blocklyDiv = this.blocklyDiv;
 
         const rect = this.blocklyPlaceholder.getBoundingClientRect();
@@ -126,10 +130,21 @@ export class CardScriptEditor extends LabElement {
     }
 
     updateBlocklyDivSize() {
-        const [w, h] = [this.blocklyPlaceholder.clientWidth, this.blocklyPlaceholder.clientHeight];
-        this.blocklyDiv.style.width = w + 'px';
-        this.blocklyDiv.style.height = h + 'px';
-        Blockly.svgResize(this.workspace)
+        /* From MDN
+        offsetParent returns null in the following situations:
+        - The element or any ancestor has the display property set to none.
+          ^ this is what we want.
+         */
+        if (this.blocklyPlaceholder.offsetParent === null) {
+            this.blocklyDiv.style.display = "none";
+        } else {
+            const [w, h] = [this.blocklyPlaceholder.clientWidth, this.blocklyPlaceholder.clientHeight];
+
+            this.blocklyDiv.style.display = "block";
+            this.blocklyDiv.style.width = w + 'px';
+            this.blocklyDiv.style.height = h + 'px';
+            Blockly.svgResize(this.workspace)
+        }
     }
 }
 

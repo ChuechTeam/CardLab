@@ -159,10 +159,10 @@ public sealed record UpdateEntityAttribsDelta : DuelStateDelta
 // Create cards that are revealed by neither player.
 public sealed record CreateCardsDelta : DuelStateDelta
 {
-    [JsonIgnore] public required IEnumerable<DuelCard> Cards { get; init; }
+    [JsonIgnore] public IEnumerable<DuelCard> Cards { get; init; } = null!; // please fill
 
     // set in apply for the client
-    public List<int> CardIds { get; set; } = new();
+    public List<int> CardIds { get; private set; } = new();
 
     public override Result<Unit> Apply(Duel duel, DuelState state)
     {
@@ -297,7 +297,7 @@ public sealed record MoveCardsDelta : DuelStateDelta
 }
 
 // Duration in MS
-public sealed record ShowMessageDelta(string Message, int Duration) : DuelStateDelta
+public sealed record ShowMessageDelta(string Message, int Duration, int PauseDuration) : DuelStateDelta
 {
     public override Result<Unit> Apply(Duel duel, DuelState state)
     {

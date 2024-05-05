@@ -17,16 +17,14 @@ import {PreparationPlayerView} from "src/views/PreparationPlayerView.ts";
 import {CreatingCardsHostView} from "src/views/CreatingCardsHostView.ts";
 import {DuelPlayerView} from "src/views/DuelPlayerView.ts";
 import {ConnectionIssuesBanner} from "src/components/ConnectionIssuesBanner.ts";
+import {DuelHostView} from "src/views/DuelHostView.ts";
 //import "src/style.css";
 
 const baseUrl = window.location.origin;
 type PackDownTask = { progress: PackDownloadProgress; promise: Promise<DuelGamePack> };
 type ReconnectionState = { handle: number; interval: number; queue: MessageQueue }
 
-const basePackUrl = {
-    def: new URL("/basePacks/basePack1.labdef", baseUrl).toString(),
-    res: new URL("/basePacks/basePack1.labres", baseUrl).toString()
-}
+const basePackUrl = (window as any).mainPack as { def: string, res: string } | undefined | null;
 
 const BASE_RECONNECT_INTERVAL = 1000; // ms
 const INC_RECONNECT_INTERVAL = 1000; // ms
@@ -39,7 +37,7 @@ export class CardLab extends EventTarget {
     permId: string
     phase: PhaseName
     phaseState: PhaseState
-    socket: WebSocket
+    socket: WebSocket | null
     view: HTMLElement | null = null
 
     basePack: DuelGamePack | null = null;
@@ -69,6 +67,10 @@ export class CardLab extends EventTarget {
 
     constructor(helloResponse: WelcomeMessage, socket: WebSocket) {
         super();
+
+        if (basePackUrl == null) {
+            throw new Error("Cannot create a CardLab Game without a base pack URL.");
+        }
 
         this.gameContainer = document.getElementById("game-container")!;
         this.player = helloResponse.me;
@@ -107,7 +109,7 @@ export class CardLab extends EventTarget {
         if (this.ongoingDuel !== null) {
             void this.startLoadingDuel();
         }
-        
+
         window.addEventListener("beforeunload", () => {
             this.unloading = true;
         })
@@ -138,7 +140,7 @@ export class CardLab extends EventTarget {
             }
         } else if (this.phase == "duels") {
             if (this.isHost) {
-                this.view = null;
+                this.view = new DuelHostView(this);
             } else {
                 this.view = new DuelPlayerView(this);
             }
@@ -176,12 +178,24 @@ export class CardLab extends EventTarget {
      */
 
     prepareSocket() {
+        if (this.socket === null) {
+            throw new Error("Socket is null!");
+        }
+
+        const s = this.socket;
+
         this.socket.addEventListener("close", e => {
-            if (!socketHandleSpecialExit(e)) {
+            if (!socketHandleSpecialExit(e) && this.socket === s) {
+                this.socket = null;
                 this.beginReconnection()
             }
         });
-        this.socket.addEventListener("error", this.beginReconnection.bind(this));
+        this.socket.addEventListener("error", () => {
+            if (this.socket === s) {
+                this.socket = null;
+                this.beginReconnection()
+            }
+        });
         this.socket.addEventListener("message", async (e) => {
             console.log("Socket message", e.data)
             this.handleMessage(JSON.parse(e.data))
@@ -207,20 +221,24 @@ export class CardLab extends EventTarget {
     reconnectAttempt() {
         const socket = socketMake();
         const state = this.reconnectionState;
-        
+
         if (state === null) {
             throw new Error("Can't attempt to reconnect with no reconnection state");
         }
 
         const closeListener = (e: CloseEvent) => {
             clear();
-            if (!socketHandleSpecialExit(e)) {
-                this.continueReconnection();
+            if (state === this.reconnectionState) {
+                if (!socketHandleSpecialExit(e)) {
+                    this.continueReconnection();
+                }
             }
         };
         const errListener = () => {
             clear();
-            this.continueReconnection();
+            if (state === this.reconnectionState) {
+                this.continueReconnection();
+            }
         };
         const msgListener = (e: MessageEvent) => {
             if (state === this.reconnectionState) {
@@ -229,20 +247,20 @@ export class CardLab extends EventTarget {
                     state.queue.push(m);
                 } else {
                     clear();
-                    
+
                     this.exitReconnection(socket);
                     this.handleMessage(m);
                     this.handleMessageQueue(state.queue);
                 }
             }
         };
-        
+
         function clear() {
             socket.removeEventListener("close", closeListener);
             socket.removeEventListener("error", errListener);
             socket.removeEventListener("message", msgListener);
         }
-        
+
         socket.addEventListener("close", closeListener);
         socket.addEventListener("error", errListener);
         socket.addEventListener("message", msgListener)
@@ -346,12 +364,16 @@ export class CardLab extends EventTarget {
             this.view.labMessageReceived(message)
         }
     }
-    
+
     handleMessageQueue(mq: MessageQueue) {
         mq.flush(this.handleMessage.bind(this))
     }
 
     sendMessage(msg: LabMessage) {
+        if (this.socket === null) {
+            console.warn("Couldn't send message to null socket: ", msg);
+            return;
+        }
         this.socket.send(JSON.stringify(msg))
     }
 
@@ -370,7 +392,7 @@ export class CardLab extends EventTarget {
      */
 
     retryLoadingDuel() {
-        if (this.duelState === "loading") {
+        if (this.duelState === "loadingSuspended") {
             void this.startLoadingDuel();
         }
     }
@@ -397,7 +419,7 @@ export class CardLab extends EventTarget {
         }
 
         const prog = new PackDownloadProgress();
-        const packProm = loadGamePackWithProgress(basePackUrl.def, basePackUrl.res, prog);
+        const packProm = loadGamePackWithProgress(basePackUrl!.def, basePackUrl!.res, prog);
 
         this.basePackDownload = {progress: prog, promise: packProm};
         this.basePackDownloadUI.showProgress("Téléchargement des ressources de base", prog);
@@ -468,6 +490,7 @@ export class CardLab extends EventTarget {
         }
 
         const task = this.ongoingDuel.loadTask = {cancel: false};
+        let ok = false;
         try {
             this.dispatchEvent(new CustomEvent("duelStateUpdated"));
             const loaded = await this.loadDuelAssets(this.ongoingDuel.requiresSessionPack, task);
@@ -498,11 +521,18 @@ export class CardLab extends EventTarget {
 
             this.showDuel(element);
             this.dispatchEvent(new CustomEvent("duelStateUpdated"));
+            
+            ok = true;
         } finally {
             if (this.ongoingDuel !== null && this.ongoingDuel.loadTask === task) {
                 this.ongoingDuel.loadTask = null;
                 this.dispatchEvent(new CustomEvent("duelStateUpdated"));
             }
+        }
+        
+        if (!ok) {
+            alert("Erreur lors du chargement du duel, appuyez sur ok pour réessayer"); 
+            this.retryLoadingDuel();
         }
     }
 
@@ -540,12 +570,12 @@ export class CardLab extends EventTarget {
         return new URL(part, baseUrl).toString();
     }
 
-    get duelState(): "none" | "loading" | "ready" | "error" {
+    get duelState(): "none" | "loading" | "ready" | "loadingSuspended" {
         if (this.ongoingDuel === null) {
             return "none";
         } else if (this.ongoingDuel.loaded === null) {
             if (this.ongoingDuel.loadTask === null) {
-                return "error";
+                return "loadingSuspended";
             } else {
                 return "loading";
             }
@@ -602,7 +632,10 @@ function socketHandleSpecialExit(e: CloseEvent): boolean {
 
 class MessageQueue {
     messages: LabMessage[] = []; // stored in the opposite direction! last item = last to be processed
-    push(m: LabMessage) { this.messages.push(m); }
+    push(m: LabMessage) {
+        this.messages.push(m);
+    }
+
     flush(f: (m: LabMessage) => void) {
         while (this.messages.length > 0) {
             f(this.messages.pop()!);
@@ -619,7 +652,7 @@ if (gameContainer !== null) {
 
     if (socket !== null) {
         const queue = new MessageQueue()
-        
+
         const initMessageListener = (e: MessageEvent) => {
             const parsed = JSON.parse(e.data)
 
@@ -627,7 +660,7 @@ if (gameContainer !== null) {
                 socket!.removeEventListener('message', initMessageListener)
                 socket!.removeEventListener('error', errListener)
                 socket!.removeEventListener('close', closeListener)
-                
+
                 console.log("Received welcome message: ", parsed)
 
                 const lab = new CardLab(parsed, socket!);
@@ -638,16 +671,17 @@ if (gameContainer !== null) {
                 queue.push(parsed)
             }
         }
-        const errListener = (e: Event) => {}; // todo
+        const errListener = (e: Event) => {
+        }; // todo
         const closeListener = (e: CloseEvent) => {
             if (!socketHandleSpecialExit(e)) {
                 // TODO RETRY
             }
         };
-        
+
         socket.addEventListener("message", initMessageListener);
         socket.addEventListener("error", errListener);
-        socket.addEventListener("close", closeListener); 
+        socket.addEventListener("close", closeListener);
     }
 } else {
     tryRunDuelTest();

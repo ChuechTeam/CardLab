@@ -83,7 +83,7 @@ export class GameScene extends Scene {
     
     laidDownCard: Card | null = null;
 
-    interaction = new InteractionModule(this);
+    interaction = new InteractionModule(this);  
 
     private viewportResizeObs: ResizeObserver
 
@@ -202,8 +202,8 @@ export class GameScene extends Scene {
         this.viewport.addChild(sepLine)
 
         this.messageBanner = new MessageBanner(this);
-        this.messageBanner.x = GAME_WIDTH / 2;
-        this.messageBanner.y = sepLine.y;
+        this.messageBanner.x = GAME_WIDTH/2;
+        this.messageBanner.y = this.myHand.y - PLAYER_ZONE_BASELINE - 100;
         this.viewport.addChild(this.messageBanner);
 
         if (this.debugScene) {
@@ -350,6 +350,8 @@ export class GameScene extends Scene {
                         attackState: AttrState.BUFFED,
                         health: card.definition.health,
                         healthState: AttrState.NERFED,
+                        actionsLeft: -1,
+                        actionsShown: true,
                         associatedCardData: Card.dataFromCardRef({packId: pack.id, cardId: card.id}, this.game)
                     }, slot.width, slot.height);
                     unit.position = slot.worldPos;

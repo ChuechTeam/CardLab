@@ -19,7 +19,7 @@ public static partial class CardModule
         {
             foreach (var handler in sc.Handlers)
             {
-                var w = EventCostWeight(handler.Event);
+                var w = EventCostWeight(cardDef, handler.Event);
                 foreach (var action in handler.Actions)
                 {
                     var ctx = new BalanceEvalContext(handler.Event, action);
@@ -31,28 +31,31 @@ public static partial class CardModule
         return new UsageSummary(creditsAvailable, creditsUsed);
     }
 
-    private static float EventCostWeight(CardEvent ev)
+    private static float EventCostWeight(CardDefinition def, CardEvent ev)
     {
         return ev switch
         {
             PostTurnEvent (var team) => team == GameTeam.Any ? 1.75f : 1.0f,
             PostSpawnEvent => 0.5f,
             PostUnitKillEvent => 0.7f,
+            PostCoreHurtEvent (var team) => 0.6f * TeamFreq(team),
             PostUnitHurtEvent (var team, _) => 0.9f * TeamFreq(team),
             PostUnitHealEvent (var team, _) => 0.6f * TeamFreq(team),
             PostUnitAttackEvent (var team, _) => 0.8f * TeamFreq(team),
+            PostUnitHealthChange (var thresh)
+                => Math.Clamp(0.9f - 0.6f*Math.Abs(def.Health-thresh)/def.Health, 0.1f, 1.0f),
             PostUnitNthAttackEvent (var n) => n switch
             {
                 <= 0 => 1.0f,
                 1 => 0.7f,
                 2 => 0.45f,
                 3 => 0.3f,
-                _ => 1.0f/n
+                _ => 1.0f / n
             },
             PostNthCardPlayEvent (var n) => n switch
             {
                 <= 1 => 0.9f,
-                _ => Decay(n-1, 0.7f) //n >= 2 
+                _ => Decay(n - 1, 0.7f) //n >= 2 
             },
             PostCardMoveEvent (var mk) => mk switch
             {
@@ -232,8 +235,8 @@ public static partial class CardModule
             var coveredVals = filter.Op switch
             {
                 FilterOp.Equal => 1,
-                FilterOp.Greater => Math.Max(0, coverableVals - filter.Value),
-                FilterOp.Lower => Math.Clamp(filter.Value, 0, coverableVals),
+                FilterOp.Greater => Math.Max(0, coverableVals - filter.Value + 1),
+                FilterOp.Lower => Math.Clamp(filter.Value, 0, coverableVals), // Excluding 0 here
                 _ => 0
             };
             var coveredRatio = coveredVals / (float)coverableVals;
@@ -304,19 +307,25 @@ public static partial class CardModule
     private static int ActionCost(ref BalanceEvalContext ctx)
     {
         const int costMin = -170;
-        
+
         var act = ctx.Action;
         float cost = act switch
         {
             HurtAction a => 35 * Math.Max(0, a.Damage) * TargetWeight(a.Target, TargetWeightMode.EnemyBenefit, in ctx),
-            HealAction a => 25 * Math.Max(0, a.Damage) * TargetWeight(a.Target, TargetWeightMode.AllyBenefit, in ctx),
+            HealAction a => 25 * Math.Max(0, a.Damage) * TargetWeight(a.Target, TargetWeightMode.AllyBenefit, in ctx)
+                * (a.Target is MeTarget ? 1.8f : 1.0f),
             AttackAction a => 20 * TargetWeight(a.Target, TargetWeightMode.EnemyBenefit, in ctx),
             DrawCardAction a => 30 * a.N * FilterPowerWeight(a.Filters, 0.15f, in ctx),
+            CreateCardAction a => 40 * a.N * FilterPowerWeight(a.Filters, 0.15f, in ctx),
             DiscardCardAction a => 30 * a.N * FilterPowerWeight(a.Filters, 0.35f, in ctx) * (a.MyHand ? -0.75f : 1.0f),
             DeployAction a => 90 * FilterPowerWeight(a.Filters, 0.15f, in ctx),
+            GrantAttackAction a => 150 * TargetWeight(a.Target, TargetWeightMode.Neutral, in ctx)
+                                       * (a.Target is MeTarget ? 3.0f : 1.0f),
             ModifierAction a => Modifier(a, in ctx),
             SingleConditionalAction a => SingleCondition(a, ref ctx),
             MultiConditionalAction a => MultiCondition(a, ref ctx),
+            RandomConditionalAction a => Math.Clamp(a.PercentChance * 0.01f, 0.1f, 1.0f)
+                                         * ActionSequenceCost(a.Actions, ref ctx),
             _ => 0
         };
         return Math.Max(costMin, (int)Math.Round(cost));
@@ -353,7 +362,7 @@ public static partial class CardModule
             {
                 return ActionSequenceCost(a.Actions, ref ctx);
             }
-            
+
             var target = a.Target;
 
             // Simplify the target to "me" if we know that the source or target is the unit.
@@ -402,12 +411,12 @@ public static partial class CardModule
         static float MultiCondition(MultiConditionalAction a, ref BalanceEvalContext ctx)
         {
             const float missingUnitMargin = 2;
-            
+
             if (a.Conditions.Length == 0)
             {
                 return ActionSequenceCost(a.Actions, ref ctx);
-            } 
-            
+            }
+
             var query = EvaluateTarget(new QueryTarget(EntityType.Unit, a.Team, a.Conditions, 0), in ctx);
             var avgMissingUnits = missingUnitMargin + a.MinUnits - query.AverageCardinality;
             var weight = Math.Clamp(1.1f - 0.27f * avgMissingUnits, 0.1f, 1.0f);

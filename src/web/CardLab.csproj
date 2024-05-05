@@ -22,10 +22,25 @@
     
     <ItemGroup>
         <Content Remove="Client/**"/>
+        <Content Remove="Client\card-lab\dist\**" />
     </ItemGroup>
     
     <ItemGroup>
       <None Include="wwwroot\basePacks\basePack1.labdef" />
       <None Include="wwwroot\basePacks\basePack1.labres" />
+      <None Remove="Client\card-lab\dist\**" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <Compile Remove="Client\card-lab\dist\**" />
+      <None Include="Game\BasePacks\TestPack.Local.cstemplate" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <EmbeddedResource Remove="Client\card-lab\dist\**" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <Folder Include="wwwroot\basePacks\" />
     </ItemGroup>
 </Project>

@@ -171,6 +171,7 @@ declare type NetDuelDelta =
 } | NetDuelDeltaBase<"showMessage"> & {
     message: string,
     duration: number // ms  
+    pauseDuration: number // ms
 } | NetDuelDeltaScopeBase<"unitAttackScope"> & {
     unitId: DuelUnitId,
     targetId: number

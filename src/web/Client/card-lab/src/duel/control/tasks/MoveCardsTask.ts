@@ -93,8 +93,11 @@ export class MoveCardsTask extends GameTask {
             } else if (c.newLocation === "temp") {
                 // todo... hide the card and put it in a special place?
             } else {
+                // Moving to any hand
+                
                 if (avatar === undefined) {
                     avatar = this.avatars.spawnCard(c.cardSnapshot);
+                    avatar.position.set(GAME_WIDTH/2, GAME_HEIGHT*0.6);
                 }
                 if (positionOverride !== null) {
                     avatar.position = positionOverride;
@@ -104,8 +107,9 @@ export class MoveCardsTask extends GameTask {
                 this.avatars.scene.hands[handIndex].addCard(avatar);
 
                 if (!(this.parent instanceof CardDrawScopeTask)) {
-                    // Add a consequent delay if we're just moving cards between hands or something
-                    yield GameTask.wait(0.2);
+                    // Add a consequent delay if we're just moving cards between hands,
+                    // or creating a new card from thin air.
+                    yield GameTask.wait(0.7);
                 } else {
                     // Else, use a smaller delay
                     yield GameTask.wait(0.1);

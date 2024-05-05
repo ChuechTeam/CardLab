@@ -1,7 +1,10 @@
 ﻿@page
+@using CardLab.Game.BasePacks
 @model CardLab.Pages.Game.Index
+@inject BasePackRegistry BasePacks
 @{
     ViewData["Title"] = "Lobby";
+    var (mainPackDef, mainPackRes) = BasePacks.GetPackUrls(HttpContext, MainPack.PackId)!.Value;
 }
 <div id="game-container"></div>
 <style>
@@ -13,5 +16,6 @@
 @* JS will inject stuff in the game-container div *@
 
 @section Scripts {
+    <script>window.mainPack = { def: "@mainPackDef", res: "@mainPackRes" };</script>
     <script type="module" vite-src="~/src/game.ts"></script>
 }

@@ -70,6 +70,19 @@ html, body, #game-container {
     bottom: 0;
 }
 
+@supports not (container-type: inline-size) {
+    @media (orientation: portrait) {
+        .game-card-fields {
+            font-size: 1.2em;
+        }
+    }
+    @media (orientation: landscape) {
+        .game-card-fields {
+            font-size: 0.6em;
+        }
+    }
+}
+
 .game-card > .-bg {
     flex-grow: 1;
     display: block; /* :) */
@@ -168,7 +181,10 @@ html, body, #game-container {
     right: 0;
     top: 0;
     text-align: center;
-    margin: -2.5%; /* I don't know either */
+    
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .game-card-fields > .-attribs > .-attack > .-shape {
@@ -245,6 +261,7 @@ html, body, #game-container {
     border: 2px solid black;
     border-bottom: var(--push-border-width) solid black;
 
+    margin: 0;
     padding: 6px 12px;
     font-family: inherit;
     font-size: 1em;
@@ -295,6 +312,7 @@ html, body, #game-container {
 }
 
 #auth-area .-logo {
+    max-height: 25vh;
     width: 100%;
     display: block;
     

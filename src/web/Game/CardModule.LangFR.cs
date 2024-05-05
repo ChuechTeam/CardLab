@@ -86,6 +86,12 @@ public static partial class CardModule
             return ev switch
             {
                 PostSpawnEvent => "À l'apparition, ",
+                PostCoreHurtEvent e => e.Team switch
+                {
+                    GameTeam.Ally or GameTeam.Self => "Quand votre noyau subit des dégâts, ",
+                    GameTeam.Enemy => "Quand le noyau ennemi subit des dégâts, ",
+                    _ => "Quand un noyau subit des dégâts, "
+                },
                 PostUnitEliminatedEvent e => e.Team switch
                 {
                     GameTeam.Self => "Quand je suis éliminé, ",
@@ -114,6 +120,7 @@ public static partial class CardModule
                         _ => $"Quand {QualifiedUnitArtInd(e.Team, false, out _)}".TrimEnd()
                              + (e.Dealt ? " inflige des dégâts, " : " subit des dégâts, "),
                     },
+                PostUnitHealthChange e => $"Quand ma santé descend à {e.Threshold} PV ou moins, ",
                 PostUnitNthAttackEvent e => $"Après avoir attaqué {e.N} fois, ",
                 PostNthCardPlayEvent e => $"Quand vous jouez votre {e.N}e carte du tour, ",
                 PostCardMoveEvent e => e.Kind switch
@@ -165,7 +172,7 @@ public static partial class CardModule
                 }
             }
 
-            static string ConditionStr(SingleConditionalAction c, ref NodeContext ctx)
+            static string ConditionSingleStr(SingleConditionalAction c, ref NodeContext ctx)
             {
                 if (c.Conditions.Length == 0)
                 {
@@ -215,6 +222,22 @@ public static partial class CardModule
 
                 return builder.ToString();
             }
+            
+            static string ConditionRandStr(RandomConditionalAction c, ref NodeContext ctx)
+            {
+                // todo: better wording?
+                var n = c.Actions.Length;
+                var builder = new StringBuilder($"si vous êtes chanceux ({c.PercentChance}% de chance), ");
+                ctx.Condition = c;
+                for (int i = 0; i < n; i++)
+                {
+                    BuildSentence(builder, ActionInSentence(c.Actions[i], ref ctx), i, n, false);
+                }
+
+                ctx.Condition = null;
+
+                return builder.ToString();
+            }
 
             return act switch
             {
@@ -222,6 +245,11 @@ public static partial class CardModule
                 {
                     > 1 => $"vous piochez {draw.N} {FilterizeNoun("cartes", Plural | Feminine, draw.Filters, in ctx)}",
                     _ => $"vous piochez une {FilterizeNoun("carte", Feminine, draw.Filters, in ctx)}"
+                },
+                CreateCardAction create => create.N switch
+                {
+                    > 1 => $"crée aléatoirement {create.N} {FilterizeNoun("cartes", Plural | Feminine, create.Filters, in ctx)} dans votre main",
+                    _ => $"crée aléatoirement une {FilterizeNoun("carte", Feminine, create.Filters, in ctx)} dans votre main"
                 },
                 DiscardCardAction d => d.MyHand switch
                 {
@@ -237,6 +265,11 @@ public static partial class CardModule
                     }
                 },
                 ModifierAction m => ModifierStr(m, in ctx),
+                GrantAttackAction ga => ga.N switch
+                {
+                    1 => $"confère temporairement un assaut supplémentaire {TargetNamePrepA(ga.Target, in ctx, out _)}",
+                    _ => $"confère temporairement {ga.N} assauts supplémentaires {TargetNamePrepA(ga.Target, in ctx, out _)}"
+                },
                 HurtAction h => h.Damage switch
                 {
                     > 1 => $"inflige {h.Damage} dégâts {TargetNamePrepA(h.Target, in ctx, out _)}",
@@ -257,8 +290,9 @@ public static partial class CardModule
                     UnitDirection.Down => "derrière moi",
                     _ => "?"
                 },
-                SingleConditionalAction c => ConditionStr(c, ref ctx),
+                SingleConditionalAction c => ConditionSingleStr(c, ref ctx),
                 MultiConditionalAction c => ConditionMultiStr(c, ref ctx),
+                RandomConditionalAction c => ConditionRandStr(c, ref ctx),
                 _ => "faire qqch"
             };
         }
@@ -328,11 +362,11 @@ public static partial class CardModule
                             (ScriptableAttribute.Cost, FilterOp.Lower) => $"de coût {f.Value} ou moins",
                             (ScriptableAttribute.Cost, FilterOp.Greater) => $"de coût {f.Value} ou plus",
                             (ScriptableAttribute.Health, FilterOp.Equal) => $"{avec} exactement {f.Value} PV",
-                            (ScriptableAttribute.Health, FilterOp.Lower) => $"{avec} moins de {f.Value} PV",
-                            (ScriptableAttribute.Health, FilterOp.Greater) => $"{avec} plus de {f.Value} PV",
+                            (ScriptableAttribute.Health, FilterOp.Lower) => $"{avec} {f.Value} PV ou moins",
+                            (ScriptableAttribute.Health, FilterOp.Greater) => $"{avec} {f.Value} PV ou plus",
                             (ScriptableAttribute.Attack, FilterOp.Equal) => $"{avec} exactement {f.Value} ATQ",
-                            (ScriptableAttribute.Attack, FilterOp.Lower) => $"{avec} moins de {f.Value} ATQ",
-                            (ScriptableAttribute.Attack, FilterOp.Greater) => $"{avec} plus de {f.Value} ATQ",
+                            (ScriptableAttribute.Attack, FilterOp.Lower) => $"{avec} {f.Value} ATQ ou moins",
+                            (ScriptableAttribute.Attack, FilterOp.Greater) => $"{avec} {f.Value} ATQ ou plus",
                             _ => $"avec {f.Attr} {FilterOpSymbol(f.Op)} {f.Value}",
                         },
                     _ => "particulier"
@@ -427,6 +461,7 @@ public static partial class CardModule
                 SourceTarget => ctx.RootEvent switch
                 {
                     PostUnitAttackEvent or PostUnitHurtEvent or PostUnitEliminatedEvent or PostUnitKillEvent
+                        or PostCoreHurtEvent
                         => ("attaquant", Elision),
                     PostUnitHealEvent => ("soigneur", None),
                     _ => ("initiateur", Elision)
@@ -435,6 +470,7 @@ public static partial class CardModule
                 {
                     PostUnitAttackEvent or PostUnitHurtEvent or PostUnitEliminatedEvent or PostUnitKillEvent
                         => ("victime", Feminine),
+                    PostCoreHurtEvent => ("noyau", None),
                     PostUnitHealEvent => ("soigné", None),
                     PostCardMoveEvent => ("carte", Feminine),
                     _ => ("cible", Feminine)
@@ -613,17 +649,7 @@ public static partial class CardModule
                 (false, false) => $"un {expression}"
             };
         }
-
-        public static string EventName(CardEvent ev)
-        {
-            return ev.ToString();
-        }
-
-        public static string ActionName(CardAction act)
-        {
-            return act.ToString();
-        }
-
+        
         public static string RegularNoun(string noun, LangFlags flags)
         {
             return (flags & (Plural | Feminine))switch

@@ -13,7 +13,7 @@ export class GameAvatars {
     }
 
     deadUnitsPositions = new Map<number, Point>()
-    
+
     get cards() {
         return this.scene.cards;
     }
@@ -76,6 +76,11 @@ export class GameAvatars {
         return grid.slotAt(pos.vec.x, pos.vec.y);
     }
 
+    unitVisActionsLeft(attribs: NetDuelUnitAttributes) {
+        return attribs.actionsLeft > 0 ? attribs.actionsLeft :
+            attribs.inactionTurns > 0 ? -1 : 0;
+    }
+
     makeUnitVisualData(unit: LocalDuelUnit): UnitVisualData {
         const card = unit.originRef
         const def = this.scene.game.registry.findCard(card)!.definition;
@@ -85,6 +90,8 @@ export class GameAvatars {
             attackState: attrStateCompare(AttrCompMode.MORE_IS_BETTER, def.attack, unit.attribs.attack),
             health: unit.attribs.health,
             healthState: unitHealthAttrState(unit.attribs.health, unit.attribs.maxHealth, def.health),
+            actionsShown: this.controller.clientWhoseTurn === unit.owner,
+            actionsLeft: this.unitVisActionsLeft(unit.attribs),
             associatedCardData: this.makeCardVisualDataFromAsset(card)
         }
     }

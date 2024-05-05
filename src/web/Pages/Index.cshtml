@@ -3,7 +3,7 @@
 @{
     ViewData["Title"] = "Accueil";
 }
-<style> body, html, main { margin: 0; height: 100%; }  </style>
+<style>body, html, main { margin: 0; height: 100%; }</style>
 <div id="auth-container">
     <div id="auth-area">
         <img class="-logo" src="~/logo.svg"/>
@@ -19,6 +19,7 @@
                        id="code-input"
                        oninput="let p=this.selectionStart;this.value=this.value.toUpperCase();this.setSelectionRange(p, p);"
                        asp-for="JoinCode"
+                       autocomplete="false"
                        required/>
                 <label asp-for="PlayerName">Votre nom</label>
                 <input type="text" asp-for="PlayerName" id="name-input" maxlength="24" required/>

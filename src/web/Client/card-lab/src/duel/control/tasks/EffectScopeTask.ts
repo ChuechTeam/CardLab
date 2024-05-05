@@ -31,16 +31,6 @@ export class EffectScopeTask extends ScopeTask implements SequenceAwareTask {
     }
 
     * run(): Generator<GameTask> {
-        const sourceAv = this.avatars.findEntity(this.sourceId)
-        let sourcePos = sourceAv?.position
-            ?? this.avatars.deadUnitsPositions.get(this.sourceId);
-
-        if (sourcePos === undefined) {
-            duelLogError(`No source position found for id ${this.sourceId}!`)
-            yield* this.runTasks();
-            return;
-        }
-
         if (this.isSpell && this.isFirstEffect) {
             yield GameTask.wait(0.25)
         }
@@ -50,6 +40,16 @@ export class EffectScopeTask extends ScopeTask implements SequenceAwareTask {
         }
 
         if (!this.disableTargeting && this.targets.length !== 0) {
+            const sourceAv = this.avatars.findEntity(this.sourceId)
+            let sourcePos = sourceAv?.position
+                ?? this.avatars.deadUnitsPositions.get(this.sourceId);
+
+            if (sourcePos === undefined) {
+                duelLogError(`No source position found for id ${this.sourceId}!`)
+                yield* this.runTasks();
+                return;
+            }
+            
             // First: show the targets
             const onlyTargetsSelf = this.targets.length === 1 && this.targets[0] === this.sourceId
 

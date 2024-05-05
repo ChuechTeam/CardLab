@@ -46,7 +46,7 @@ public sealed class DuelAttributeSetV2(DuelAttributesMeta meta)
 
     public void Set(DuelAttributeId id, int bothVal)
     {
-        _attributes[id] = (bothVal, bothVal);
+        Set(id, (bothVal, bothVal));
     }
 
     public void Set(DuelAttributeId id, (int baseVal, int actualVal) value)

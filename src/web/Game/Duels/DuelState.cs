@@ -35,6 +35,7 @@ public sealed record DuelState
     public required PlayerIndex WhoseTurn { get; set; }
 
     public Dictionary<int, DuelUnit> Units { get; init; } = new();
+    [JsonIgnore] public IEnumerable<DuelUnit> AliveUnits => Units.Values.Where(x => !x.Eliminated);
 
     [JsonIgnore] public Dictionary<int, DuelCard> Cards { get; init; } = new();
 
@@ -192,9 +193,9 @@ public record DuelCard : IEntity, IScriptable
         switch (Location)
         {
             case DuelCardLocation.HandP1:
-            case DuelCardLocation.HandP2:
-                return PlayerIndex.P1;
             case DuelCardLocation.DeckP1:
+                return PlayerIndex.P1;
+            case DuelCardLocation.HandP2:
             case DuelCardLocation.DeckP2:
                 return PlayerIndex.P2;
             default:

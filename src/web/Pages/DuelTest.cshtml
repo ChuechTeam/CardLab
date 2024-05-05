@@ -3,7 +3,7 @@
 @model CardLab.Pages.DuelTest
 @inject BasePackRegistry BasePackRegistry
 @{
-    var (defUrl, resUrl) = BasePackRegistry.GetPackUrls(HttpContext, BasePack1.PackId)!.Value;
+    var (defUrl, resUrl) = BasePackRegistry.GetPackUrls(HttpContext, new Guid("45CBB455-9FBC-4BCF-BAD2-166CDED97EA2"))!.Value;
     var protocol = HttpContext.Request.IsHttps ? "wss" : "ws";
     var @base = $"{protocol}://" + HttpContext.Request.Host;
 }

@@ -23,6 +23,11 @@ export class UpdateUnitAttribsTask extends GameTask {
         
         let hpDelta =
             this.attribs.health !== undefined ? this.attribs.health - avatar.visData.health : 0;
+        
+        let newActionsLeft = this.attribs.actionsLeft !== undefined || this.attribs.actionsPerTurn !== undefined ?
+            this.avatars.unitVisActionsLeft(this.unit.attribs) : undefined;
+        
+        let actionsLeftDelta = newActionsLeft !== undefined ? newActionsLeft - avatar.visData.actionsLeft : 0;
 
         avatar.updateVisualData({
             attack: this.attribs.attack,
@@ -30,7 +35,8 @@ export class UpdateUnitAttribsTask extends GameTask {
                 attrStateCompare(AttrCompMode.MORE_IS_BETTER, def.attack, this.attribs.attack) : undefined,
             health: this.attribs.health,
             healthState: this.attribs.health !== undefined ?
-                unitHealthAttrState(this.attribs.health, this.unit.attribs.maxHealth, def.health) : undefined
+                unitHealthAttrState(this.attribs.health, this.unit.attribs.maxHealth, def.health) : undefined,
+            actionsLeft: newActionsLeft
         })
         
         if (atkDelta !== 0) {
@@ -39,6 +45,10 @@ export class UpdateUnitAttribsTask extends GameTask {
         
         if (hpDelta !== 0) {
             avatar.healthAttr.changeIndicator.show(hpDelta)
+        }
+        
+        if (actionsLeftDelta > 0) {
+            avatar.actionIndicator.changeAnim.start();
         }
     }
 }

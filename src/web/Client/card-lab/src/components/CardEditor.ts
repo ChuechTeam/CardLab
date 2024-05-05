@@ -74,7 +74,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     }
 
     .game-card {
-        max-height: 85dvh;
+        max-height: 85vh;
         margin: auto;
     }
 
@@ -119,7 +119,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         padding-right: 0;
         width: 100%;
     }
-    
+
     #name-input:placeholder-shown {
         border: 2px red solid;
         border-radius: 2px;
@@ -144,11 +144,20 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     dialog {
         padding: 0;
         border: 2px solid black;
+
+        width: calc(100% - 16px);
+        height: calc(100% - 16px);
+
+        flex-direction: column;
     }
 
-    #script-editor {
-        height: 85dvh;
-        width: 97dvw;
+    dialog[open] {
+        display: flex;
+    }
+
+    dialog > .-contents {
+        flex-grow: 1;
+        min-height: 0;
     }
 
     #script-dialog {
@@ -194,13 +203,21 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         padding: 2px 0;
     }
 
-    dialog > header > .-close-button {
+    dialog > header > .-close-button, #draw-upload-button {
         align-self: stretch;
         border: none;
         background-color: transparent;
         font-size: 1.25em;
-        border-left: 2px solid black;
         padding: 1px 12px;
+        margin: 0;
+    }  
+    
+    dialog > header > .-close-button {
+        border-left: 2px solid black;
+    }
+    
+    #draw-upload-button {
+        border-right: 2px solid black;
     }
 
     #script-dialog-credit {
@@ -208,9 +225,13 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         align-self: stretch;
         display: flex;
         align-items: center;
-        padding: 0 8px;
+        padding: 3px 8px;
         column-gap: 12px;
         font-size: 1.1em;
+    }
+    
+    #script-dialog-credit lab-icon {
+        height: 1.15em;
     }
 
     #script-dialog-credit.state-valid {
@@ -230,54 +251,38 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     #script-dialog-credit-val {
         font-family: "Chakra Petch", sans-serif;
         font-weight: bold;
-        margin-top: 3px;
+        margin-top: 2px;
     }
-    
+
     #draw-dialog {
         max-width: unset;
         max-height: unset;
         overflow: hidden;
     }
-    
+
     #draw-dialog > .-contents {
-        --width: 94dvw;
-        width: var(--width);
-        height: 80dvh;
         display: flex;
         flex-direction: column;
         gap: 8px;
         padding: 8px;
         justify-content: space-evenly;
     }
-    
+
     #draw-dialog > .-contents > .-controls {
         flex-grow: 0;
         flex-basis: 250px;
-    }   
-    
+    }
+
     #draw-dialog #card-canvas {
         max-width: 100%;
         max-height: 100%;
         border: 2px solid black;
     }
 
-    #draw-upload-button {
-        align-self: stretch;
-        border: none;
-        background-color: transparent;
-        font-size: 1.3em;
-        border-right: 2px solid black;
-        padding: 1px 12px;
-    }
-    
-    #draw-upload-button > lab-icon {
-        height: 100%;
-    }
-    
     .game-card-container {
-       margin-bottom: 12px;
+        margin-bottom: 12px;
     }
-    
+
     @media (orientation: landscape) {
         .def-grid {
             display: grid;
@@ -293,7 +298,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
             width: 100%;
             margin-bottom: 0;
         }
-        
+
         .game-card {
             max-height: 100%;
         }
@@ -332,25 +337,26 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
             flex-direction: row-reverse;
             justify-content: unset;
             align-items: center;
-            
-            --half-excess: max(0px, calc( 4px + ( var(--width) / 2 + (env(safe-area-inset-left, 0px) - 50dvw) ) ) );
+
+            --half-excess: max(0px, calc(4px + (var(--width) / 2 + (env(safe-area-inset-left, 0px) - 50dvw))));
             width: calc(var(--width) - var(--half-excess));
             margin-left: var(--half-excess);
         }
-        
+
         #draw-dialog > .-contents > .-controls {
             flex-grow: 1;
         }
     }
+
     @media (max-height: 320px) and (orientation: landscape),
-     (max-height: 600px) and (orientation: portrait) {
+    (max-height: 600px) and (orientation: portrait) {
         #draw-controls {
             font-size: 0.8em;
         }
     }
-    
+
     @media (max-height: 290px) and (orientation: landscape),
-     (max-height: 560px) and (orientation: portrait) {
+    (max-height: 560px) and (orientation: portrait) {
         #draw-controls {
             --color-radius-custom: 16px;
         }
@@ -359,37 +365,41 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
 <div class="card-editor">
     <div class="def-grid">
         <div class="game-card-container">
-        <div class="game-card">
-            <svg class="-bg" viewBox="0 0 104.85 144.56">
-                <use href="#card-svg-bg"/>
-            </svg>
-            <div xmlns="http://www.w3.org/1999/xhtml" class="game-card-fields">
-                        <div class="-header">
-                            <div class="-name" id="card-name">Carte sympa</div>
-                            <div class="-cost" id="card-cost">8</div>
-                        </div>
-                        <div class="-image" id="card-image-slot">
-                            <draw-canvas class="-draw-canvas" id="card-canvas"></draw-canvas>
-                        </div>
-                        <div class="-desc" id="card-desc">
-                        </div>
-                        <div class="-attribs">
-                            <div class="-attack">
-                                <svg class="-shape" viewBox="0 0 23 16.36">
-                                    <use href="#card-svg-attr"/>
-                                </svg>
-                                <div class="-val" id="card-attack">5</div>
+            <div class="game-card">
+                <svg class="-bg" viewBox="0 0 104.85 144.56">
+                    <use href="#card-svg-bg"/>
+                </svg>
+                <div xmlns="http://www.w3.org/1999/xhtml" class="game-card-fields">
+                    <div class="-header">
+                        <div class="-name" id="card-name">Carte sympa</div>
+                        <div class="-cost" id="card-cost">8</div>
+                    </div>
+                    <div class="-image" id="card-image-slot">
+                        <draw-canvas class="-draw-canvas" id="card-canvas"></draw-canvas>
+                    </div>
+                    <div class="-desc" id="card-desc">
+                    </div>
+                    <div class="-attribs">
+                        <div class="-attack">
+                            <svg class="-shape" viewBox="0 0 23 16.36">
+                                <use href="#card-svg-attr"/>
+                            </svg>
+                            <div class="-val">
+                                <div id="card-attack">5</div>
                             </div>
-                            <div class="-archetype" id="card-archetype"></div>
-                            <div class="-health">
-                                <svg class="-shape" viewBox="0 0 23 16.36">
-                                    <use href="#card-svg-attr"/>
-                                </svg>
-                                <div class="-val" id="card-health">5</div>
+                        </div>
+                        <div class="-archetype" id="card-archetype"></div>
+                        <div class="-health">
+                            <svg class="-shape" viewBox="0 0 23 16.36">
+                                <use href="#card-svg-attr"/>
+                            </svg>
+                            <div class="-val">
+                                <div id="card-health">5</div>
                             </div>
                         </div>
                     </div>
-        </div>
+                </div>
+            </div>
         </div>
         <div class="input-block -name">
             <span>Nom :</span>
@@ -397,7 +407,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         </div>
         <div class="input-block -archetype">
             <span>Archétype :</span>
-            <input type="text" id="archetype-input" placeholder="[Aucun]" maxlength="24"/>
+            <input type="text" id="archetype-input" placeholder="Aucun archétype" maxlength="24"/>
         </div>
         <div class="stats-inputs">
             <span>Coût</span>
@@ -418,20 +428,22 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
     <dialog id="script-dialog">
         <header>
             <div class="-credit" id="script-dialog-credit">
-                <lab-icon icon="credit-coin"></lab-icon>
-                <span id="script-dialog-credit-val">0</span>
+                <lab-icon icon="credit-coin" class="-block"></lab-icon>
+                <div id="script-dialog-credit-val">0</div>
             </div>
             <div class="-label">Éditeur de script</div>
-            <button class="-close-button">✖</button>
+            <button class="-close-button"><lab-icon icon="close" class="-block"></lab-icon></button>
         </header>
-        <card-script-editor id="script-editor"></card-script-editor>
+        <card-script-editor class="-contents" id="script-editor"></card-script-editor>
     </dialog>
     <div class="hacky-backdrop"></div>
     <dialog id="draw-dialog">
         <header>
-            <button id="draw-upload-button"><lab-icon icon="upload" class="-block"></lab-icon></button>
+            <button id="draw-upload-button">
+                <lab-icon icon="upload" class="-block"></lab-icon>
+            </button>
             <div class="-label">Dessin de l'illustration</div>
-            <button class="-close-button">✖</button>
+            <button class="-close-button"><lab-icon icon="close" class="-block"></lab-icon></button>
         </header>
         <div class="-contents" id="draw-dialog-contents">
             <draw-canvas-controls class="-controls" id="draw-controls"></draw-canvas-controls>
@@ -588,11 +600,7 @@ export class CardEditor extends LabElement {
         });
         
         for (const x of this.dom.querySelectorAll("dialog")) {
-            x.addEventListener("click", e => {
-                if (e.target instanceof HTMLButtonElement && e.target.classList.contains("-close-button")) {
-                    x.close();
-                }
-            })
+            x.querySelector(".-close-button")?.addEventListener("click", () => x.close());
         }
         
         this.drawControls.link(this.cardCanvas);
@@ -601,12 +609,15 @@ export class CardEditor extends LabElement {
             this.loadScriptLocally();
             this.loadImageLocally().then(() => console.log(`Card image loaded!`));
         }
+        
+        window.addEventListener("beforeunload", this.lastMinuteUpload);
     }
 
     disconnected() {
         // Upload the image and definition before entering the next phase
-        this.delayedImgUpload.run(true);
-        this.delayedDefUpdate.run(true);
+        window.removeEventListener("beforeunload", this.lastMinuteUpload);
+        
+        this.lastMinuteUpload()
     }
 
     showDrawDialog() {
@@ -709,6 +720,11 @@ export class CardEditor extends LabElement {
         this.updateDefinition()
     }
 
+    lastMinuteUpload = () => {
+        this.delayedDefUpdate.run(true)
+        this.delayedImgUpload.run(true)
+    }
+    
     async uploadCardImage() {
         try {
             console.log(`Generating image for card ${this.cardIndex}...`)

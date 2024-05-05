@@ -1,8 +1,7 @@
-﻿import {LabElement} from "../dom.ts";
+﻿import {LabElement, LabStyle} from "../dom.ts";
 import {fitImageCover} from "src/util.ts";
 
-const style = new CSSStyleSheet()
-style.insertRule(":host { aspect-ratio: 5/3; }");
+const style = new LabStyle(":host { aspect-ratio: 5/3; }");
 
 const MAX_UNDOS = 30;
 
@@ -129,7 +128,7 @@ export class DrawCanvas extends LabElement {
             this.strokeEnd()
         })
 
-        this.dom.adoptedStyleSheets.push(style);
+        style.apply(this);
     }
 
     clear(pushToUndo=false) {

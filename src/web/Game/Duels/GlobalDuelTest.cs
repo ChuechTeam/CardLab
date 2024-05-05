@@ -1,4 +1,5 @@
-﻿using System.Collections.Immutable;
+﻿#if DEBUG
+using System.Collections.Immutable;
 using CardLab.Game.AssetPacking;
 using CardLab.Game.BasePacks;
 
@@ -13,7 +14,7 @@ public class GlobalDuelTest
     {
         _basePacks = basePacks;
         _logFactory = logFactory;
-        TestPack = basePacks.GetPack(BasePack1.PackId)!;
+        TestPack = basePacks.GetPack(BasePacks.TestPack.PackId)!;
 
         TheDuel = MakeNewDuel();
     }
@@ -27,7 +28,7 @@ public class GlobalDuelTest
         return new(new DuelSettings
         {
             MaxCoreHealth = 40,
-            Packs = ImmutableArray.Create(_basePacks.GetPack(BasePack1.PackId)!),
+            Packs = [TestPack],
             Player1Deck = MakeBSDeck(TestPack, 32),
             Player2Deck = MakeBSDeck(TestPack, 32),
             SecondsPerTurn = 60,
@@ -54,3 +55,4 @@ public class GlobalDuelTest
         return builder.ToImmutable();
     }
 }
+#endif

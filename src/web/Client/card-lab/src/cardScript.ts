@@ -134,6 +134,37 @@ const blocks: BlockMap = {
             }
         },
         {
+            scriptType: "create",
+            def: {
+                "message0": "Crée %1 carte(s) %2 ayant %3 %4 dans votre main",
+                "args0": [
+                    {
+                        "type": "field_number",
+                        "name": "num",
+                        "value": 1,
+                        "min": 0,
+                        "max": 4
+                    },
+                    {"type": "input_end_row"},
+                    {
+                        "type": "input_value",
+                        "name": "filter",
+                        "check": "FilterCardCompat"
+                    },
+                    {"type": "input_end_row"},
+                ]
+            },
+            toolboxData: {
+                "inputs": {
+                    "filter": {
+                        "shadow": {
+                            "type": "noneFilter"
+                        }
+                    }
+                }
+            }
+        },
+        {
             scriptType: "discard",
             def: {
                 "message0": "Défausser %1 carte(s) %2 %3 ayant %4",
@@ -217,6 +248,37 @@ const blocks: BlockMap = {
                             ["jamais", "-1"]
                         ]
                     }
+                ]
+            },
+            toolboxData: {
+                "inputs": {
+                    "target": {
+                        "shadow": {
+                            "type": "noneTarget"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            scriptType: "grantAttack",
+            def: {
+                "message0": "Confère %1 assaut(s) %2 à %3 %4 pour ce tour",
+                "args0": [
+                    {
+                        "type": "field_number",
+                        "name": "n",
+                        "value": 1,
+                        "min": 1,
+                        "max": 3
+                    },
+                    {"type": "input_end_row"},
+                    {
+                        "type": "input_value",
+                        "name": "target",
+                        "check": "Target"
+                    },
+                    {"type": "input_end_row"}
                 ]
             },
             toolboxData: {
@@ -431,7 +493,30 @@ const blocks: BlockMap = {
                     }
                 }
             }
-        }
+        },
+        {
+            scriptType: "randomConditional",
+            def: {
+                "message0": "A %1%% de chances de %2 %3",
+                "args0": [
+                    {
+                        "type": "field_number",
+                        "name": "percentChance",
+                        "value": 50,
+                        "min": 1,
+                        "max": 90,
+                    },
+                    { "type": "input_end_row" },
+                    {
+                        "type": "input_statement",
+                        "name": "then",
+                        "check": "Action"
+                    }
+                ],
+                "inputsInline": true
+            },
+            condition: true
+        },
     ],
     "event": [
         {
@@ -514,6 +599,32 @@ const blocks: BlockMap = {
                             [
                                 "infligé",
                                 "true"
+                            ]
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            scriptType: "postCoreHurt",
+            def: {
+                "message0": "Après que %1 ait subi des dégâts",
+                "args0": [
+                    {
+                        "type": "field_dropdown",
+                        "name": "team",
+                        "options": [
+                            [
+                                "le noyau ennemi",
+                                "enemy"
+                            ],
+                            [
+                                "le noyau allié",
+                                "ally"
+                            ],
+                            [
+                                "un noyau quelconque",
+                                "any"
                             ]
                         ]
                     }
@@ -604,6 +715,21 @@ const blocks: BlockMap = {
                                 "false"
                             ]
                         ]
+                    }
+                ]
+            }
+        },
+        {
+            scriptType: "postUnitHealthChange",
+            def: {
+                "message0": "Après être tombé en dessous de %1 PV",
+                "args0": [
+                    {
+                        "type": "field_number",
+                        "name": "threshold",
+                        "value": 5,
+                        "min": 1,
+                        "max": 20
                     }
                 ]
             }
@@ -991,8 +1117,8 @@ const blocks: BlockMap = {
                         "type": "field_dropdown",
                         "name": "comp",
                         "options": [
-                            ["<", "lower"],
-                            [">", "greater"],
+                            ["≤", "lower"],
+                            ["≥", "greater"],
                             ["=", "equal"]
                         ]
                     },
@@ -1266,9 +1392,15 @@ function blockToScriptEvent(block: Blockly.Block | null): ScriptEvent | null {
             const team = block.getFieldValue('team') as GameTeam
             const dealt = block.getFieldValue('dealt') === "true"
             return {type, team, dealt}
+        case "postCoreHurt":
+            const teamCore = block.getFieldValue('team') as GameTeam
+            return {type, team: teamCore}
         case "postUnitEliminated":
             const teamElim = block.getFieldValue('team') as GameTeam
             return {type, team: teamElim}
+        case "postUnitHealthChange":
+            const threshold = parseInt(block.getFieldValue('threshold'))
+            return {type, threshold}
         case "postUnitNthAttack":
             const n = parseInt(block.getFieldValue('num'))
             return {type, n}
@@ -1306,6 +1438,7 @@ function blockToScriptAction(block: Blockly.Block | null): ScriptAction | null {
     let actions: ScriptAction[];
     switch (type) {
         case "draw":
+        case "create":
             n = parseInt(block.getFieldValue('num'))
             filters = blockToScriptFilter(block.getInputTargetBlock('filter'))
             return {type, n, filters}
@@ -1325,6 +1458,13 @@ function blockToScriptAction(block: Blockly.Block | null): ScriptAction | null {
                 return null;
             }
             return {type, isBuff, value, attr, target, duration}
+        case "grantAttack":
+            const nAttacks = parseInt(block.getFieldValue('n'))
+            target = blockToScriptTarget(block.getInputTargetBlock('target'))
+            if (target === null) {
+                return null;
+            }
+            return {type, n: nAttacks, target}
         case "hurt":
         case "heal":
             const damage = parseInt(block.getFieldValue('damage'))
@@ -1350,6 +1490,10 @@ function blockToScriptAction(block: Blockly.Block | null): ScriptAction | null {
             conditions = blockToScriptFilter(block.getInputTargetBlock('condition'))
             actions = readActionSequence(block, "then")
             return {type, minUnits, team, conditions, actions};
+        case "randomConditional":
+            const percentChance = parseInt(block.getFieldValue('percentChance'))
+            actions = readActionSequence(block, "then")
+            return {type, percentChance, actions};
         case "deploy":
             filters = blockToScriptFilter(block.getInputTargetBlock('filter'))
             const direction = block.getFieldValue('direction') as UnitDirection

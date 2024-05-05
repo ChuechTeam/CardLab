@@ -16,11 +16,11 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
     //   - FragUnitTrigger (Me)
     //     [No more FragUnitTrigger by me past this point]
     public const int SelfTriggerMaxDepth = 2;
-    
+
     // Same thing, but with ANY trigger!
     public const int AnyTriggerMaxDepth = 4;
 
-    private PlayerIndex MyPlayerIdx => entity.Owner;
+    private PlayerIndex MyPlayerIdx => Entity.Owner;
     private PlayerIndex AdvPlayerIdx => MyPlayerIdx == PlayerIndex.P1 ? PlayerIndex.P2 : PlayerIndex.P1;
     private DuelPlayerState MyPlayer => State.GetPlayer(MyPlayerIdx);
     private DuelPlayerState AdvPlayer => State.GetPlayer(AdvPlayerIdx);
@@ -45,7 +45,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
 
     public override void PostSpawn(DuelFragment frag)
     {
-        RegisterScriptEventHandlers();
+        RegisterScriptEventHandlers(frag);
         if (_postSpawnActions.Count != 0)
         {
             QueueTrigger(frag, [.._postSpawnActions]);
@@ -70,7 +70,6 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         }
 
         frag.EnqueueFragment(new Duel.FragRemoveModifiers(_modifiersToRemoveOnDeath));
-        _modifiersToRemoveOnDeath.Clear();
     }
 
     public override void UnitPostAttack(DuelFragment frag, int targetId)
@@ -99,6 +98,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             WoundedFilter => Wounded(),
             AdjacentFilter => Adjacent(),
             ArchetypeFilter arf => Archetype(arf.NormalizedArchetype),
+            CardTypeFilter f => entities.Where(x => x is DuelCard c && c.Type == f.Kind),
             _ => entities
         };
 
@@ -120,7 +120,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                 {
                     attribs = u.OriginStats;
                 }
-                
+
                 if (!attribs.Registered(attrId))
                 {
                     continue;
@@ -129,8 +129,8 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                 int cur = attribs.GetActual(attrId);
                 bool pass = op switch
                 {
-                    FilterOp.Greater => cur > value,
-                    FilterOp.Lower => cur < value,
+                    FilterOp.Greater => cur >= value,
+                    FilterOp.Lower => cur <= value,
                     FilterOp.Equal => cur == value,
                     _ => throw new ArgumentOutOfRangeException(nameof(op), op, null)
                 };
@@ -157,7 +157,8 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         {
             foreach (var entity in entities)
             {
-                if (entity is DuelUnit unit && unit.NormalizedArchetype == normArchetype)
+                if (entity is DuelUnit unit && unit.NormalizedArchetype == normArchetype
+                    || entity is DuelCard card && card.NormalizedArchetype == normArchetype)
                 {
                     yield return entity;
                 }
@@ -188,9 +189,10 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
      * Targets
      */
 
-    private IEnumerable<IEntity> EvaluateTarget(Target target, DuelFragment context)
+    private IEnumerable<IEntity> EvaluateTarget(Target target, bool allowEliminated, DuelFragment context,
+        Func<IEntity, bool>? additionalFilter = null)
     {
-        return target switch
+        var entities = target switch
         {
             MeTarget => new[] { Entity },
             SourceTarget => context switch
@@ -215,6 +217,14 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             NearbyAllyTarget(var dir) => Nearby(dir),
             _ => Enumerable.Empty<IEntity>()
         };
+        
+        // QueryTarget already applies the filter.
+        if (additionalFilter is not null && target is not QueryTarget)
+        {
+            entities = entities.Where(additionalFilter);
+        }
+
+        return entities;
 
         IEnumerable<IEntity> Query(QueryTarget t)
         {
@@ -225,12 +235,18 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                 case EntityType.Unit:
                 {
                     var all = State.Units.Values;
-                    allSameTeam = t.Team switch
+                    IEnumerable<DuelUnit> units = t.Team switch
                     {
                         GameTeam.Ally => all.Where(x => x.Owner == Entity.Owner && x.Id != Entity.Id),
                         GameTeam.Enemy => all.Where(x => x.Owner != Entity.Owner),
                         _ => all
                     };
+                    if (!allowEliminated)
+                    {
+                        units = units.Where(x => x is { Eliminated: false, DeathPending: false });
+                    }
+
+                    allSameTeam = units;
                     break;
                 }
                 case EntityType.Card:
@@ -248,6 +264,16 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             }
 
             List<IEntity> filtered = ApplyFilters(allSameTeam, t.Filters).ToList();
+            if (additionalFilter != null)
+            {
+                for (var i = filtered.Count - 1; i >= 0; i--)
+                {
+                    if (!additionalFilter(filtered[i]))
+                    {
+                        filtered.RemoveAt(i);
+                    }
+                }
+            }
 
             // Then we need to pick at random
             if (t.N > 0)
@@ -267,7 +293,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         IEnumerable<IEntity> Nearby(UnitDirection dir)
         {
             var pos = Entity.Position.Vec;
-            if (ApplyUnitDir(pos, dir) is {} p && MyPlayer.Units[p.ToIndex(Duel)] is { } unitId)
+            if (ApplyUnitDir(pos, dir) is { } p && MyPlayer.Units[p.ToIndex(Duel)] is { } unitId)
             {
                 return new[] { State.FindUnit(unitId)! };
             }
@@ -278,8 +304,11 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         }
     }
 
-    private IEnumerable<IEntity> EvaluateTarget(Target target, in EventContext context) =>
-        EvaluateTarget(target, context.ReactingTo);
+    private IEnumerable<IEntity> EvaluateTarget(Target target, bool allowEliminated, in EventContext context,
+        Func<IEntity, bool>? additionalFilter = null)
+    {
+        return EvaluateTarget(target, allowEliminated, context.ReactingTo, additionalFilter);
+    }
 
     /*
      * Actions
@@ -297,7 +326,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                 var targetNode = dmg ? ((HurtAction)action).Target : ((HealAction)action).Target;
                 var value = dmg ? ((HurtAction)action).Damage : ((HealAction)action).Damage;
 
-                var target = EvaluateTarget(targetNode, ctx).ToList();
+                var target = EvaluateTarget(targetNode, false, ctx).ToList();
                 fragments = target
                     .Select<IEntity, DuelFragment>(t =>
                         dmg
@@ -332,6 +361,21 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
 
                 return RunFragmentList(ctx, fragments);
             }
+            case CreateCardAction cc:
+            {
+                if (cc.N <= 0)
+                {
+                    return false;
+                }
+
+                foreach (var card in PickRandomCards(AllCardsInDatabase(), cc.Filters, cc.N))
+                {
+                    fragments.Add(new Duel.FragCreateCard(card.BaseDefRef,
+                        MyPlayerIdx == PlayerIndex.P1 ? DuelCardLocation.HandP1 : DuelCardLocation.HandP2));
+                }
+
+                return RunFragmentList(ctx, fragments);
+            }
             case DiscardCardAction disc:
             {
                 if (disc.N <= 0)
@@ -351,7 +395,8 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             }
             case AttackAction att:
             {
-                var targets = EvaluateTarget(att.Target, ctx);
+                var targets = EvaluateTarget(att.Target, false, ctx,
+                    x => !Duel.FragAttackUnit.AttackBlocked(Duel, Entity.Id, x.Id));
                 foreach (var target in targets)
                 {
                     fragments.Add(new Duel.FragAttackUnit(Entity.Id, target.Id, true));
@@ -368,7 +413,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                     return false;
                 }
 
-                var targets = EvaluateTarget(mod.Target, ctx).ToList();
+                var targets = EvaluateTarget(mod.Target, false, ctx).ToList();
 
                 List<(int, ushort)> toApply = new();
                 foreach (var target in targets)
@@ -386,6 +431,11 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                         _ => null
                     };
                     if (attr is not { } realAttr)
+                    {
+                        continue;
+                    }
+
+                    if (target is DuelCard { Location: DuelCardLocation.Discarded or DuelCardLocation.Temp })
                     {
                         continue;
                     }
@@ -445,43 +495,52 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
 
                 return true;
             }
+            case GrantAttackAction grant:
+            {
+                var targets = EvaluateTarget(grant.Target, false, ctx).ToList();
+                foreach (var target in targets)
+                {
+                    fragments.Add(new Duel.FragEffect(Entity.Id, EffectTint.Neutral, f2 =>
+                    {
+                        f2.ApplyFrag(new Duel.FragAlteration(Entity.Id, target.Id, true, f =>
+                        {
+                            f.ApplyFrag(new Duel.FragSetAttribute(target.Id, DuelBaseAttrs.ActionsLeft,
+                                target.Attribs.GetActionsLeft() + grant.N));
+                        }));
+                    }));
+                }
+
+                return RunFragmentList(ctx, fragments);
+            }
             case DeployAction deploy:
             {
                 if (_deploymentsDisabledThisTurn)
                 {
                     return false;
                 }
-                
-                var pool = new List<QualCardRef>();
-                if (deploy.Filters.IsEmpty)
-                {
-                    pool.AddRange(Duel.CardDatabase.Keys);
-                }
-                else
-                {
-                    foreach (var pair in Duel.CardDatabase)
-                    {
-                        var virtualEntity = Duel.MakeCard(pair.Key, true);
-                        if (ApplyFilters(new[] { virtualEntity }, deploy.Filters).Any())
-                        {
-                            pool.Add(pair.Key);
-                        }
 
-                        // We just need one unit for dry running. No need to create a whole pool.
-                        if (ctx.DryRun)
-                        {
-                            break;
-                        }
+                var pool = new List<QualCardRef>();
+                foreach (var pair in Duel.CardDatabase)
+                {
+                    if (pair.Value.Type != CardType.Unit)
+                    {
+                        continue;
+                    }
+
+                    var virtualEntity = Duel.MakeCard(pair.Key, true);
+                    if (ApplyFilters(new[] { virtualEntity }, deploy.Filters).Any())
+                    {
+                        pool.Add(pair.Key);
+                    }
+
+                    // We just need one unit for dry running. No need to create a whole pool.
+                    if (ctx.DryRun)
+                    {
+                        return true;
                     }
                 }
 
-                // I don't want to overcomplicate dry-run checks, so from now on we'll assume there's enough
-                // space in the board.
-                if (ctx.DryRun)
-                {
-                    return true;
-                }
-                if (pool.Count == 0) 
+                if (pool.Count == 0)
                 {
                     return false;
                 }
@@ -508,7 +567,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                 if (vec is { } realVec)
                 {
                     var virtCard = Duel.MakeCard(randomPick, true);
-                    ctx.ApplyFrag(new Duel.FragSpawnUnit(MyPlayerIdx, -1, 
+                    ctx.ApplyFrag(new Duel.FragSpawnUnit(MyPlayerIdx, -1,
                         new DuelArenaPosition(MyPlayerIdx, realVec), virtCard)
                     {
                         Configure = ConfigureUnit
@@ -531,8 +590,8 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                 var target = condSingle.Target switch
                 {
                     ConditionalTarget.Me => Entity,
-                    ConditionalTarget.Source => EvaluateTarget(new SourceTarget(), ctx).FirstOrDefault(),
-                    ConditionalTarget.Target => EvaluateTarget(new TargetTarget(), ctx).FirstOrDefault(),
+                    ConditionalTarget.Source => EvaluateTarget(new SourceTarget(), true, ctx).FirstOrDefault(),
+                    ConditionalTarget.Target => EvaluateTarget(new TargetTarget(), true, ctx).FirstOrDefault(),
                     _ => null
                 };
 
@@ -546,7 +605,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             case MultiConditionalAction condMulti:
             {
                 var query = new QueryTarget(EntityType.Unit, condMulti.Team, condMulti.Conditions, 0);
-                var targets = EvaluateTarget(query, ctx);
+                var targets = EvaluateTarget(query, true, ctx);
                 if (targets.Count() >= condMulti.MinUnits)
                 {
                     return ExecuteActionSequence(ctx, condMulti.Actions.AsSpan());
@@ -555,6 +614,21 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                 {
                     return false;
                 }
+            }
+            case RandomConditionalAction condRand:
+            {
+                // We always do a dry run first, so we can use this to only roll random once.
+                if (ctx.DryRun && Duel.Rand.Next(100) > condRand.PercentChance)
+                {
+                    return false;
+                }
+
+                var name = Duel.CardDatabase[Entity.OriginRef].Name;
+                ctx.ApplyFrag(new Duel.FragShowMessage(
+                    $"{name} a de la chance ! ({condRand.PercentChance}% de chance)",
+                    2000, 700));
+
+                return ExecuteActionSequence(ctx, condRand.Actions.AsSpan());
             }
             default:
                 Duel.Logger.LogError("Unknown action: {Action}", action);
@@ -591,12 +665,20 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         {
             return false;
         }
-
-        foreach (var duelFragment in fragments)
+        
+        for (var i = 0; i < fragments.Count; i++)
         {
-            if (!duelFragment.Verify(Duel))
+            var frag = fragments[i];
+            if (!frag.Verify(Duel))
             {
-                return false;
+                if (i == fragments.Count - 1)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                break;
             }
         }
 
@@ -613,15 +695,23 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
 
     private bool RunFragmentListInEffect(in EventContext context, EffectTint tint, List<DuelFragment> fragments)
     {
-        if (!fragments.Any(x => x.Verify(Duel)))
+        for (var i = 0; i < fragments.Count; i++)
         {
-            return false;
+            var frag = fragments[i];
+            if (!frag.Verify(Duel))
+            {
+                if (i == fragments.Count - 1)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                break;
+            }
         }
 
-        if (context.RunningTrigger != null)
-        {
-            context.RunningTrigger.ApplyFrag(new Duel.FragEffect(Entity.Id, tint, fragments));
-        }
+        context.RunningTrigger?.ApplyFrag(new Duel.FragEffect(Entity.Id, tint, fragments));
 
         return true;
     }
@@ -630,7 +720,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
      * Events
      */
 
-    private void RegisterEventHandler(CardEventHandler handler)
+    private void RegisterEventHandler(CardEventHandler handler, DuelFragment spawnFrag)
     {
         switch (handler.Event)
         {
@@ -640,6 +730,25 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             case PostUnitNthAttackEvent nthAt:
                 _postNthAttackTriggers.Add((nthAt.N, handler.Actions));
                 break;
+            case PostCoreHurtEvent coreHurt:
+            {
+                var playerId = coreHurt.Team switch
+                {
+                    GameTeam.Self or GameTeam.Ally => MyPlayer.Id,
+                    GameTeam.Enemy => AdvPlayer.Id,
+                    _ => -1
+                };
+                ListenFragment<Duel.FragHurtEntity>(f =>
+                {
+                    if ((playerId == -1
+                         && DuelIdentifiers.TryExtractType(f.TargetId, out var t)
+                         && t == DuelEntityType.Player) || f.TargetId == playerId)
+                    {
+                        QueueTrigger(f, handler.Actions);
+                    }
+                });
+                break;
+            }
             case PostUnitEliminatedEvent unitElim:
                 if (unitElim.Team == GameTeam.Self)
                 {
@@ -655,6 +764,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                         }
                     });
                 }
+
                 break;
             case PostUnitKillEvent:
                 ListenFragment<Duel.FragDestroyUnit>(f =>
@@ -695,6 +805,15 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                     }
                 });
                 break;
+            case PostUnitHealthChange hpChange:
+                ListenAttribute(DuelBaseAttrs.Health, (frag, ent, _, oldValue, newValue) =>
+                {
+                    if (ent.Id == Entity.Id && oldValue > hpChange.Threshold && newValue <= hpChange.Threshold)
+                    {
+                        QueueTrigger(frag, handler.Actions);
+                    }
+                });
+                break;
             case PostNthCardPlayEvent nthCard:
                 ListenAttribute(DuelBaseAttrs.CardsPlayedThisTurn, (frag, ent, _, _, newValue) =>
                 {
@@ -705,23 +824,38 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
                 });
                 break;
             case PostCardMoveEvent move:
-                ListenFragment<Duel.FragMoveCard>(f =>
+                if (move.Kind == CardMoveKind.Played)
                 {
-                    bool run = move.Kind switch
+                    var spawnRoot = FindParent<Duel.ActPlayCard>(spawnFrag);
+
+                    ListenFragment<Duel.ActPlayCard>(f =>
                     {
-                        CardMoveKind.Played => f.Parent is Duel.FragUseCard uc 
-                                               && uc.Player == MyPlayerIdx,
-                        CardMoveKind.Discarded => f.NewLocation == DuelCardLocation.Discarded
-                                                  && f.PrevLocation == Duel.PlayerHandLoc(MyPlayerIdx),
-                        CardMoveKind.Drawn => f.Parent is Duel.FragDrawCards dc
-                                              && dc.Player == MyPlayerIdx,
-                        _ => false
-                    };
-                    if (run)
+                        if (f.Player == MyPlayerIdx && f != spawnRoot)
+                        {
+                            QueueTrigger(f, handler.Actions);
+                        }
+                    });
+                }
+                else
+                {
+                    ListenFragment<Duel.FragMoveCard>(f =>
                     {
-                        QueueTrigger(f, handler.Actions);
-                    }
-                });
+                        bool run = move.Kind switch
+                        {
+                            CardMoveKind.Discarded => f.NewLocation == DuelCardLocation.Discarded
+                                                      && f.PrevLocation == Duel.PlayerHandLoc(MyPlayerIdx)
+                                                      && f.Parent is not Duel.FragUseCard,
+                            CardMoveKind.Drawn => f.Parent is Duel.FragDrawCards dc
+                                                  && dc.Player == MyPlayerIdx,
+                            _ => false
+                        };
+                        if (run)
+                        {
+                            QueueTrigger(f, handler.Actions);
+                        }
+                    });
+                }
+
                 break;
             case PostTurnEvent turn:
                 ListenFragment<Duel.FragSwitchTurn>(f =>
@@ -745,11 +879,11 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         }
     }
 
-    private void RegisterScriptEventHandlers()
+    private void RegisterScriptEventHandlers(DuelFragment spawnFrag)
     {
         foreach (var handler in script.Handlers)
         {
-            RegisterEventHandler(handler);
+            RegisterEventHandler(handler, spawnFrag);
         }
     }
 
@@ -789,7 +923,7 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         {
             return false;
         }
-        
+
         if (!allowDeath && Entity.Eliminated)
         {
             return false;
@@ -909,10 +1043,10 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             yield break;
         }
 
-        var unit = State.FindUnit(id.Value);
-        if (unit != null)
+        var ent = State.FindEntity(id.Value, true);
+        if (ent != null)
         {
-            yield return unit!;
+            yield return ent!;
         }
     }
 
@@ -944,6 +1078,14 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
         foreach (var card in player.Deck)
         {
             yield return State.FindCard(card)!;
+        }
+    }
+
+    private IEnumerable<DuelCard> AllCardsInDatabase()
+    {
+        foreach (var kv in Duel.CardDatabase)
+        {
+            yield return Duel.MakeCard(kv.Key, true);
         }
     }
 
@@ -985,6 +1127,19 @@ public sealed class UserDuelScript(Duel duel, DuelUnit entity, CardScript script
             DuelCardLocation.HandP2 => PlayerIndex.P2,
             _ => null
         };
+    }
+
+    private T? FindParent<T>(DuelFragment f) where T : DuelFragment
+    {
+        for (var parent = f.Parent; parent is not null; parent = parent.Parent)
+        {
+            if (parent is T t)
+            {
+                return t;
+            }
+        }
+
+        return null;
     }
 
     private readonly record struct EventContext(DuelFragment ReactingTo, DuelFragment? RunningTrigger)

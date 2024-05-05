@@ -53,6 +53,30 @@ public sealed class BasePackRegistry(
         _loadedPacks[id] = new LoadedPack(pack, defFileRel.Replace('\\', '/'), resFileRel.Replace('\\', '/'));
     }
 
+    // Deletes all labdef/labres files in the basePacks folder
+    public void ClearPacks()
+    {
+        var packsDir = Path.Combine(webEnv.WebRootPath, WebRootSubDir);
+        int n = 0;
+        foreach (var file in Directory.EnumerateFiles(packsDir))
+        {
+            var ext = Path.GetExtension(file);
+            if (ext is $".{GamePack.PackDefFileExt}" or $".{GamePack.PackResFileExt}")
+            {
+                try
+                {
+                    File.Delete(file);
+                    n++;
+                }
+                catch (Exception e)
+                {
+                    logger.LogWarning(e, "Failed to delete file {File} while clearing packs", file);
+                }
+            }
+        }
+        logger.LogInformation("Removed all pack files in {PacksDir} ({N} files)", packsDir, n);
+    }
+    
     public async Task FindPacks()
     {
         var packsDir = Path.Combine(webEnv.WebRootPath, WebRootSubDir);
@@ -133,7 +157,7 @@ public sealed class BasePackRegistry(
         var pack = _loadedPacks.GetValueOrDefault(id);
         var suffix = "?v=" + pack.Pack.Version;
 
-        var b = context.Request.Scheme + "://" + context.Request.Host;
-        return (b + "/" + pack.DefFileRelative + suffix, b + "/" + pack.ResFileRelative + suffix);
+        var b = $"{context.Request.Scheme}://{context.Request.Host}";
+        return ($"{b}/{pack.DefFileRelative}{suffix}", $"{b}/{pack.ResFileRelative}{suffix}");
     }
 }

@@ -428,28 +428,28 @@ public static class GameSessionRules
         }
     }
 
-    public readonly record struct DeckSettings
+    public record struct DeckSettings
     {
         // How many cards in a row should be of the same archetype in a player's deck
-        public required ushort ArchetypeSequenceLength { get; init; }
+        public required ushort ArchetypeSequenceLength { get; set; }
 
         // The percentage of the deck being filled with random spells from the base pack.
         // in [0, MaxSpellProportion]
-        public required double SpellProportion { get; init; }
+        public required double SpellProportion { get; set; }
 
-        public required int UserCardCopies { get; init; }
+        public required int UserCardCopies { get; set; }
     }
 
-    public readonly record struct CostSettings
+    public record struct CostSettings
     {
         // First element: weight for cost 1
         // N-th element: weight for cost N
 
         // Low: [1, 5]
-        public required ImmutableArray<int> LowWeights { get; init; }
+        public required ImmutableArray<int> LowWeights { get; set; }
 
         // High: [6, 10]
-        public required ImmutableArray<int> HighWeights { get; init; }
+        public required ImmutableArray<int> HighWeights { get; set; }
 
         public static CostSettings Symmetric(params int[] low)
         {

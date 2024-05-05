@@ -73,6 +73,9 @@ declare type CardEventHandler = {
 
 declare type ScriptEvent =
     | ScriptEventBase<"postSpawn">
+    | ScriptEventBase<"postCoreHurt"> & {
+    team: GameTeam
+}
     | ScriptEventBase<"postUnitEliminated"> & {
     team: GameTeam
 }
@@ -88,6 +91,8 @@ declare type ScriptEvent =
     | ScriptEventBase<"postUnitAttack"> & {
     team: GameTeam,
     dealt: boolean
+}  | ScriptEventBase<"postUnitHealthChange"> &{
+    threshold: number
 }
     | ScriptEventBase<"postUnitNthAttack"> & {
     n: number
@@ -97,7 +102,7 @@ declare type ScriptEvent =
 }
     | ScriptEventBase<"postCardMove"> & {
     kind: CardMoveKind
-}   | ScriptEventBase<"postTurn"> & {
+} | ScriptEventBase<"postTurn"> & {
     team: GameTeam
 }
 
@@ -107,6 +112,10 @@ declare type ScriptEvent =
 
 declare type ScriptAction =
     | ScriptActionBase<"draw"> & {
+    n: number,
+    filters: Filter[]
+}
+    | ScriptActionBase<"create"> & {
     n: number,
     filters: Filter[]
 }
@@ -121,6 +130,10 @@ declare type ScriptAction =
     attr: ScriptableAttribute,
     target: Target,
     duration: number
+}
+    | ScriptActionBase<"grantAttack"> & {
+    n: number,
+    target: Target
 }
     | ScriptActionBase<"hurt"> & {
     damage: number,
@@ -141,6 +154,9 @@ declare type ScriptAction =
     minUnits: number,
     team: GameTeam,
     conditions: Filter[],
+    actions: ScriptAction[]
+} | ScriptActionBase<"randomConditional"> & {
+    percentChance: number,
     actions: ScriptAction[]
 } | ScriptActionBase<"deploy"> & {
     filters: Filter[]

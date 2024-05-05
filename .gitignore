@@ -393,3 +393,5 @@ Temporary Items
 
 **/wwwroot/basePacks
 **/userPacks
+**/BasePacks/TestPack.Local.cs
+**/BasePacks/Assets/Test

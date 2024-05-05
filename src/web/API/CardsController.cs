@@ -35,7 +35,7 @@ public class CardsController(ILogger<CardsController> logger) : ControllerBase
             return BadRequest("The host can't upload files (why do you want to do that?)");
         }
 
-        if (session.CardsPerPlayer <= index || index < 0)
+        if (session.Settings.CardsPerPlayer <= index || index < 0)
         {
             return BadRequest("Invalid card index.");
         }
@@ -103,7 +103,7 @@ public class CardsController(ILogger<CardsController> logger) : ControllerBase
             return Problem("Can't do that as the host", statusCode: (int)HttpStatusCode.Forbidden);
         }
 
-        if (index >= session.CardsPerPlayer || index < 0)
+        if (index >= session.Settings.CardsPerPlayer || index < 0)
         {
             return Problem("Invalid card index.", statusCode: (int)HttpStatusCode.Conflict);
         }
@@ -112,9 +112,9 @@ public class CardsController(ILogger<CardsController> logger) : ControllerBase
         {
             return Problem("Card updates are disabled.", statusCode: (int)HttpStatusCode.Conflict);
         }
-
+#if DEBUG
         var sw = Stopwatch.StartNew();
-
+#endif
         var archetype = !string.IsNullOrWhiteSpace(card.Archetype)
             ? CardModule.CapitalizeArchetype(card.Archetype)
             : null;
@@ -149,9 +149,10 @@ public class CardsController(ILogger<CardsController> logger) : ControllerBase
             }
         }
         
+#if DEBUG
         sw.Stop();
         logger.LogTrace("Card definition update took {MicroSeconds}µs", sw.ElapsedTicks / (Stopwatch.Frequency / 1_000_000));
-
+#endif
         CardPostResult result = new(validation, balance, definition.Description, definition.Archetype);
         return result;
     }

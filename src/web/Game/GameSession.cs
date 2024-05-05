@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using System.Configuration;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using CardLab.Game.AssetPacking;
@@ -20,9 +21,8 @@ public sealed class GameSession
 
     public UserToken HostToken { get; } = UserToken.Generate();
     public UserSocket HostSocket { get; } = new();
-
-    // TODO: Make this mutable?
-    public int CardsPerPlayer { get; } = 2;
+    
+    public GameSessionSettings Settings { get; private set; }
 
     // Seconds before we disable new image uploads (but keep definition uploads on).
     public int StartUploadDeadline { get; } = 4;
@@ -70,12 +70,13 @@ public sealed class GameSession
     private CancellationTokenSource _uploadCancelTokenSrc = new();
     private int _idCounter = 1;
 
-    public GameSession(int id, string code, GamePack basePack, WebGamePacker packer, 
+    public GameSession(int id, string code, GameSessionSettings settings, GamePack basePack, WebGamePacker packer, 
         ILoggerFactory loggerFac)
     {
         BasePack = basePack;
         Id = id;
         Code = code;
+        Settings = settings;
         Packer = packer;
         Logger = loggerFac.CreateLogger(typeof(GameSession));
         _ = Logger.BeginScope(new Dictionary<string, object> { ["Session"] = id });
@@ -124,10 +125,15 @@ public sealed class GameSession
                 return Result.Fail<Player>("La partie a déjà commencé");
             }
 
+            if (Players.Count >= 100)
+            {
+                return Result.Fail<Player>("Nombre max de joueurs atteint.");
+            }
+
             int id = _idCounter;
             _idCounter++;
 
-            var player = new Player(this, id, CardsPerPlayer)
+            var player = new Player(this, id, Settings.CardsPerPlayer)
             {
                 Name = sanitizedName,
                 LoginToken = UserToken.Generate()
@@ -404,7 +410,9 @@ public sealed class GameSession
     // If the decks span has not enough elements, the same deck is used for the last players.
     public void StartDuels(bool requireSessionPack,
         Span<(Player, Player)> pairs,
-        Span<ImmutableArray<QualCardRef>> decks)
+        Span<ImmutableArray<QualCardRef>> decks,
+        int startCards = 5,
+        int coreHealth = 40)
     {
         lock (Lock)
         {
@@ -451,10 +459,10 @@ public sealed class GameSession
                     Packs = packs,
                     Player1Deck = p1Deck,
                     Player2Deck = p2Deck,
-                    MaxCoreHealth = 45,
+                    MaxCoreHealth = coreHealth,
                     MaxEnergy = 30,
                     SecondsPerTurn = 80,
-                    StartCards = 5
+                    StartCards = startCards
                 };
 
                 var duel = new Duel(settings, _loggerFactory, p1.Name, p2.Name, p1.Socket, p2.Socket);

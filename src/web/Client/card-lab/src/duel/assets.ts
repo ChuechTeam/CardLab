@@ -12,15 +12,16 @@ import verticalGradientUrl from "./assets/vertical-gradient.png";
 import attackTargetUrl from "./assets/attack-target.png";
 import glossUrl from "./assets/gloss.png";
 import boardCoreMaskUrl from "./assets/board-core-mask.png";
+import waitIconUrl from "./assets/wait-icon.svg";
 import {duelLog} from "./log.ts";
 
 type BaseBundleType = typeof baseBundle;
 
-type BaseAssetType<T extends keyof BaseBundleType> 
+type BaseAssetType<T extends keyof BaseBundleType>
     = BaseBundleType[T] extends ReturnType<typeof svgAsset> ? GraphicsContext : Texture;
 
 export type BaseAssets = {
-    [T in keyof typeof baseBundle]: BaseAssetType<T> 
+    [T in keyof typeof baseBundle]: BaseAssetType<T>
 }
 
 function svgAsset(url: string) {
@@ -43,20 +44,27 @@ const baseBundle = {
     "healthIcon": svgAsset(healthIconUrl),
     "largeAttrBg": svgAsset(largeAttrBgUrl),
     "attackTarget": attackTargetUrl,
+    "waitIcon": svgAsset(waitIconUrl),
     "gloss": glossUrl
 }
 
 export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     const begin = performance.now()
-    
+
     Assets.addBundle("baseBundle", baseBundle)
     const bundlePromise = Assets.loadBundle("baseBundle").then(x => x as BaseAssets)
 
-    const assetPromises: Promise<[string, CardAsset, ImageBitmap]>[] = []
+    const assetPromises: Promise<[string, CardAsset, ImageBitmap] | null>[] = []
     for (const pack of gameRegistry.packs) {
         for (const card of pack.cards.values()) {
             if (card.image !== null) {
-                assetPromises.push(createImageBitmap(card.image).then(img => [pack.id, card, img]))
+                assetPromises.push(createImageBitmap(card.image)
+                    .then<[string, CardAsset, ImageBitmap] | null>(img => [pack.id, card, img])
+                    .catch(e => {
+                        console.error("Failed to read image bitmap for card", card, " Reason:", e)
+                        return null
+                    })
+                )
             }
         }
     }
@@ -67,7 +75,10 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     const cardAssets = await Promise.all(assetPromises)
 
     const map = {} as Record<string, Record<number, Texture>>
-    for (const [packId, card, img] of cardAssets) {
+    for (const x of cardAssets) {
+        if (x === null) { continue; }
+        
+        const [packId, card, img] = x
         if (!map[packId]) {
             map[packId] = {}
         }
@@ -75,7 +86,7 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     }
 
     const baseAssets = await bundlePromise
-    
+
     // this requires the style.css file to be loaded in the page! 
     await document.fonts.load("12px Chakra Petch")
     BitmapFont.install({
@@ -88,7 +99,7 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
         },
         resolution: 1
     });
-    
+
     const end = performance.now()
     duelLog(`Assets loaded in ${(end - begin).toFixed(2)}ms`)
 
@@ -106,7 +117,7 @@ export class DuelAssets {
         }
         return p[cardId] ?? this.fallbackTexture;
     }
-    
+
     get fallbackTexture() {
         return this.base.verticalGradient;
     }

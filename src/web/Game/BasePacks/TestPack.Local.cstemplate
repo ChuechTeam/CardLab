@@ -1,0 +1,26 @@
+﻿#if DEBUG
+using System.Collections.Immutable;
+using CardLab.Game.BasePacks;
+using CardLab.Game.Duels;
+using CardLab.Game.Duels.Scripting;
+
+namespace CardLab.Game.BasePacks
+{
+    public static partial class TestPack
+    {
+        static partial void GetCards(ref (CardDefinition def, uint id, string? img)[] cards, string assetsDir)
+        {
+            // Add some cards here!
+            cards = [];
+        }
+    }
+}
+
+namespace CardLab.Game.Duels.Scripting
+{
+    public static partial class SpecialDuelScripts
+    {
+        // Add your scripts here
+    }
+}
+#endif

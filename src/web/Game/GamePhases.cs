@@ -1,6 +1,7 @@
 ﻿using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using CardLab.Game.AssetPacking;
+using CardLab.Game.BasePacks;
 using CardLab.Game.Communication;
 
 namespace CardLab.Game;
@@ -80,7 +81,7 @@ public sealed record TutorialPhase(GameSession Session) : GamePhase(Session, Gam
 {
     private bool _started = false;
 
-    private static ImmutableArray<QualCardRef> MakeBSDeck(GamePack pack, int n)
+    private static ImmutableArray<QualCardRef> MakeTutoDeck(GamePack pack, int n)
     {
         var builder = ImmutableArray.CreateBuilder<QualCardRef>();
 
@@ -90,6 +91,12 @@ public sealed record TutorialPhase(GameSession Session) : GamePhase(Session, Gam
 
             builder.Add(new QualCardRef(pack.Id, card.Id));
         }
+        
+        builder.Add(new QualCardRef(pack.Id, MainPack.TutorialCard5Id));
+        builder.Add(new QualCardRef(pack.Id, MainPack.TutorialCard4Id));
+        builder.Add(new QualCardRef(pack.Id, MainPack.TutorialCard3Id));
+        builder.Add(new QualCardRef(pack.Id, MainPack.TutorialCard2Id));
+        builder.Add(new QualCardRef(pack.Id, MainPack.TutorialCard1Id));
 
         return builder.ToImmutable();
     }
@@ -102,14 +109,16 @@ public sealed record TutorialPhase(GameSession Session) : GamePhase(Session, Gam
             return;
         }
 
-        var deck = MakeBSDeck(Session.BasePack, 40);
+        var deck = MakeTutoDeck(Session.BasePack, 40);
         var decks = new[] { deck };
 
         Session.BroadcastMessage(new TutorialStartedMessage());
 
         Session.StartDuels(false,
             GameSessionRules.AssociatePlayersInAFairDuel(Session.Players, out _),
-            decks);
+            decks,
+            startCards: 2,
+            coreHealth: 15);
 
         _started = true;
     }
@@ -141,10 +150,10 @@ public sealed record CreatingCardsPhase(GameSession Session) : GamePhase(Session
         Session.EnableCardUpdates();
 
         // Assign card costs to everyone.
-        var cpp = Session.CardsPerPlayer;
+        var cpp = Session.Settings.CardsPerPlayer;
         var settings = new GameSessionRules.CostSettings
         {
-            LowWeights = [20, 30, 40, 60, 50],
+            LowWeights = [25, 40, 50, 40, 35],
             HighWeights = [50, 40, 30, 20, 10]
         };
         
@@ -238,7 +247,7 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
             _finalDeadlineTimer = null;
 
             // Gather all cards that are "ready"
-            Session.FinalCards = GameSessionRules.MakeFinalCardList(Session.Players.Values, Session.CardsPerPlayer);
+            Session.FinalCards = GameSessionRules.MakeFinalCardList(Session.Players.Values, Session.Settings.CardsPerPlayer);
 
             // Prepare the cards for game packing.
             var n = Session.FinalCards.Count;
@@ -283,7 +292,7 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
                 {
                     ArchetypeSequenceLength = 4,
                     SpellProportion = 0.2,
-                    UserCardCopies = 2
+                    UserCardCopies = 1
                 };
                 me.DuelDecks = GameSessionRules.MakeNDecks(pack.Pack, sess.BasePack, sess.Players.Count, in settings);
 

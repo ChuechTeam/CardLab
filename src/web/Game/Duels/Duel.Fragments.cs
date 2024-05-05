@@ -1,6 +1,7 @@
 ﻿using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using CardLab.Game.AssetPacking;
 
 namespace CardLab.Game.Duels;
 
@@ -13,14 +14,14 @@ public sealed partial class Duel
     public sealed class FragUseCard(int cardId, PlayerIndex player) : DuelFragment
     {
         public PlayerIndex Player { get; set; } = player;
-        
+
         public static bool CanUseInHand(Duel duel, int cardId, PlayerIndex player)
         {
             var playerSt = duel.State.GetPlayer(player);
             var card = duel.State.FindCard(cardId)!;
             return playerSt.Attribs.GetEnergy() >= card.Attribs.GetCost();
         }
-        
+
         protected override bool Verify()
         {
             var playerSt = State.GetPlayer(Player);
@@ -52,20 +53,20 @@ public sealed partial class Duel
                 Changes = [(cardId, new PlayerPair<bool>(true))]
             });
 
-            ApplyDelta(new MoveCardsDelta
-            {
-                Changes = [new(cardId, card.Location, DuelCardLocation.Discarded, null)]
-            });
+            ApplyFrag(new FragMoveCard(cardId, DuelCardLocation.Discarded, 0));
 
             return true;
         }
     }
 
-    public sealed class FragSpawnUnit(PlayerIndex player, int cardId, DuelArenaPosition placementPos, 
+    public sealed class FragSpawnUnit(
+        PlayerIndex player,
+        int cardId,
+        DuelArenaPosition placementPos,
         DuelCard? virtualCard = null) : DuelFragment
     {
         public Action<DuelUnit>? Configure { get; init; } = null;
-        
+
         protected override bool Verify()
         {
             if (!placementPos.Vec.Valid(Duel))
@@ -85,6 +86,12 @@ public sealed partial class Duel
             }
 
             if (virtualCard is null && State.FindCard(cardId) is null)
+            {
+                return false;
+            }
+
+            var card = (State.FindCard(cardId) ?? virtualCard)!;
+            if (card.Type != CardType.Unit)
             {
                 return false;
             }
@@ -118,7 +125,7 @@ public sealed partial class Duel
     public sealed class FragSwitchTurn(PlayerIndex player) : DuelFragment
     {
         public PlayerIndex Player { get; } = player;
-        
+
         protected override bool Run()
         {
             var state = State;
@@ -224,11 +231,11 @@ public sealed partial class Duel
                 if (ps.Deck.Count == 0)
                 {
                     ApplyDelta(new ShowMessageDelta("Aucun carte restante dans le deck ! Le joueur subit des dégats.",
-                        2000));
+                        2000, 1500));
                     ApplyFrag(new FragHurtEntity(null, ps.Id, 2, "deck_empty"));
                     break;
                 }
-                
+
                 var cardId = ps.Deck[^1];
                 var success = TryMovingToHand(ps, cardId, playerHand);
 
@@ -272,14 +279,14 @@ public sealed partial class Duel
         int cardId,
         DuelCardLocation newLocation,
         int? index = null,
-        bool autoReveal = true) : DuelFragment
+        bool bothReveal = false) : DuelFragment
     {
         public int CardId { get; } = cardId;
         public DuelCardLocation NewLocation { get; } = newLocation;
         public int? Index { get; } = index;
-        public bool AutoReveal { get; } = autoReveal;
+        public bool BothReveal { get; } = bothReveal;
 
-        public DuelCardLocation PrevLocation { get; private set; } = DuelCardLocation.Temp; 
+        public DuelCardLocation PrevLocation { get; private set; } = DuelCardLocation.Temp;
 
         protected override bool Verify()
         {
@@ -295,9 +302,13 @@ public sealed partial class Duel
                 return true;
             }
 
-            if (AutoReveal)
+            var revealed = card.Revealed;
+            if (BothReveal)
             {
-                var revealed = card.Revealed;
+                revealed = new PlayerPair<bool>(true);
+            }
+            else
+            {
                 switch (NewLocation)
                 {
                     case DuelCardLocation.HandP1:
@@ -311,15 +322,16 @@ public sealed partial class Duel
                         revealed.P2 = true;
                         break;
                 }
-
-                if (revealed != card.Revealed)
-                {
-                    ApplyDelta(new RevealCardsDelta
-                    {
-                        Changes = [(CardId, revealed)]
-                    });
-                }
             }
+
+            if (revealed != card.Revealed)
+            {
+                ApplyDelta(new RevealCardsDelta
+                {
+                    Changes = [(CardId, revealed)]
+                });
+            }
+
 
             ApplyDelta(new MoveCardsDelta
             {
@@ -352,6 +364,44 @@ public sealed partial class Duel
         }
     }
 
+    public sealed class FragCreateCard(
+        QualCardRef cardRef,
+        DuelCardLocation location,
+        Action<DuelCard>? config = null,
+        bool bothReveal = false)
+        : DuelFragment
+    {
+        public QualCardRef CardRef { get; } = cardRef;
+        public DuelCardLocation Location { get; } = location;
+
+        public int? CreatedCardId { get; private set; } = null;
+
+        protected override bool Verify()
+        {
+            return Duel.CardDatabase.ContainsKey(CardRef);
+        }
+
+        protected override bool Run()
+        {
+            var card = Duel.MakeCard(CardRef);
+            config?.Invoke(card);
+
+            ApplyDelta(new CreateCardsDelta
+            {
+                Cards = [card]
+            });
+
+            if (Location != DuelCardLocation.Temp)
+            {
+                // todo: inspect how we should better handle flattening here
+                ApplyFrag(new FragMoveCard(card.Id, Location, null, bothReveal) { Flatten = true });
+            }
+
+            CreatedCardId = card.Id;
+            return true;
+        }
+    }
+
     // Attacks a unit. Disallows for friendly fire unless stated otherwise.
     public sealed class FragAttackUnit(int unitId, int targetId, bool friendlyFire = false) : DuelFragment
     {
@@ -361,10 +411,72 @@ public sealed partial class Duel
 
         public override ScopeDelta? Scope { get; protected set; } = new UnitAttackScopeDelta(unitId, targetId);
 
+        public static bool AttackBlocked(Duel duel, int unitId, int targetId)
+        {
+            if (unitId == targetId)
+            {
+                return true;
+            }
+            
+            var attacker = duel.State.FindUnit(unitId);
+            if (attacker is null)
+            {
+                return true;
+            }
+
+            var defender = duel.State.FindEntity(targetId);
+            
+            bool attackingAlly = (defender is DuelUnit u && u.Owner == attacker.Owner
+                                  || defender is DuelPlayerState p && p.Index == attacker.Owner);
+
+            if (defender is DuelPlayerState p2)
+            {
+                if (p2.ExistingUnits.Any() && !attackingAlly)
+                {
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else if (defender is DuelUnit u2)
+            {
+                // Make sure that there isn't any unit in front of the target.
+                // This doesn't apply to friendly fire where any unit can attack another
+
+                if (!attackingAlly)
+                {
+                    var player = duel.State.GetPlayer(u2.Position.Player);
+                    var (defX, defY) = u2.Position.Vec;
+
+                    for (int y = defY + 1; y < duel.Settings.UnitsY; y++)
+                    {
+                        if (player.Units[new DuelGridVec(defX, y).ToIndex(duel)] != null)
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                //..And that the unit isn't dying soon.
+                if (u2.DeathPending)
+                {
+                    return true;
+                }
+
+                return false;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
         protected override bool Verify()
         {
             var attacker = State.FindUnit(UnitId);
-            if (attacker is null)
+            if (attacker is null || attacker.DeathPending)
             {
                 return false;
             }
@@ -386,42 +498,14 @@ public sealed partial class Duel
                 return false;
             }
 
-            if (!FriendlyFire &&
-                (defender is DuelUnit u && u.Owner == attacker.Owner
-                 || defender is DuelPlayerState p && p.Index == attacker.Owner))
+            var attackingAlly = (defender is DuelUnit u && u.Owner == attacker.Owner
+                                 || defender is DuelPlayerState p && p.Index == attacker.Owner);
+            if (!FriendlyFire && attackingAlly)
             {
                 return false;
             }
 
-            if (defender is DuelPlayerState p2)
-            {
-                if (p2.ExistingUnits.Any())
-                {
-                    return false;
-                }
-            }
-            else if (defender is DuelUnit u2)
-            {
-                // Make sure that there isn't any unit in front of the target.
-                var player = State.GetPlayer(u2.Position.Player);
-                var (defX, defY) = u2.Position.Vec;
-
-                for (int y = defY + 1; y < Duel.Settings.UnitsY; y++)
-                {
-                    if (player.Units[new DuelGridVec(defX, y).ToIndex(Duel)] != null)
-                    {
-                        return false;
-                    }
-                }
-                
-                //..And that the unit isn't dying soon.
-                if (u2.DeathPending)
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return !AttackBlocked(Duel, attacker.Id, defender.Id);
         }
 
         protected override bool Run()
@@ -438,9 +522,9 @@ public sealed partial class Duel
 
             if (State.FindEntity(TargetId) is DuelUnit target)
             {
-                // Check if we can apply excess damage.
+                // Check if we can apply excess damage. Only apply it when not doing friendly fire.
                 var hp = target.Attribs.GetHealth();
-                if (hp < 0)
+                if (hp < 0 && target.Owner != attacker.Owner)
                 {
                     var excessDmg = -hp;
 
@@ -533,6 +617,19 @@ public sealed partial class Duel
             }
 
             return false;
+        }
+    }
+
+    public sealed class FragShowMessage(string message, int duration, int pauseDuration) : DuelFragment
+    {
+        public string Message { get; } = message;
+        public int Duration { get; } = duration;
+        public int PauseDuration { get; } = pauseDuration;
+
+        protected override bool Run()
+        {
+            ApplyDelta(new ShowMessageDelta(Message, Duration, PauseDuration));
+            return true;
         }
     }
 
@@ -741,8 +838,11 @@ public sealed partial class Duel
         }
     }
 
-    public sealed class FragUnitTrigger(int unitId, Action<FragUnitTrigger> action, Func<FragUnitTrigger,
-        bool>? verifier=null) : DuelFragment
+    public sealed class FragUnitTrigger(
+        int unitId,
+        Action<FragUnitTrigger> action,
+        Func<FragUnitTrigger,
+            bool>? verifier = null) : DuelFragment
     {
         public int UnitId { get; } = unitId;
 
@@ -768,6 +868,17 @@ public sealed partial class Duel
         public bool Positive { get; } = positive;
 
         public override bool Flatten { get; set; } = true;
+
+        public FragAlteration(int sourceId, int targetId, bool positive, List<DuelFragment> fragments) : this(sourceId,
+            targetId, positive, f =>
+            {
+                foreach (var frag in fragments)
+                {
+                    f.ApplyFrag(frag);
+                }
+            })
+        {
+        }
 
         public override ScopeDelta? Scope { get; protected set; } =
             new AlterationScopeDelta(sourceId, targetId, positive);
@@ -811,6 +922,7 @@ public sealed partial class Duel
         public int SourceId { get; }
         public List<int> Targets { get; }
         public bool AutoDetectTargets { get; set; } = true;
+        public bool PostponeSideEffects { get; set; } = true;
 
         public bool DisableTargeting
         {
@@ -838,6 +950,12 @@ public sealed partial class Duel
 
         public new DuelFragmentResult ApplyFrag(DuelFragment frag)
         {
+            // Fragments in effect don't incur any side effects.
+            if (PostponeSideEffects)
+            {
+                frag.Flatten = true;
+            }
+
             var res = base.ApplyFrag(frag);
             if (res == DuelFragmentResult.Success && AutoDetectTargets)
             {
@@ -859,7 +977,7 @@ public sealed partial class Duel
                         AddTarget(du.UnitId);
                         break;
                     case FragSetAttribute sa:
-                        AddTarget(sa.Id);
+                        AddTarget(sa.EntityId);
                         break;
                     case FragMoveCard mc:
                         AddTarget(mc.CardId);
@@ -899,6 +1017,7 @@ public sealed partial class Duel
         {
             var entity = State.FindEntity(EntityId)!;
 
+            entity.Attribs.ClearPrevVals();
             Duel.AttribSet(entity, AttrId, Value);
             Duel.AttribFinalizeUpdate(this, entity);
 
@@ -963,6 +1082,7 @@ public sealed partial class Duel
 
             foreach (var entity in entitiesToUpdate)
             {
+                entity.Attribs.ClearPrevVals();
                 foreach (var attr in attrsToUpdate)
                 {
                     Duel.AttribSet(entity, attr, null);
@@ -1027,6 +1147,7 @@ public sealed partial class Duel
 
             foreach (var entity in entitiesToUpdate)
             {
+                entity.Attribs.ClearPrevVals();
                 foreach (var attr in attrsToUpdate)
                 {
                     Duel.AttribSet(entity, attr, null);
@@ -1229,7 +1350,14 @@ public sealed partial class Duel
         {
             foreach (var action in frag.QueuedFragments)
             {
-                mut.ApplyFrag(action);
+                if (frag.Parent is { } parent)
+                {
+                    parent.ApplyFrag(action);
+                }
+                else
+                {
+                    mut.ApplyFrag(action);
+                }
             }
         }
 
@@ -1275,7 +1403,7 @@ public sealed partial class Duel
             _ => throw new ArgumentOutOfRangeException(nameof(idx), idx, null)
         };
     }
-    
+
     public static DuelCardLocation PlayerHandLoc(PlayerIndex idx)
     {
         return idx switch

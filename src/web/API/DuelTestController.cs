@@ -1,4 +1,5 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿#if DEBUG
+using System.Diagnostics.CodeAnalysis;
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -223,3 +224,4 @@ public class DuelTestController(
         return res.FailedWith(out var m) ? Conflict(m) : Ok();
     }
 }
+#endif

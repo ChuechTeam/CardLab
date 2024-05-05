@@ -13,11 +13,16 @@ font-weight: bold;
 }
 #kick {
 font-size: 0.6em;
+margin-top: 5px;
 --push-border-width: 4px;
 }
 
 :host(.its-you) {
-background-color: #fff58f;
+background-color: #0b589f;
+color: white;
+border-color: #042a4e;
+
+box-shadow: 0 0 8px 4px rgba(11,88,159,0.25);
 }
 </style>
 <div id="name">Joueur 1</div>

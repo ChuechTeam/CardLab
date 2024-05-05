@@ -2,10 +2,12 @@
 using System.Security.Cryptography;
 using CardLab.Game.AssetPacking;
 using CardLab.Game.BasePacks;
+using Microsoft.Extensions.Options;
 
 namespace CardLab.Game;
 
-public class ServerState(WebGamePacker gamePacker, BasePackRegistry packRegistry, ILoggerFactory logFac)
+public class ServerState(WebGamePacker gamePacker, BasePackRegistry packRegistry, ILoggerFactory logFac,
+    IOptionsMonitor<GameSessionSettings> options)
 {
     private const string CodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private const int CodeLength = 5;
@@ -17,7 +19,7 @@ public class ServerState(WebGamePacker gamePacker, BasePackRegistry packRegistry
     
     private Dictionary<string, GameSession> _sessionsByCode = new();
 
-    private readonly GamePack _basePack = packRegistry.GetPack(BasePack1.PackId)!;
+    private readonly GamePack _basePack = packRegistry.GetPack(MainPack.PackId)!;
 
     private int _idCounter = 1;
 
@@ -63,7 +65,7 @@ public class ServerState(WebGamePacker gamePacker, BasePackRegistry packRegistry
                 code = RandomNumberGenerator.GetString(CodeAlphabet, CodeLength);
             } while (_sessionsByCode.ContainsKey(code));
             
-            GameSession session = new(id, code, _basePack, gamePacker, logFac);
+            GameSession session = new(id, code, options.CurrentValue, _basePack, gamePacker, logFac);
             _sessions.Add(id, session);
             _sessionsByCode.Add(code, session);
 

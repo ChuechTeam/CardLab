@@ -1,6 +1,6 @@
 ﻿/**
  * Cool stuff to manipulate the DOM and Web Components.
- * Certified better than React, all in 100 lines of code!
+ * Certified better than React, all in (almost) 100 lines of code!
  */
 
 export function registerTemplate(id: string, html: string) {
@@ -12,10 +12,12 @@ export function registerTemplate(id: string, html: string) {
     return template;
 }
 
+let globalStyles = null as HTMLElement[] | null;
 export function importGlobalStyles(shadowDom: ShadowRoot) {
-    // TODO: inspect performance impact?
-    const linkNodes = document.head.querySelectorAll('link[rel="stylesheet"]');
-    for (const n of linkNodes) {
+    if (globalStyles === null) {
+        globalStyles = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]'));
+    }
+    for (const n of globalStyles) {
         shadowDom.appendChild(n.cloneNode(false));
     }
 }
@@ -33,9 +35,34 @@ export function fromDom(id: string) {
     };
 }
 
+const constructibleStyleSheetsSupported = "adoptedStyleSheets" in document;
+
+// This is a sort of polyfill for constructible stylesheets. (not available in iOS <16)
+export class LabStyle {
+    sheet: CSSStyleSheet | HTMLStyleElement;
+    constructor(public css: string) {
+        if (constructibleStyleSheetsSupported) {
+            this.sheet = new CSSStyleSheet();
+            this.sheet.replaceSync(css);
+        } else {
+            const el = document.createElement('style');
+            el.textContent = css;
+            this.sheet = el;
+        }
+    }
+    
+    apply(element: LabElement) {
+        if (constructibleStyleSheetsSupported) {
+            element.dom.adoptedStyleSheets.push(this.sheet as CSSStyleSheet);
+        } else {
+            const style = this.sheet as HTMLStyleElement;
+            element.dom.appendChild(style.cloneNode(true));
+        }
+    }
+}
+
 // All LabElements are display: block by default.
-const sharedStyle = new CSSStyleSheet();
-sharedStyle.insertRule(":host { display: block; }");
+const sharedStyle = new LabStyle(":host { display: block; }");
 
 export class LabElement extends HTMLElement {
     dom: ShadowRoot = null!
@@ -57,7 +84,7 @@ export class LabElement extends HTMLElement {
             importGlobalStyles(this.dom)
         }
         if (this.useDefaultHostStyle) {
-            this.dom.adoptedStyleSheets.push(sharedStyle);
+            sharedStyle.apply(this);
         }
 
         this.init();

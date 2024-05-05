@@ -60,23 +60,30 @@ public sealed record CardEventHandler
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(DrawCardAction), typeDiscriminator: "draw")]
+[JsonDerivedType(typeof(CreateCardAction), typeDiscriminator: "create")]
 [JsonDerivedType(typeof(DiscardCardAction), typeDiscriminator: "discard")]
 [JsonDerivedType(typeof(ModifierAction), typeDiscriminator: "modifier")]
+[JsonDerivedType(typeof(GrantAttackAction), typeDiscriminator: "grantAttack")]
 [JsonDerivedType(typeof(HurtAction), typeDiscriminator: "hurt")]
 [JsonDerivedType(typeof(HealAction), typeDiscriminator: "heal")]
 [JsonDerivedType(typeof(AttackAction), typeDiscriminator: "attack")]
 [JsonDerivedType(typeof(DeployAction), typeDiscriminator: "deploy")]
 [JsonDerivedType(typeof(SingleConditionalAction), typeDiscriminator: "singleConditional")]
 [JsonDerivedType(typeof(MultiConditionalAction), typeDiscriminator: "multiConditional")]
+[JsonDerivedType(typeof(RandomConditionalAction), typeDiscriminator: "randomConditional")]
 public abstract record CardAction;
 
 public sealed record DrawCardAction(int N, ImmutableArray<Filter> Filters) : CardAction;
+
+public sealed record CreateCardAction(int N, ImmutableArray<Filter> Filters) : CardAction;
 
 public sealed record DiscardCardAction(int N, bool MyHand, ImmutableArray<Filter> Filters) : CardAction;
 
 // 0 duration = until source dies
 // -1 duration = forever
 public sealed record ModifierAction(bool IsBuff, int Value, ScriptableAttribute Attr, Target Target, int Duration) : CardAction;
+
+public sealed record GrantAttackAction(int N, Target Target) : CardAction;
 
 public sealed record HurtAction(int Damage, Target Target) : CardAction;
 
@@ -96,6 +103,8 @@ public sealed record MultiConditionalAction(
     GameTeam Team,
     ImmutableArray<Filter> Conditions,
     ImmutableArray<CardAction> Actions) : CardAction;
+
+public sealed record RandomConditionalAction(int PercentChance, ImmutableArray<CardAction> Actions) : CardAction;
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(MeTarget), typeDiscriminator: "me")]
@@ -121,11 +130,13 @@ public sealed record NearbyAllyTarget(UnitDirection Direction) : Target;
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(PostSpawnEvent), typeDiscriminator: "postSpawn")]
+[JsonDerivedType(typeof(PostCoreHurtEvent), typeDiscriminator: "postCoreHurt")]
 [JsonDerivedType(typeof(PostUnitEliminatedEvent), typeDiscriminator: "postUnitEliminated")]
 [JsonDerivedType(typeof(PostUnitKillEvent), typeDiscriminator: "postUnitKill")]
 [JsonDerivedType(typeof(PostUnitHurtEvent), typeDiscriminator: "postUnitHurt")]
 [JsonDerivedType(typeof(PostUnitHealEvent), typeDiscriminator: "postUnitHeal")]
 [JsonDerivedType(typeof(PostUnitAttackEvent), typeDiscriminator: "postUnitAttack")]
+[JsonDerivedType(typeof(PostUnitHealthChange), typeDiscriminator: "postUnitHealthChange")]
 [JsonDerivedType(typeof(PostUnitNthAttackEvent), typeDiscriminator: "postUnitNthAttack")]
 [JsonDerivedType(typeof(PostNthCardPlayEvent), typeDiscriminator: "postNthCardPlay")]
 [JsonDerivedType(typeof(PostCardMoveEvent), typeDiscriminator: "postCardMove")]
@@ -133,6 +144,8 @@ public sealed record NearbyAllyTarget(UnitDirection Direction) : Target;
 public abstract record CardEvent;
 
 public sealed record PostSpawnEvent : CardEvent;
+
+public sealed record PostCoreHurtEvent(GameTeam Team) : CardEvent;
 
 public sealed record PostUnitEliminatedEvent(GameTeam Team) : CardEvent;
 
@@ -144,6 +157,9 @@ public sealed record PostUnitHurtEvent(GameTeam Team, bool Dealt) : CardEvent;
 public sealed record PostUnitHealEvent(GameTeam Team, bool Dealt) : CardEvent;
 
 public sealed record PostUnitAttackEvent(GameTeam Team, bool Dealt) : CardEvent;
+
+// Only affects oneself
+public sealed record PostUnitHealthChange(int Threshold) : CardEvent;
 
 public sealed record PostUnitNthAttackEvent(int N) : CardEvent;
 
@@ -186,6 +202,8 @@ public enum ScriptableAttribute
 
 public enum FilterOp
 {
+    // Greater/lower also imply "or equal"
+    // This should be renamed one day.
     Greater,
     Lower,
     Equal

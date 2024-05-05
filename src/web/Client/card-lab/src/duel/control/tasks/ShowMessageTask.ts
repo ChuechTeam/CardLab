@@ -7,14 +7,18 @@ export class ShowMessageTask extends GameTask {
     
     constructor(public scene: GameScene,
                 public readonly message: string, 
-                public readonly duration: number) {
+                public readonly duration: number,
+                public readonly pauseDuration: number | null = null) {
         super();
         
-        this.remaining = duration
+        this.remaining = pauseDuration ?? duration;
     }
     
     run() {
         this.scene.messageBanner.show(this.message, this.duration);
+        if (this.remaining <= 0) {
+            this.complete();
+        }
     }
 
     tick(ticker: Ticker) {

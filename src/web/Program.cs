@@ -34,10 +34,7 @@ var b = builder.Services
     {
         options.Conventions.AuthorizeFolder("/Game", "InGame");
 
-        options.Conventions.AddPageRouteModelConvention("/CreateGame", a =>
-        {
-            a.Selectors.Clear();
-        });
+        options.Conventions.AddPageRouteModelConvention("/CreateGame", a => { a.Selectors.Clear(); });
         options.Conventions.AddPageRoute("/CreateGame", createGameRoute);
     });
 
@@ -57,11 +54,8 @@ builder.Services.AddRouting(r =>
     r.LowercaseUrls = true;
     r.LowercaseQueryStrings = true;
 });
-builder.Services.AddResponseCompression(options =>
-{
-    options.EnableForHttps = true;
-});
-
+builder.Services.AddOptions<GameSessionSettings>().BindConfiguration(GameSessionSettings.Section);
+builder.Services.AddResponseCompression(options => { options.EnableForHttps = true; });
 builder.Services.AddSingleton<ServerState>();
 builder.Services.AddSingleton<BasePackRegistry>();
 builder.Services.AddSingleton<GamePackCompiler>();
@@ -72,17 +66,16 @@ builder.Services.AddHostedService<GamePackCompileWorker>();
 // builder.Services.AddSingleton<GameRequestQueue>();
 // builder.Services.AddHostedService<GameRequestWorker>();
 
-if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
-{
-    builder.Services.AddSingleton<GlobalDuelTest>();
-}
+#if DEBUG
+builder.Services.AddSingleton<GlobalDuelTest>();
+#endif
 
 builder.Services.AddViteServices(opt => { opt.PackageDirectory = "Client/card-lab"; });
 
 var app = builder.Build();
 var isDev = app.Environment.IsDevelopment();
 
-// Compile all base packs before launching the app. Always does that works in development mode.
+// Compile all base packs before launching the app. Always does that in development mode.
 // In production, the deployment script should run the app with "--compile" before bundling the container.
 var basePackRegistry = app.Services.GetRequiredService<BasePackRegistry>();
 if (args.ElementAtOrDefault(0) == "--compile" || isDev)
@@ -97,8 +90,15 @@ if (args.ElementAtOrDefault(0) == "--compile" || isDev)
         assetsDir = args.ElementAtOrDefault(1) ?? throw new InvalidOperationException("No assets directory provided.");
     }
     
-    await basePackRegistry.CompilePack(BasePack1.PackId, BasePack1.Name, BasePack1.PackVersion,
-        BasePack1.GetCards(assetsDir), "basePack1");
+    basePackRegistry.ClearPacks();
+    
+#if DEBUG
+    await basePackRegistry.CompilePack(TestPack.PackId, TestPack.Name, TestPack.PackVersion,
+        TestPack.GetCards(assetsDir), "testPack");
+#endif
+
+    await basePackRegistry.CompilePack(MainPack.PackId, MainPack.Name, MainPack.PackVersion,
+        MainPack.GetCards(assetsDir), "mainPack");
 
     if (!isDev)
     {
@@ -109,7 +109,6 @@ else
 {
     await basePackRegistry.FindPacks();
 }
-
 
 // Configure the HTTP request pipeline.
 if (!isDev)

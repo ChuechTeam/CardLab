@@ -10,6 +10,14 @@ top: 0;
 bottom: 0;
 right: 0;
 }
+#prep-mode {
+    height: 100%;
+    width: calc(100% - 40px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 auto;
+}
 #tuto-title {
 font-family: "Chakra Petch", sans-serif;
 
@@ -27,6 +35,7 @@ color: white;
 
 font-size: 0.75em;
 pointer-events: none;
+text-align: center;
 }
 fullscreen-button {
     position: absolute;
@@ -35,7 +44,7 @@ fullscreen-button {
 }
 </style>
 <div id="prep-mode">
-    <h2 id="prep-title">Bienvenue !</h2>
+    <h2 id="prep-title">Présentation des règles</h2>
 </div>
 <div id="duel-mode">
     <div id="tuto-title">Mode tutoriel</div>

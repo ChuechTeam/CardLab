@@ -141,6 +141,11 @@ export class LocalDuelState {
         this.units.set(unit.id, u);
         this.players[u.position.player].setUnitAt(u.position.vec.x, u.position.vec.y, u.id)
     }
+    
+    createCard(id: number) {
+        const card = new UnknownLocalDuelCard(id);
+        this.cards.set(id, card);
+    }
 
     markUnitDead(unitId: DuelUnitId) {
         const unit = this.units.get(unitId);
@@ -298,7 +303,7 @@ export class LocalDuelUnit {
         this.originRef = unit.originRef;
         this.originStats = unit.originStats;
         this.owner = toLocalIndex(unit.owner);
-        this.attribs = unit.attribs;
+        this.attribs = structuredClone(unit.attribs);
         this.position = toLocalPos(unit.position);
     }
 }

@@ -381,6 +381,7 @@ export class DuelController {
         "switchTurn": delta => {
             this.state.updateTurn(delta.newTurn, delta.whoPlays);
             
+            const state = this.state;
             const scene = this.scene;
             const whoseTurn = this.state.whoseTurn;
             const meIndex = this.playerIndex;
@@ -389,9 +390,19 @@ export class DuelController {
                 scene.showTurnIndicator(whoseTurn);
                 scene.turnButton.switchState(canEndTurn ? TurnButtonState.AVAILABLE : TurnButtonState.OPPONENT_TURN);
                 scene.cardInfoTooltip.hide();
+                for (let [id, u] of scene.units) {
+                    const unit = state.units.get(id);
+                    if (unit !== undefined) {
+                        u.updateVisualData({
+                            actionsShown: unit.owner === whoseTurn
+                        });
+                    }
+                }
                 if (whoseTurn === meIndex) {
                     scene.yourTurnOverlay.show();
                     yield GameTask.wait(YOUR_TURN_MAX_TIME-0.2);
+                } else {
+                    yield GameTask.wait(0.6);
                 }
             });
         },
@@ -425,6 +436,13 @@ export class DuelController {
                 return null;
             }
         },
+        "createCards": delta => {
+            for (const c of delta.cardIds) {
+                this.state.createCard(c);
+            }
+            // Created cards are always in temp location.
+            return null;
+        },
         "revealCards": delta => {
             this.state.revealCards(delta.revealedCards)
             this.state.hideCards(delta.hiddenCards)
@@ -447,7 +465,7 @@ export class DuelController {
             return new DestroyUnitTask(delta.removedId, this.avatars);
         },
         "showMessage": delta => {
-            return new ShowMessageTask(this.scene, delta.message, delta.duration/1000);
+            return new ShowMessageTask(this.scene, delta.message, delta.duration/1000, delta.pauseDuration/1000);
         }
     }
 
