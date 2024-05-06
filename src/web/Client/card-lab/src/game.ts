@@ -28,7 +28,7 @@ const basePackUrl = (window as any).mainPack as { def: string, res: string } | u
 
 const BASE_RECONNECT_INTERVAL = 1000; // ms
 const INC_RECONNECT_INTERVAL = 1000; // ms
-const MAX_RECONNECT_INTERVAL = 30000; // ms
+const MAX_RECONNECT_INTERVAL = 10000; // ms
 
 export class CardLab extends EventTarget {
     gameContainer: HTMLElement
@@ -672,6 +672,8 @@ if (gameContainer !== null) {
             }
         }
         const errListener = (e: Event) => {
+            alert("Erreur de connexion.");
+            window.location.href = baseUrl;
         }; // todo
         const closeListener = (e: CloseEvent) => {
             if (!socketHandleSpecialExit(e)) {

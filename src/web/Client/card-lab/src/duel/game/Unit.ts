@@ -1000,7 +1000,7 @@ export class UnitActionIndicator extends Container {
     root: Container;
     background: Graphics;
     text: BitmapText;
-    wait: Graphics
+    wait: Sprite
     
     actions: number; // < 0 --> waiting
     
@@ -1025,9 +1025,9 @@ export class UnitActionIndicator extends Container {
         this.background.tint = 0x000000;
         this.root.addChild(this.background);
         
-        this.wait = new Graphics(this.scene.game.assets.base.waitIcon);
+        this.wait = new Sprite(this.scene.game.assets.base.waitIconWhite);
         this.wait.tint = 0xffffff;
-        placeInRectCenter(this.wait, this.boundsArea.clone().pad(-3, -3), true);
+        placeInRectCenter(this.wait, this.boundsArea.clone().pad(-6, -6), true);
         this.root.addChild(this.wait);
         
         this.text = new BitmapText({

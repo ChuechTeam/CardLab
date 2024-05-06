@@ -96,12 +96,12 @@ public static partial class CardModule
             },
             SourceTarget => new TargetEvaluation
             {
-                AverageCardinality = 1,
+                AverageCardinality = EventCardinality(ctx.Event, true),
                 AllyProbability = AllyProbEvent(ctx.Event, true)
             },
             TargetTarget => new TargetEvaluation
             {
-                AverageCardinality = 1,
+                AverageCardinality = EventCardinality(ctx.Event, false),
                 AllyProbability = AllyProbEvent(ctx.Event, false)
             },
             NearbyAllyTarget => new TargetEvaluation
@@ -124,11 +124,11 @@ public static partial class CardModule
 
             // Boolean table:
             // DEALT | SOURCE
-            // 0     | 0     -> 0  (Dealt is false, "team" represents the target, and we want the target)
-            // 0     | 1     -> 1  (Dealt is false, "team" represents the target, BUT we want the source)
-            // 1     | 0     -> 1  (Dealt is true,  "team" represents the source, BUT we want the target)
-            // 1     | 1     -> 0  (Dealt is true,  "team" represents the source, and we want the source)
-            // --> XOR
+            // 0     | 0     -> 1  (Dealt is false, "team" represents the target, BUT we want the target)
+            // 0     | 1     -> 0  (Dealt is false, "team" represents the target, and we want the source)
+            // 1     | 0     -> 0  (Dealt is true,  "team" represents the source, and we want the target)
+            // 1     | 1     -> 1  (Dealt is true,  "team" represents the source, BUT we want the source)
+            // --> EQUAL
             return ev switch
             {
                 PostUnitHealEvent (var team, _)
@@ -140,6 +140,17 @@ public static partial class CardModule
                 PostUnitEliminatedEvent (var team)
                     => source ? ReverseTeamProb(team) : TeamProb(team),
                 _ => null
+            };
+        }
+
+        // Calculate the cardinality of sources/targets in the event.
+        static float EventCardinality(CardEvent ev, bool source)
+        {
+            return ev switch
+            {
+                PostUnitEliminatedEvent => source ? 1.0f : 0.0f,
+                PostUnitKillEvent => source ? 1.0f : 0.0f,
+                _ => 1.0f
             };
         }
 

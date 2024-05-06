@@ -89,7 +89,7 @@ export class BalanceOverview extends LabElement {
             this.pointsDisplay.textContent = `${balance.creditsUsed}/${balance.creditsAvailable}`
             
             const defOk = validation.definitionValid;
-            const balOk = balance.creditsUsed <= balance.creditsAvailable && balance.creditsUsed >= 0;
+            const balOk = balance.balanced;
             
             const issueNodes = [...validation.errors.map(issue => {
                 const li = document.createElement('li');
@@ -104,7 +104,7 @@ export class BalanceOverview extends LabElement {
                 this.box.className = "state-invalid";
                 
                 if (!balOk) {
-                    if (balance.creditsUsed >= 0) {
+                    if (balance.creditsUsed > balance.creditsAvailable) {
                         this.titleHeader.textContent = "Carte trop forte !";
 
                         const node = document.createElement('li');

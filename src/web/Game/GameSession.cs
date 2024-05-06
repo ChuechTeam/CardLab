@@ -83,6 +83,12 @@ public sealed class GameSession
         _loggerFactory = loggerFac;
 
         Phase = new WaitingForPlayersPhase(this);
+        
+        Logger.LogInformation("Starting session {Id} (Perm: {PermId}) of code {Code} with settings {Settings}" +
+                              " (LowW=[{LowW}], HighW=[{HighW}])",
+            id, PermanentId, code, settings,
+            string.Join(',', settings.CostLowWeights),
+            string.Join(',', settings.CostHighWeights));
     }
 
     // The lock is public as other components like Player and GamePhase can use it.

@@ -1,21 +1,19 @@
-﻿namespace CardLab.Game;
+﻿using System.Collections.Immutable;
+
+namespace CardLab.Game;
 
 public record GameSessionSettings
 {
     public const string Section = "DefaultSessionSettings";
     
     public int CardsPerPlayer { get; set; } = 2;
+    
+    public double DeckSpellProportion { get; set; } = 0.25;
+    
+    public int DeckArchetypeSequenceLength { get; set; } = 4;
+    
+    public int DeckUserCardCopies { get; set; } = 1;
 
-    public GameSessionRules.DeckSettings Deck { get; set; } = new()
-    {
-        SpellProportion = 0.2,
-        ArchetypeSequenceLength = 4,
-        UserCardCopies = 1
-    };
-
-    public GameSessionRules.CostSettings Cost { get; set; } = new()
-    {
-        LowWeights = [25, 40, 50, 40, 35],
-        HighWeights = [50, 40, 30, 20, 10]
-    };
+    public int[] CostLowWeights { get; set; } = [];
+    public int[] CostHighWeights { get; set; } = [];
 }

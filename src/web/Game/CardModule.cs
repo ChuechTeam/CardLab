@@ -11,7 +11,7 @@ public static partial class CardModule
 
     public record UsageSummary(int CreditsAvailable, int CreditsUsed)
     {
-        public bool Balanced => CreditsUsed <= CreditsAvailable && CreditsUsed >= 0;
+        public bool Balanced => CreditsUsed <= CreditsAvailable && CreditsUsed >= CreditsAvailable/4;
     }
 
     public static string SanitizeString(string str)

@@ -446,10 +446,10 @@ public static class GameSessionRules
         // N-th element: weight for cost N
 
         // Low: [1, 5]
-        public required ImmutableArray<int> LowWeights { get; set; }
+        public ImmutableArray<int> LowWeights { get; set; }
 
         // High: [6, 10]
-        public required ImmutableArray<int> HighWeights { get; set; }
+        public ImmutableArray<int> HighWeights { get; set; }
 
         public static CostSettings Symmetric(params int[] low)
         {

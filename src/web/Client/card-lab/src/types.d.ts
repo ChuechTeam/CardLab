@@ -208,6 +208,7 @@ declare interface CardValidationSummary {
 declare interface CardBalanceSummary {
     creditsUsed: number,
     creditsAvailable: number,
+    balanced: boolean,
     entries: CardBalanceEntry[]
 }
 

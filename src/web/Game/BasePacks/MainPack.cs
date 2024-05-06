@@ -41,7 +41,7 @@ public static class MainPack
                 Attack = 2,
                 Health = 1,
                 Cost = 1,
-            }, TutorialCard1Id, null),
+            }, TutorialCard1Id, Path.Combine(assetsDir, "Main/soldat.png")),
             (new CardDefinition
             {
                 Name = "Être volant non identifié",
@@ -135,7 +135,7 @@ public static class MainPack
                 Requirement = CardRequirement.SingleEntity,
                 Type = CardType.Spell,
                 Script = new CardScript { SpecialId = _scripts.CasseDuSiecle }
-            }, 6, null),
+            }, 6, Path.Combine(assetsDir, "Main/casse.png")),
             (new CardDefinition
             {
                 Name = "Sacrifice occulte",
@@ -145,7 +145,7 @@ public static class MainPack
                 Requirement = CardRequirement.SingleEntity,
                 Type = CardType.Spell,
                 Script = new CardScript { SpecialId = _scripts.SacrificeOcculte }
-            }, 7, null),
+            }, 7, Path.Combine(assetsDir, "Main/sacrifice.png")),
             (new CardDefinition
             {
                 Name = "Épée démoniaque",
@@ -154,7 +154,7 @@ public static class MainPack
                 Requirement = CardRequirement.None,
                 Type = CardType.Spell,
                 Script = new CardScript { SpecialId = _scripts.EpeeDemoniaque }
-            }, 8, null),
+            }, 8, Path.Combine(assetsDir, "Main/epee-demoniaque.png")),
             (new CardDefinition
             {
                 Name = "Pichenette",
@@ -163,7 +163,7 @@ public static class MainPack
                 Requirement = CardRequirement.SingleEntity,
                 Type = CardType.Spell,
                 Script = new CardScript { SpecialId = _scripts.Pichenette }
-            }, 101, null),
+            }, 101, Path.Combine(assetsDir, "Main/pichenette.png")),
             (new CardDefinition
             {
                 Name = "Boîte de Pandore",
@@ -192,7 +192,7 @@ public static class MainPack
                 Requirement = CardRequirement.SingleEntity,
                 Type = CardType.Spell,
                 Script = new CardScript { SpecialId = _scripts.SoifDeCarnage }
-            }, 11, null),
+            }, 11, Path.Combine(assetsDir, "Main/soif.png")),
             (new CardDefinition
             {
                 Name = "Petit tour au fourneau",
@@ -202,7 +202,7 @@ public static class MainPack
                 Requirement = CardRequirement.None,
                 Type = CardType.Spell,
                 Script = new CardScript { SpecialId = _scripts.PetitTourAuFourneau }
-            }, 12, null),
+            }, 12, Path.Combine(assetsDir, "Main/fourneau.png")),
             (new CardDefinition
             {
                 Name = "Missile téléguidé",
@@ -220,7 +220,7 @@ public static class MainPack
                 Requirement = CardRequirement.None,
                 Type = CardType.Spell,
                 Script = new CardScript { SpecialId = _scripts.PacteDuDiable }
-            }, 14, null),
+            }, 14, Path.Combine(assetsDir, "Main/pacte.png")),
             (new CardDefinition
             {
                 Name = "Réparation express",
@@ -229,7 +229,7 @@ public static class MainPack
                 Requirement = CardRequirement.SingleEntity,
                 Type = CardType.Spell,
                 Script = new CardScript { SpecialId = _scripts.ReparationExpress }
-            }, 15, null),
+            }, 15, Path.Combine(assetsDir, "Main/reparation.png")),
             (new CardDefinition
             {
                 Name = "Réaction en chaîne",
@@ -248,7 +248,7 @@ public static class MainPack
                 Requirement = CardRequirement.SingleEntity,
                 Type = CardType.Spell,
                 Script = new CardScript { SpecialId = _scripts.Plagiat }
-            }, 17, null),
+            }, 17, Path.Combine(assetsDir, "Main/plagiat.png")),
             (new CardDefinition
             {
                 Name = "Justice un peu agressive",

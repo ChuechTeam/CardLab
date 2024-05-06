@@ -153,8 +153,8 @@ public sealed record CreatingCardsPhase(GameSession Session) : GamePhase(Session
         var cpp = Session.Settings.CardsPerPlayer;
         var settings = new GameSessionRules.CostSettings
         {
-            LowWeights = [25, 40, 50, 40, 35],
-            HighWeights = [50, 40, 30, 20, 10]
+            LowWeights = [..Session.Settings.CostLowWeights],
+            HighWeights = [..Session.Settings.CostHighWeights]
         };
         
         // The costs array is in the following format: [low, high, low, high, ...]
@@ -290,11 +290,12 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
 
                 var settings = new GameSessionRules.DeckSettings
                 {
-                    ArchetypeSequenceLength = 4,
-                    SpellProportion = 0.2,
-                    UserCardCopies = 1
+                    SpellProportion = sess.Settings.DeckSpellProportion,
+                    ArchetypeSequenceLength = (ushort)sess.Settings.DeckArchetypeSequenceLength,
+                    UserCardCopies = sess.Settings.DeckUserCardCopies
                 };
-                me.DuelDecks = GameSessionRules.MakeNDecks(pack.Pack, sess.BasePack, sess.Players.Count, in settings);
+                me.DuelDecks = GameSessionRules.MakeNDecks(pack.Pack, sess.BasePack, sess.Players.Count,
+                    in settings);
 
                 me._status = Status.Ready;
                 sess.SendPhaseUpdateMessages();

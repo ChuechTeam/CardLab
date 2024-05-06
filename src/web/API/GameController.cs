@@ -197,7 +197,7 @@ public class GameController(
         {
             if (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
             {
-                logger.LogInformation("Websocket connection interrupted prematurely. {Ex}", ex);
+                logger.LogInformation("Websocket connection interrupted prematurely");
             }
             else
             {

@@ -233,6 +233,11 @@ public sealed partial class Duel : IDisposable
             foreach (var cardRef in deck)
             {
                 // Register the card to the deck
+                if (!CardDatabase.ContainsKey(cardRef))
+                {
+                    Logger.LogError("Couldn't find card {CardRef} while creating duel", cardRef);
+                    continue;
+                }
                 var card = MakeCard(cardRef);
                 card.Location = whoIdx == PlayerIndex.P1 ? DuelCardLocation.DeckP1 : DuelCardLocation.DeckP2;
                 cardDb.Add(card.Id, card);

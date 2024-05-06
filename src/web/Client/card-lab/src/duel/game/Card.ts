@@ -125,7 +125,8 @@ type SpellVisuals = {
         name: Text,
         cost: AbstractText,
         description: Text,
-        image: Sprite
+        image: Sprite,
+        spellCorner: Sprite
     }
 }
 
@@ -230,8 +231,8 @@ export class Card extends Container {
     propositions: LocalDuelCardPropositions | null = null // Propositions given by the server
     playable: boolean | null = null // True if this card can be dragged to be played, null if indeterminated
 
-    discardAnim = { pointUp: true }
-    alterationAnim = { pointUp: true, positive: true, startTint: 0 }
+    discardAnim = {pointUp: true}
+    alterationAnim = {pointUp: true, positive: true, startTint: 0}
     animName = CardAnim.NONE
     animTime = 0.0
 
@@ -274,7 +275,7 @@ export class Card extends Container {
         const ts = performance.now();
 
         this.game = scene.game
-        
+
         this.root = new Container();
         this.addChild(this.root);
 
@@ -701,8 +702,8 @@ export class Card extends Container {
             this.startDiscardAnim(true, true);
         }
     }
-    
-    startDiscardAnim(pointUp=true, keepScale=false) {
+
+    startDiscardAnim(pointUp = true, keepScale = false) {
         const scale = this.scale.x;
         this.clearAnim();
         if (keepScale) {
@@ -715,18 +716,18 @@ export class Card extends Container {
         this.animName = CardAnim.DISCARD;
         this.animTime = 0.0;
     }
-    
+
     continueDiscardAnim() {
         if (this.animTime >= DISCARD_ANIM_TIME) {
             this.destroy();
             return;
         }
-        
-        const p = this.animTime/DISCARD_ANIM_TIME;
-        this.root.position.y = (this.discardAnim.pointUp ? -1 : 1) * lerp(0, HEIGHT*0.4, p);
+
+        const p = this.animTime / DISCARD_ANIM_TIME;
+        this.root.position.y = (this.discardAnim.pointUp ? -1 : 1) * lerp(0, HEIGHT * 0.4, p);
         this.alpha = lerp(1, 0, p);
     }
-    
+
     startAlterationAnim(positive: boolean, pointUp: boolean) {
         this.clearAnim();
 
@@ -737,19 +738,19 @@ export class Card extends Container {
         this.animName = CardAnim.ALTERATION;
         this.animTime = 0.0;
     }
-    
+
     continueAlterationAnim() {
         if (this.animTime >= ALTERATION_ANIM_TIME) {
             this.clearAnim();
             return;
         }
 
-        const p = this.animTime/ALTERATION_ANIM_TIME;
+        const p = this.animTime / ALTERATION_ANIM_TIME;
         const pPingPong = easeExp(Math.sin(p * Math.PI), p < 0.5 ? -3.4 : -1);
         const pointUp = this.alterationAnim.pointUp;
         // The y coordinate is reversed since the card is rotated 180 degrees.
         this.root.position.y = -lerp(0, pointUp ? 450 : 90, pPingPong);
-        
+
         const col = this.alterationAnim.positive ? 0xaaaaFF : 0xFFaaaa;
         this.tint = clerp(this.alterationAnim.startTint, col, pPingPong);
     }
@@ -1195,7 +1196,7 @@ export class Card extends Container {
             });
             this.root.addChild(desc);
             placeInRectCenter(desc, new Rectangle(cx(4), cy(78), cx(92), cy(37)), true);
-            
+
             let archetype: Text | null = null;
             if (data.type === "unit" && data.archetype !== null && attack !== undefined && health !== undefined) {
                 const archetype = new Text({
@@ -1205,13 +1206,13 @@ export class Card extends Container {
                 });
                 archetype.pivot.set(archetype.width / 2, archetype.height / 2);
                 this.root.addChild(archetype);
-                
-                archetype.x = WIDTH/2;
-                archetype.y = attack.cont.y + attack.cont.height/2;
-                
+
+                archetype.x = WIDTH / 2;
+                archetype.y = attack.cont.y + attack.cont.height / 2;
+
                 const maxWidth = cx(40);
                 if (archetype.width > maxWidth) {
-                    archetype.scale.set(maxWidth/archetype.width);
+                    archetype.scale.set(maxWidth / archetype.width);
                 }
             }
 
@@ -1231,6 +1232,15 @@ export class Card extends Container {
             bord.x = img.x;
             bord.y = img.y;
 
+            let spellCorner: Sprite | null = null;
+            if (data.type === "spell") {
+                spellCorner = new Sprite(this.game.assets.base.spellCorner);
+                this.root.addChild(spellCorner);
+                spellCorner.scale.set(0.2);
+                spellCorner.x = img.x + img.width - spellCorner.width;
+                spellCorner.y = img.y;
+            }
+
             visuals = {
                 type: data.type,
                 components: {
@@ -1240,6 +1250,7 @@ export class Card extends Container {
                     health,
                     description: desc,
                     image: img,
+                    spellCorner,
                     archetype
                 },
                 data: data
@@ -1317,7 +1328,7 @@ export class Card extends Container {
         // to my taste you know
         const bounds = cont.getLocalBounds().rectangle;
         bounds.y -= 1.3;
-        
+
         const components = {cont, bg, text, textBounds: bounds};
         this.updateAttribute(components, value, state)
         return components;

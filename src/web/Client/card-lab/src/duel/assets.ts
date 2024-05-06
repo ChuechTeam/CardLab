@@ -13,6 +13,9 @@ import attackTargetUrl from "./assets/attack-target.png";
 import glossUrl from "./assets/gloss.png";
 import boardCoreMaskUrl from "./assets/board-core-mask.png";
 import waitIconUrl from "./assets/wait-icon.svg";
+import whiteUrl from "./assets/white.png";
+import spellCornerUrl from "./assets/spell-corner.png";
+import waitIconWhite from "./assets/wait-icon-white.png";
 import {duelLog} from "./log.ts";
 
 type BaseBundleType = typeof baseBundle;
@@ -45,13 +48,22 @@ const baseBundle = {
     "largeAttrBg": svgAsset(largeAttrBgUrl),
     "attackTarget": attackTargetUrl,
     "waitIcon": svgAsset(waitIconUrl),
-    "gloss": glossUrl
-}
+    "waitIconWhite": waitIconWhite,
+    "gloss": glossUrl,
+    "white": whiteUrl,
+    "spellCorner": spellCornerUrl
+};
+
+let bundleAdded = false;
+let fontsLoaded = false;
 
 export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
     const begin = performance.now()
-
-    Assets.addBundle("baseBundle", baseBundle)
+    
+    if (!bundleAdded) {
+        Assets.addBundle("baseBundle", baseBundle)
+        bundleAdded = true;
+    }
     const bundlePromise = Assets.loadBundle("baseBundle").then(x => x as BaseAssets)
 
     const assetPromises: Promise<[string, CardAsset, ImageBitmap] | null>[] = []
@@ -87,18 +99,22 @@ export async function loadDuelAssets(gameRegistry: DuelGameRegistry) {
 
     const baseAssets = await bundlePromise
 
-    // this requires the style.css file to be loaded in the page! 
-    await document.fonts.load("12px Chakra Petch")
-    BitmapFont.install({
-        name: "ChakraPetchDigits",
-        chars: "0123456789!.,;/+-",
-        style: {
-            fontSize: 120,
-            fill: 0xffffff,
-            fontFamily: "Chakra Petch"
-        },
-        resolution: 1
-    });
+    // this requires the style.css file to be loaded in the page!
+    if (!fontsLoaded) {
+        await document.fonts.load("12px Chakra Petch")
+        BitmapFont.install({
+            name: "ChakraPetchDigits",
+            chars: "0123456789!.,;/+-",
+            style: {
+                fontSize: 120,
+                fill: 0xffffff,
+                fontFamily: "Chakra Petch"
+            },
+            resolution: 1
+        });
+        
+        fontsLoaded = true;
+    }
 
     const end = performance.now()
     duelLog(`Assets loaded in ${(end - begin).toFixed(2)}ms`)
@@ -119,6 +135,6 @@ export class DuelAssets {
     }
 
     get fallbackTexture() {
-        return this.base.verticalGradient;
+        return this.base.white;
     }
 }

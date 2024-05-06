@@ -291,7 +291,13 @@ export class DrawCanvas extends LabElement {
         if (this.undoStack.images.length >= MAX_UNDOS - 1) {
             this.undoStack.images.shift();
         }
-        this.undoStack.images.push(this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height));
+        // If we're inside the undo stack, remove all the images from the end, until we come up to what's currently
+        // displayed on screen.
+        if (this.undoStack.displayedIdx !== null) {
+            this.undoStack.images.splice(this.undoStack.displayedIdx+1);
+        } else {
+            this.undoStack.images.push(this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height));
+        }
         this.undoStack.displayedIdx = null;
         this.undoStack.redoLastImg = null;
         this.dispatchEvent(new CustomEvent("undoStackUpdated"));
