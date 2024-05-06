@@ -541,7 +541,7 @@ public sealed partial class Duel : IDisposable
 
         if (script.SpecialId is { } spId)
         {
-            return SpecialDuelScripts.Scripts.Count > spId ? SpecialDuelScripts.Scripts[spId](this, entity) : null;
+            return SpecialDuelScripts.MakeScript(card.BaseDefRef.PackId, spId, this, entity);
         }
         else if (entity is DuelUnit u)
         {

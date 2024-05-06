@@ -134,9 +134,9 @@ public static partial class CardModule
                 PostUnitHealEvent (var team, _)
                     => TeamProb(team), // Healing is (almost) always from same team to same team.
                 PostUnitHurtEvent (var team, var dealt)
-                    => dealt ^ source ? TeamProb(team) : ReverseTeamProb(team),
+                    => dealt == source ? TeamProb(team) : ReverseTeamProb(team),
                 PostUnitAttackEvent (var team, var dealt)
-                    => dealt ^ source ? TeamProb(team) : ReverseTeamProb(team),
+                    => dealt == source ? TeamProb(team) : ReverseTeamProb(team),
                 PostUnitEliminatedEvent (var team)
                     => source ? ReverseTeamProb(team) : TeamProb(team),
                 _ => null

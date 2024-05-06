@@ -5,15 +5,28 @@ namespace CardLab.Game.Duels.Scripting;
 
 public static partial class SpecialDuelScripts
 {
-    private static class ScriptsInit
-    {
-        internal static List<Func<Duel, IEntity, DuelScript?>> Scripts = [];
-    } 
-    public static List<Func<Duel, IEntity, DuelScript?>> Scripts => ScriptsInit.Scripts;
+    public static Dictionary<Guid, List<Func<Duel, IEntity, DuelScript?>>> Scripts = new();
 
-    private static int AddScript(Func<Duel, IEntity, DuelScript?> scriptFunc)
+    public static int AddScript(Guid guid, Func<Duel, IEntity, DuelScript?> scriptFunc)
     {
-        Scripts.Add(scriptFunc);
-        return Scripts.Count - 1;
+        List<Func<Duel, IEntity, DuelScript?>> list = new();
+        if (!Scripts.TryGetValue(guid, out list))
+        {
+            Scripts[guid] = list = new List<Func<Duel, IEntity, DuelScript?>>();
+        }
+        list.Add(scriptFunc);
+        return list.Count - 1;
+    }
+    
+    public static DuelScript? MakeScript(Guid guid, int index, Duel duel, IEntity entity)
+    {
+        if (Scripts.TryGetValue(guid, out var list))
+        {
+            if (index < list.Count)
+            {
+                return list[index](duel, entity);
+            }
+        }
+        return null;
     }
 }

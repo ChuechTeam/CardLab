@@ -77,6 +77,7 @@ var isDev = app.Environment.IsDevelopment();
 
 // Compile all base packs before launching the app. Always does that in development mode.
 // In production, the deployment script should run the app with "--compile" before bundling the container.
+MainPack.InitScripts();
 var basePackRegistry = app.Services.GetRequiredService<BasePackRegistry>();
 if (args.ElementAtOrDefault(0) == "--compile" || isDev)
 {
