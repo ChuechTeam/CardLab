@@ -206,6 +206,25 @@ public static class GameSessionRules
         }
 
         spellCards = spellCards[..numSpellCards];
+        
+        // Find all the cards from the session pack that are compatible with the bias settings.
+        HashSet<uint> biasCompatible = new();
+        if (settings.BiasMaxCost >= 0)
+        {
+            foreach (var card in sessionPack.Cards)
+            {
+                if (card.Definition.Cost <= settings.BiasMaxCost)
+                {
+                    biasCompatible.Add(card.Id);
+                }
+            }
+        }
+        
+        // configure more bias stuff
+        var bmx = settings.BiasMaxCost;
+        var bdt = Math.Min(settings.BiasDeckTopSpan, numTot);
+        var bg = Math.Min(settings.BiasGuaranteed, bdt);
+        Pool<int> topDeckIndicesPool = new(bdt <= StackAllocMaxNum ? stackalloc int[bdt] : new int[bdt], true);
 
         // Now we can finally create all the arrays and pools we need.
         // Pool of indices to the packet array.
@@ -271,8 +290,46 @@ public static class GameSessionRules
                     curPacketEl = 0;
                 }
             }
-        }
+            
+            // Now, we need to apply any bias.
+            if (bmx >= 0 && bdt > 0 && bg > 0)
+            {
+                List<int> lowCostIndices = new();
+                for (var j = 0; j < deck.Length; j++)
+                {
+                    ref var qualCardRef = ref deck[j];
+                    if (qualCardRef.PackId == sessionPack.Id && biasCompatible.Contains(qualCardRef.CardId))
+                    {
+                        lowCostIndices.Add(j);
+                    }
+                }
 
+                var guaranteed = Math.Min(bg, lowCostIndices.Count);
+                
+                for (int j = 0; j < bdt; j++)
+                {
+                    topDeckIndicesPool.Span[j] = numTot - j - 1;
+                }
+                topDeckIndicesPool.Refilled();
+
+                for (int j = 0; j < guaranteed; j++)
+                {
+                    var topIdx = topDeckIndicesPool.Pick(random);
+                    
+                    // Already a low cost card, skip it.
+                    if (deck[topIdx].PackId == sessionPack.Id && biasCompatible.Contains(deck[topIdx].CardId))
+                    {
+                        continue;
+                    }
+                    
+                    // swap with a random low cost idx
+                    var lowCostIdx = lowCostIndices[random.Next(lowCostIndices.Count)];
+                    (deck[topIdx], deck[lowCostIdx]) = (deck[lowCostIdx], deck[topIdx]);
+                    lowCostIndices.Remove(lowCostIdx);
+                }
+            }
+        }
+        
         // Phew, we can now transform those into immutable arrays
 
         var immut = new ImmutableArray<QualCardRef>[n];
@@ -438,6 +495,11 @@ public static class GameSessionRules
         public required double SpellProportion { get; set; }
 
         public required int UserCardCopies { get; set; }
+        
+        // Bias Settings
+        public required int BiasMaxCost { get; set; }
+        public required int BiasDeckTopSpan { get; set; }
+        public required int BiasGuaranteed { get; set; }
     }
 
     public record struct CostSettings

@@ -292,7 +292,10 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
                 {
                     SpellProportion = sess.Settings.DeckSpellProportion,
                     ArchetypeSequenceLength = (ushort)sess.Settings.DeckArchetypeSequenceLength,
-                    UserCardCopies = sess.Settings.DeckUserCardCopies
+                    UserCardCopies = sess.Settings.DeckUserCardCopies,
+                    BiasMaxCost = 4,
+                    BiasGuaranteed = 3,
+                    BiasDeckTopSpan = 5
                 };
                 me.DuelDecks = GameSessionRules.MakeNDecks(pack.Pack, sess.BasePack, sess.Players.Count,
                     in settings);
