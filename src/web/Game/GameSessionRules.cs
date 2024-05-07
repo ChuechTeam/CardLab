@@ -176,7 +176,12 @@ public static class GameSessionRules
         int iSeq = 0;
         foreach (var sameArch in archCards.Values)
         {
-            var remainder = sameArch.Count % numArchSeq;
+            var remainder = numArchSeq - sameArch.Count % numArchSeq;
+            if (remainder == numArchSeq)
+            {
+                // Then sameArch is a multiple of numArchSeq
+                remainder = 0;
+            }
             for (var i = 0; i < sameArch.Count; i++)
             {
                 seqPackets[iSeq] = sameArch[i];
@@ -281,6 +286,7 @@ public static class GameSessionRules
                 Debug.Assert(curPacketStart != noPacket);
 
                 deck[j] = new QualCardRef(sessionPack.Id, seqPackets[curPacketStart + curPacketEl]);
+                Debug.Assert(sessionPack.CardMap.ContainsKey(deck[j].CardId));
                 curPacketEl++;
 
                 // Switch to a new packet if this one is depleted.
@@ -295,7 +301,7 @@ public static class GameSessionRules
             if (bmx >= 0 && bdt > 0 && bg > 0)
             {
                 List<int> lowCostIndices = new();
-                for (var j = 0; j < deck.Length; j++)
+                for (var j = 0; j < deck.Length - bdt; j++)
                 {
                     ref var qualCardRef = ref deck[j];
                     if (qualCardRef.PackId == sessionPack.Id && biasCompatible.Contains(qualCardRef.CardId))

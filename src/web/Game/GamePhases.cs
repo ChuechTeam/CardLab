@@ -293,12 +293,26 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
                     SpellProportion = sess.Settings.DeckSpellProportion,
                     ArchetypeSequenceLength = (ushort)sess.Settings.DeckArchetypeSequenceLength,
                     UserCardCopies = sess.Settings.DeckUserCardCopies,
-                    BiasMaxCost = 4,
-                    BiasGuaranteed = 3,
+                    BiasMaxCost = 3,
+                    BiasGuaranteed = 2,
                     BiasDeckTopSpan = 5
                 };
-                me.DuelDecks = GameSessionRules.MakeNDecks(pack.Pack, sess.BasePack, sess.Players.Count,
-                    in settings);
+                try
+                {
+                    me.DuelDecks = GameSessionRules.MakeNDecks(pack.Pack, sess.BasePack, sess.Players.Count,
+                        in settings);
+                }
+                catch (Exception e)
+                {
+                    sess.Logger.LogError(e, "Error while making decks, using fallback");
+                    var decks = new ImmutableArray<QualCardRef>[sess.Players.Count];
+                    for (var index = 0; index < sess.Players.Count; index++)
+                    {
+                        decks[index] = (MakeFallbackDeck(pack.Pack, sess.BasePack, 40));
+                    }
+
+                    me.DuelDecks = decks;
+                }
 
                 me._status = Status.Ready;
                 sess.SendPhaseUpdateMessages();
@@ -338,6 +352,28 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
         }
     }
 
+    private static ImmutableArray<QualCardRef> MakeFallbackDeck(GamePack pack1, GamePack pack2, int n)
+    {
+        var builder = ImmutableArray.CreateBuilder<QualCardRef>();
+
+        var cards = new List<QualCardRef>();
+        foreach (var (id, _, _) in pack1.Cards)
+        {
+            cards.Add(new QualCardRef(pack1.Id, id));
+        }
+        foreach (var (id, _, _) in pack2.Cards)
+        {
+            cards.Add(new QualCardRef(pack2.Id, id));
+        }
+        
+        for (int i = 0; i < n; i++)
+        {
+            builder.Add(cards[Random.Shared.Next(cards.Count)]);
+        }
+
+        return builder.ToImmutable();
+    }
+    
     public enum Status
     {
         WaitingLastUploads,
