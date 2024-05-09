@@ -443,7 +443,7 @@ public sealed class GameSession
             }
 
             Logger.LogInformation("Starting duels for {NumPlayers} players. Require session pack: {ReqPack}",
-                pairs.Length, requireSessionPack);
+                pairs.Length * 2, requireSessionPack);
             var stopwatch = Stopwatch.StartNew();
 
             var numDecks = decks.Length - 1;

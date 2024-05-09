@@ -211,7 +211,7 @@ export class CardLab extends EventTarget {
         }
 
         this.reconnectionState = {
-            handle: setInterval(this.reconnectAttempt.bind(this), BASE_RECONNECT_INTERVAL),
+            handle: setTimeout(this.reconnectAttempt.bind(this), BASE_RECONNECT_INTERVAL),
             interval: BASE_RECONNECT_INTERVAL,
             queue: new MessageQueue()
         };
@@ -272,15 +272,15 @@ export class CardLab extends EventTarget {
             throw new Error("Cannot continue reconnection when not reconnecting.");
         }
 
-        clearInterval(s.handle);
+        clearTimeout(s.handle);
         s.interval = Math.min(s.interval + INC_RECONNECT_INTERVAL, MAX_RECONNECT_INTERVAL);
-        s.handle = setInterval(this.reconnectAttempt.bind(this), s.interval);
+        s.handle = setTimeout(this.reconnectAttempt.bind(this), s.interval);
 
         console.log(`Continuing reconnection (interval=${s.interval})...`);
     }
 
     exitReconnection(socket: WebSocket) {
-        clearInterval(this.reconnectionState?.handle);
+        clearTimeout(this.reconnectionState?.handle);
         this.reconnectionState = null;
         this.socket = socket;
         this.prepareSocket();

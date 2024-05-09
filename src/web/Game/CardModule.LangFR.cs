@@ -605,9 +605,9 @@ public static partial class CardModule
 
             return (plural, feminine, elision) switch
             {
+                (false, _, true) => $"à l'{expression}",
                 (false, false, _) => $"au {expression}",
                 (false, true, false) => $"à la {expression}",
-                (false, true, true) => $"à l'{expression}",
                 (true, _, _) => $"aux {expression}"
             };
         }

@@ -326,9 +326,9 @@ public static partial class CardModule
             HealAction a => 25 * Math.Max(0, a.Damage) * TargetWeight(a.Target, TargetWeightMode.AllyBenefit, in ctx)
                 * (a.Target is MeTarget ? 1.8f : 1.0f),
             AttackAction a => 20 * TargetWeight(a.Target, TargetWeightMode.EnemyBenefit, in ctx),
-            DrawCardAction a => 30 * a.N * FilterPowerWeight(a.Filters, 0.15f, in ctx),
-            CreateCardAction a => 40 * a.N * FilterPowerWeight(a.Filters, 0.15f, in ctx),
-            DiscardCardAction a => 30 * a.N * FilterPowerWeight(a.Filters, 0.35f, in ctx) * (a.MyHand ? -0.75f : 1.0f),
+            DrawCardAction a => 45 * a.N * FilterPowerWeight(a.Filters, 0.15f, in ctx),
+            CreateCardAction a => 60 * a.N * FilterPowerWeight(a.Filters, 0.15f, in ctx),
+            DiscardCardAction a => 50 * a.N * FilterPowerWeight(a.Filters, 0.35f, in ctx) * (a.MyHand ? -0.75f : 1.0f),
             DeployAction a => 90 * FilterPowerWeight(a.Filters, 0.15f, in ctx),
             GrantAttackAction a => 150 * TargetWeight(a.Target, TargetWeightMode.Neutral, in ctx)
                                        * (a.Target is MeTarget ? 3.0f : 1.0f),
@@ -344,9 +344,9 @@ public static partial class CardModule
         static float Modifier(ModifierAction a, ref readonly BalanceEvalContext ctx)
         {
             // Values considering permanent effects.
-            const int atkBaseValue = 50;
-            const int hpBaseValue = 44;
-            const int costBaseValue = 40;
+            const int atkBaseValue = 88;
+            const int hpBaseValue = 70;
+            const int costBaseValue = 64;
 
             TargetWeightMode wm = a.IsBuff ? TargetWeightMode.AllyBenefit : TargetWeightMode.EnemyBenefit;
             int baseVal = a.Attr switch
@@ -358,9 +358,9 @@ public static partial class CardModule
             };
             float frequencyWeight = a.Duration switch
             {
-                0 => 0.8f, // Until I die
+                0 => a.Target is MeTarget ? 1.0f : 0.85f, // Until I die
                 -1 => 1, // Forever
-                var x => Math.Min(0.75f, 0.45f + x * 0.15f) // X turns (x=1 -> 0.6)
+                var x => Math.Min(0.85f, 0.35f + (x-1) * 0.25f) // X turns (x=1 -> 0.3)
             };
 
             return baseVal * a.Value * frequencyWeight * TargetWeight(a.Target, wm, in ctx);
