@@ -724,8 +724,7 @@ public static class MainPack
         public override void CardOnPlay(DuelFragment frag, PlayerIndex player,
             ImmutableArray<DuelArenaPosition> slots, ImmutableArray<int> entities)
         {
-            var ps = State.GetPlayer(player);
-            var cards = ps.Hand.ToList();
+            var cards = Cards(player);
             if (cards.Count < 2)
             {
                 return;

@@ -55,13 +55,7 @@ public class IndexModel : PageModel
             JoinErrMsg = "Code invalide.";
             return Page();
         }
-
-        if (session.PhaseName != GamePhaseName.WaitingForPlayers)
-        {
-            JoinErrMsg = "La partie a déjà commencé.";
-            return Page();
-        }
-
+        
         var result = session.AddPlayer(PlayerName);
 
         if (result.SucceededWith(out var player))

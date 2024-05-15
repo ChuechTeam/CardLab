@@ -123,5 +123,37 @@ namespace CardLab.API
                 return Ok();
             }
         }
+        
+        [HttpPost("duels-start-round")]
+        public IActionResult DuelsStartRound()
+        {
+            var user = (GameUserPrincipal)User;
+
+            var result = user.GameSession.DuelsStartRound();
+            if (result.FailedWith(out var error))
+            {
+                return Problem(error, statusCode: (int)HttpStatusCode.Conflict);
+            }
+            else
+            {
+                return Ok();
+            }
+        }
+        
+        [HttpPost("duels-end-round")]
+        public IActionResult DuelsEndRound()
+        {
+            var user = (GameUserPrincipal)User;
+
+            var result = user.GameSession.DuelsEndRound();
+            if (result.FailedWith(out var error))
+            {
+                return Problem(error, statusCode: (int)HttpStatusCode.Conflict);
+            }
+            else
+            {
+                return Ok();
+            }
+        }
     }
 }

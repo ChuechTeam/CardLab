@@ -60,43 +60,37 @@ export const gameApi = {
 
     host: {
         async startGame() {
-            let res = await clFetch(apiUrl("api/game/host/start-game"), {method: 'POST'});
-            return res.ok;
+            await clFetch(apiUrl("api/game/host/start-game"), {method: 'POST'});
         },
         async startTutorialDuels() {
-            let res = await clFetch(apiUrl("api/game/host/start-tutorial-duels"), {method: 'POST'});
-            return res.ok;
+            await clFetch(apiUrl("api/game/host/start-tutorial-duels"), {method: 'POST'});
         },
         async endTutorial() {
-            let res = await clFetch(apiUrl("api/game/host/end-tutorial"), {method: 'POST'});
-            return res.ok;
+            await clFetch(apiUrl("api/game/host/end-tutorial"), {method: 'POST'});
         },
         async endCardCreation() {
-            let res = await clFetch(apiUrl("api/game/host/end-card-creation"), {method: 'POST'});
-            return res.ok;
+            await clFetch(apiUrl("api/game/host/end-card-creation"), {method: 'POST'});
         },
         async kickPlayer(id: number) {
-            let res = await clFetch(apiUrl(`api/game/host/kick-player?id=${id}`), {method: 'POST'});
-            return res.ok;
+            await clFetch(apiUrl(`api/game/host/kick-player?id=${id}`), {method: 'POST'});
         },
         async preparationRevealOpponents() {
-            let res = await clFetch(apiUrl("api/game/host/preparation-reveal-opponents"), {method: 'POST'});
-            return res.ok;
+            await clFetch(apiUrl("api/game/host/preparation-reveal-opponents"), {method: 'POST'});
         },
         async endPreparation() {
-            let res = await clFetch(apiUrl("api/game/host/end-preparation"), {method: 'POST'});
-            return res.ok;
+            await clFetch(apiUrl("api/game/host/end-preparation"), {method: 'POST'});
+        },
+        async duelsStartRound() {
+            await clFetch(apiUrl("api/game/host/duels-start-round"), {method: 'POST'});
+        },
+        async duelsEndRound() {
+            await clFetch(apiUrl("api/game/host/duels-end-round"), {method: 'POST'});
         }
     },
 
     cards: {
         async update(index: number, card: CardDefinition): Promise<CardUpdateResult> {
             let res = await clFetch(apiUrl(`api/game/cards/${index}`), jsonPost(card));
-            return await res.json();
-        },
-
-        async updateAll(cards: (CardDefinition | null)[]): Promise<(CardUpdateResult | null)[]> {
-            let res = await clFetch(apiUrl("api/game/cards"), jsonPost(cards));
             return await res.json();
         },
 

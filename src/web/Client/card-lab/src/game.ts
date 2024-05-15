@@ -48,6 +48,7 @@ export class CardLab extends EventTarget {
     sessionPackDownload: PackDownTask | null = null;
 
     ongoingDuel: {
+        id: number,
         requiresSessionPack: boolean,
         loadTask: { cancel: boolean } | null
         messaging: DuelMessaging
@@ -82,7 +83,7 @@ export class CardLab extends EventTarget {
         this.sessionPackUrl = helloResponse.pack;
 
         if (helloResponse.duel != null) {
-            this.registerDuel(helloResponse.duel, helloResponse.duelRequireSessionPack);
+            this.registerDuel(helloResponse.duel, helloResponse.duelRequireSessionPack, helloResponse.duelId!);
         }
 
         this.prepareSocket()
@@ -289,6 +290,10 @@ export class CardLab extends EventTarget {
 
     handleMessage(message: LabMessage) {
         if (message.type === 'lobbyPlayerUpdated') {
+            if (this.phase !== "waitingForPlayers") {
+                return;
+            }
+            
             const phState = this.phaseState as WaitingForPlayersPhaseState;
             if (message.kind === 'quit') {
                 let i = 0;
@@ -329,10 +334,10 @@ export class CardLab extends EventTarget {
 
             if (message.duel !== null) {
                 // This won't work properly if two different duels have the same requiresSessionPack value!
-                if (this.ongoingDuel !== null && this.ongoingDuel.requiresSessionPack === message.duelRequireSessionPack) {
+                if (this.ongoingDuel !== null && this.ongoingDuel.id === message.duelId) {
                     this.ongoingDuel.messaging.receiveMessage({type: "duelWelcome", ...message.duel}, true);
                 } else {
-                    this.registerDuel(message.duel, message.duelRequireSessionPack);
+                    this.registerDuel(message.duel, message.duelRequireSessionPack, message.duelId!);
                     void this.startLoadingDuel()
                 }
             } else {
@@ -344,7 +349,7 @@ export class CardLab extends EventTarget {
                 this.downloadSessionPack().then(() => console.log("Session pack downloaded!"));
             }
         } else if (message.type === "sessionDuelStarted") {
-            this.registerDuel(message.welcome, message.requireSessionPack)
+            this.registerDuel(message.welcome, message.requireSessionPack, message.id)
             void this.startLoadingDuel()
         } else if (message.type === "sessionDuelEnded") {
             this.dismountDuel()
@@ -397,10 +402,11 @@ export class CardLab extends EventTarget {
         }
     }
 
-    private registerDuel(welcome: PartialDuelWelcome, require: boolean) {
+    private registerDuel(welcome: PartialDuelWelcome, require: boolean, id: number) {
         this.dismountDuel();
 
         this.ongoingDuel = {
+            id,
             requiresSessionPack: require,
             loadTask: null,
             loaded: null,

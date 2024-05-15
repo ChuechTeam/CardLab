@@ -17,6 +17,8 @@ public class DuelMutation(Duel duel, DuelState state, DuelAction root)
 
     private ushort _nextFragId = 0;
 
+    public Queue<DuelEvent> QueuedEvents { get; } = new();
+
     public void RegisterAttrUpdate(IEntity entity, DuelAttributeId id)
     {
         var attribs = entity.Attribs;
@@ -134,5 +136,10 @@ public class DuelMutation(Duel duel, DuelState state, DuelAction root)
     public DuelFragmentResult ApplyFrag(DuelFragment f)
     {
         return duel.ApplyFrag(this, f);
+    }
+
+    public void QueueEvent(DuelEvent ev)
+    {
+        QueuedEvents.Enqueue(ev);
     }
 }

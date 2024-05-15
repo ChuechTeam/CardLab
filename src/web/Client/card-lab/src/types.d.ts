@@ -262,11 +262,29 @@ declare type PreparationPhaseState = {
     yourOpponent: string | null
 }
 
+declare type DuelsPhaseState = {
+    type: "duels",
+    roundOngoing: boolean,
+    duels: {
+        id: number,
+        player1: string,
+        player2: string,
+        ongoing: boolean,
+        whoWon: number
+    }[],
+    leaderboard: {
+        id: number,
+        player: string,
+        score: number
+    }[]
+}
+
 declare type PhaseState =
     | WaitingForPlayersPhaseState
     | CreatingCardPhaseState
     | TutorialPhaseState
     | PreparationPhaseState
+    | DuelsPhaseState
     | null
 
 /**
@@ -292,6 +310,7 @@ declare type WelcomeMessage = {
     permId: string
     pack: DownloadablePack | null,
     duel: PartialDuelWelcome | null,
+    duelId: number | null,
     duelRequireSessionPack: boolean
     me: Player | null,
     phaseName: PhaseName,
@@ -305,6 +324,7 @@ declare type PackAvailableMessage = {
 
 declare type SessionDuelStartedMessage = {
     type: "sessionDuelStarted",
+    id: number,
     requireSessionPack: boolean
     welcome: PartialDuelWelcome
 }

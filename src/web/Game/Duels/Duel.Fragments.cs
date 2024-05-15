@@ -652,6 +652,7 @@ public sealed partial class Duel
         {
             ApplyDelta(new SwitchStatusDelta { Status = DuelStatus.Ended, Winner = winner });
             Mutation.StopTurnTimer();
+            Mutation.QueueEvent(new DuelEndedEvent(winner));
             return true;
         }
     }

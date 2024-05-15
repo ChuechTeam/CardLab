@@ -47,6 +47,7 @@ public sealed partial class Duel : IDisposable
 
     public DuelMessageRouting Routing { get; }
     public (PlayerIndex, DuelRequestAckMessage)? AckPostMutation { get; set; } = null;
+    public Action<Duel, DuelEvent>? EventCallback { get; set; } = null;
 
     private readonly Timer _turnTimer;
     private DateTime _turnTimerEnd = DateTime.MinValue;
@@ -86,6 +87,14 @@ public sealed partial class Duel : IDisposable
         // todo: obvious validations (deck size, etc.)
     }
 
+    public void SetEventCallback(Action<Duel, DuelEvent>? callback)
+    {
+        lock (Lock)
+        {
+            EventCallback = callback;
+        }
+    }
+    
     public void ReportPlayerReady(PlayerIndex who)
     {
         CheckPlayer(who);
@@ -292,6 +301,15 @@ public sealed partial class Duel : IDisposable
             StateIteration,
             remainingTimerMillis
         ));
+        
+        // Raise any events that have been queued
+        if (EventCallback is not null)
+        {
+            foreach (var ev in mut.QueuedEvents)
+            {
+                EventCallback(this, ev);
+            }
+        }
     }
 
     private void RunMutation(DuelAction act)

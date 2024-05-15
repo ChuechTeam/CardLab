@@ -45,13 +45,14 @@ public sealed record WelcomeMessage(
     PlayerPayload? Me,
     DownloadablePackPayload? Pack,
     DuelWelcomeMessage? Duel,
+    int? DuelId,
     bool DuelRequireSessionPack,
     GamePhaseName PhaseName,
     PhaseStatePayload? PhaseState) : LabMessage;
 
 public sealed record PackAvailableMessage(DownloadablePackPayload Pack) : LabMessage;
 
-public sealed record SessionDuelStartedMessage(bool RequireSessionPack, DuelWelcomeMessage Welcome) : LabMessage;
+public sealed record SessionDuelStartedMessage(int Id, bool RequireSessionPack, DuelWelcomeMessage Welcome) : LabMessage;
 public sealed record SessionDuelEndedMessage() : LabMessage;
 
 public sealed record TutorialStartedMessage : LabMessage;

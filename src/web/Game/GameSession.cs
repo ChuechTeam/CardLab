@@ -2,6 +2,7 @@
 using System.Configuration;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CardLab.Game.AssetPacking;
 using CardLab.Game.Communication;
 using CardLab.Game.Duels;
@@ -21,7 +22,7 @@ public sealed class GameSession
 
     public UserToken HostToken { get; } = UserToken.Generate();
     public UserSocket HostSocket { get; } = new();
-    
+
     public GameSessionSettings Settings { get; private set; }
 
     // Seconds before we disable new image uploads (but keep definition uploads on).
@@ -68,9 +69,10 @@ public sealed class GameSession
 
     private readonly ILoggerFactory _loggerFactory;
     private CancellationTokenSource _uploadCancelTokenSrc = new();
-    private int _idCounter = 1;
+    private int _playerIdCounter = 1;
+    private int _duelIdCounter = 1;
 
-    public GameSession(int id, string code, GameSessionSettings settings, GamePack basePack, WebGamePacker packer, 
+    public GameSession(int id, string code, GameSessionSettings settings, GamePack basePack, WebGamePacker packer,
         ILoggerFactory loggerFac)
     {
         BasePack = basePack;
@@ -83,7 +85,7 @@ public sealed class GameSession
         _loggerFactory = loggerFac;
 
         Phase = new WaitingForPlayersPhase(this);
-        
+
         Logger.LogInformation("Starting session {Id} (Perm: {PermId}) of code {Code} with settings {Settings}" +
                               " (LowW=[{LowW}], HighW=[{HighW}])",
             id, PermanentId, code, settings,
@@ -123,12 +125,15 @@ public sealed class GameSession
         {
             return Result.Fail<Player>("Votre nom est trop long.");
         }
-        
+
         lock (Lock)
         {
-            if (Phase.Name != GamePhaseName.WaitingForPlayers)
+            if (Phase.Name is GamePhaseName.Ended 
+                or GamePhaseName.Terminated 
+                or GamePhaseName.Preparation
+                or GamePhaseName.CreatingCards)
             {
-                return Result.Fail<Player>("La partie a déjà commencé");
+                return Result.Fail<Player>("Impossible de rejoindre la partie actuellement. Essayez plus tard.");
             }
 
             if (Players.Count >= 100)
@@ -136,8 +141,8 @@ public sealed class GameSession
                 return Result.Fail<Player>("Nombre max de joueurs atteint.");
             }
 
-            int id = _idCounter;
-            _idCounter++;
+            int id = _playerIdCounter;
+            _playerIdCounter++;
 
             var player = new Player(this, id, Settings.CardsPerPlayer)
             {
@@ -187,7 +192,7 @@ public sealed class GameSession
                 }
                 else
                 {
-                    // Mark them as left?
+                    player.Gone = true;
                 }
 
                 BroadcastMessage(new LobbyPlayerUpdatedMessage(id, player.Name, LobbyPlayerUpdateKind.Quit));
@@ -304,7 +309,7 @@ public sealed class GameSession
             }
 
             p.RevealOpponents();
-            
+
             return Result.Success();
         }
     }
@@ -322,8 +327,46 @@ public sealed class GameSession
             {
                 return Result.Fail("La phase de préparation n'est pas terminée.");
             }
-            
-            SwitchPhase(new DuelsPhase(this, p.DuelPairs, p.DuelDecks!));
+
+            var phase = new DuelsPhase(this);
+            SwitchPhase(phase);
+            phase.StartRound(p.DuelPairs);
+
+            return Result.Success();
+        }
+    }
+
+    public Result<Unit> DuelsStartRound()
+    {
+        lock (Lock)
+        {
+            if (Phase is not DuelsPhase p)
+            {
+                return Result.Fail("La partie n'est pas dans la bonne phase.");
+            }
+
+            if (!p.StartRound())
+            {
+                return Result.Fail("La partie n'est pas prête pour commencer.");
+            }
+
+            return Result.Success();
+        }
+    }
+
+    public Result<Unit> DuelsEndRound()
+    {
+        lock (Lock)
+        {
+            if (Phase is not DuelsPhase p)
+            {
+                return Result.Fail("La partie n'est pas dans la bonne phase.");
+            }
+
+            if (!p.EndRound())
+            {
+                return Result.Fail("La partie n'est pas prête pour terminer.");
+            }
 
             return Result.Success();
         }
@@ -413,10 +456,34 @@ public sealed class GameSession
         }
     }
 
+    // Returns all the players who are not considered "away": not disconnected for more than X seconds
+    public Span<Player> GetPresentPlayers()
+    {
+        lock (Lock)
+        {
+            var players = new List<Player>(Players.Count);
+            var now = DateTime.UtcNow;
+            foreach (var p in Players.Values)
+            {
+                if (p.Gone) continue;
+
+                // Accessing this property might not return the latest data, but that's a minor issue.
+                var disconnect = p.Socket.LastDisconnect; // null if user connected
+                if (disconnect is null || now.Subtract(disconnect.Value).TotalSeconds < Settings.DisconnectionTimeout)
+                {
+                    players.Add(p);
+                }
+            }
+
+            return CollectionsMarshal.AsSpan(players);
+        }
+    }
+
     // If the decks span has not enough elements, the same deck is used for the last players.
     public void StartDuels(bool requireSessionPack,
         Span<(Player, Player)> pairs,
         Span<ImmutableArray<QualCardRef>> decks,
+        bool scoring,
         int startCards = 5,
         int coreHealth = 40)
     {
@@ -448,8 +515,8 @@ public sealed class GameSession
 
             var numDecks = decks.Length - 1;
             ImmutableArray<GamePack> packs = requireSessionPack ? [Pack!.Value.Pack, BasePack] : [BasePack];
-            var duels = ImmutableArray.CreateBuilder<Duel>(pairs.Length);
-            var duelPerPlayer = ImmutableDictionary<int, (Duel, PlayerIndex)>.Empty.ToBuilder();
+            var duels = new SessionDuel[pairs.Length];
+            var duelPerPlayer = ImmutableDictionary<int, (Duel, PlayerIndex, int)>.Empty.ToBuilder();
             var messages = new (UserSocket, SessionDuelStartedMessage)[pairs.Length * 2];
             int i = 0;
             foreach (var (p1, p2) in pairs)
@@ -472,22 +539,25 @@ public sealed class GameSession
                 };
 
                 var duel = new Duel(settings, _loggerFactory, p1.Name, p2.Name, p1.Socket, p2.Socket);
-                duels.Add(duel);
+                duel.SetEventCallback(OnDuelEvent);
+                var id = _duelIdCounter++;
+                duels[(uint)i / 2 - 1] = new SessionDuel(id, duel, p1.Id, p2.Id);
 
-                duelPerPlayer.Add(p1.Id, (duel, PlayerIndex.P1));
-                duelPerPlayer.Add(p2.Id, (duel, PlayerIndex.P2));
+                duelPerPlayer.Add(p1.Id, (duel, PlayerIndex.P1, id));
+                duelPerPlayer.Add(p2.Id, (duel, PlayerIndex.P2, id));
 
                 messages[i - 2] = (p1.Socket, new SessionDuelStartedMessage(
-                    requireSessionPack, duel.MakeWelcomeMessage(PlayerIndex.P1)));
+                    id, requireSessionPack, duel.MakeWelcomeMessage(PlayerIndex.P1)));
 
                 messages[i - 1] = (p2.Socket, new SessionDuelStartedMessage(
-                    requireSessionPack, duel.MakeWelcomeMessage(PlayerIndex.P2)));
+                    id, requireSessionPack, duel.MakeWelcomeMessage(PlayerIndex.P2)));
             }
 
             DuelState = new SessionDuelState
             {
                 RequiresSessionPack = requireSessionPack,
-                Duels = duels.ToImmutable(),
+                ScoringEnabled = scoring,
+                Duels = duels,
                 PlayerToDuel = duelPerPlayer.ToImmutable(),
             };
 
@@ -511,8 +581,9 @@ public sealed class GameSession
                 return; // nothing to do
             }
 
-            foreach (var duel in DuelState.Duels)
+            foreach (var (_, duel, _, _) in DuelState.Duels)
             {
+                duel.SetEventCallback(null);
                 duel.Terminate();
                 duel.Dispose();
             }
@@ -520,6 +591,47 @@ public sealed class GameSession
             DuelState = null;
 
             BroadcastMessage(new SessionDuelEndedMessage());
+        }
+    }
+
+    private void OnDuelEvent(Duel duel, DuelEvent ev)
+    {
+        // Beware!! We're in a Duel lock!
+
+        if (ev is not DuelEndedEvent (var whoWon))
+        {
+            return;
+        }
+
+        lock (Lock)
+        {
+            if (DuelState is null)
+            {
+                return;
+            }
+
+            // Do a linear search to find the duel.
+            for (var i = 0; i < DuelState.Duels.Length; i++)
+            {
+                ref var d = ref DuelState.Duels[i];
+                if (d.Duel == duel)
+                {
+                    d.Ongoing = false;
+                    d.WinnerId = whoWon switch
+                    {
+                        PlayerIndex.P1 => d.Player1Id,
+                        PlayerIndex.P2 => d.Player2Id,
+                        _ => null
+                    };
+                    if (DuelState.ScoringEnabled && d.WinnerId is not null)
+                    {
+                        Players[d.WinnerId.Value].Score++;
+                    }
+
+                    SendPhaseUpdateMessages();
+                    break;
+                }
+            }
         }
     }
 
@@ -548,6 +660,59 @@ public sealed class GameSession
         }
     }
 
+    public UserSocket.Connection? BeginUserConnection(Player? player)
+    {
+        // Small optimization for duel welcome messages:
+        // First try fetching the duel and create a welcome message.
+        // We'll check later if that message is still valid, else, we'll redo the whole thing.
+        // Thing helps to avoid locking the session for too long, and for nothing.
+
+        (int id, DuelWelcomeMessage welcome)? CreateDuelInfo(out SessionDuelState? ds)
+        {
+            ds = DuelState;
+            if (player is not null && ds is not null &&
+                ds.PlayerToDuel.TryGetValue(player.Id, out var tuple))
+            {
+                return (tuple.duelId, tuple.duel.MakeWelcomeMessage(tuple.idx));
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        var duelInfo = CreateDuelInfo(out var initDs);
+        var socket = player?.Socket ?? HostSocket;
+        
+        lock (Lock)
+        {
+            var connection = socket.StartConnection();
+            if (connection is null) return null;
+
+            if (player is not null)
+            {
+                // Recreate the welcome message if the data is outdated
+                if (initDs != DuelState)
+                {
+                    duelInfo = CreateDuelInfo(out _);
+                }
+            }
+
+            var msg = new WelcomeMessage(Id,
+                PermanentId,
+                player is not null ? new PlayerPayload(player.Id, player.Name) : null,
+                Pack is { } p ? new DownloadablePackPayload(p.DefUrlFilePath, p.ResUrlFilePath) : null,
+                duelInfo?.welcome,
+                duelInfo?.id,
+                DuelState?.RequiresSessionPack ?? false,
+                PhaseName,
+                Phase.GetStateForUser(player));
+            
+            socket.SendMessage(msg);
+            return connection;
+        }
+    }
+
     /*
      * Asset-related functions
      */
@@ -572,6 +737,15 @@ public readonly record struct SessionCardPackingInfo(string ImgFilePath, uint As
 public class SessionDuelState
 {
     public required bool RequiresSessionPack { get; init; }
-    public required ImmutableArray<Duel> Duels { get; init; }
-    public required ImmutableDictionary<int, (Duel duel, PlayerIndex idx)> PlayerToDuel { get; init; }
+    public required bool ScoringEnabled { get; init; }
+
+    // The array won't change size, neither will the duel itself. However, Ongoing and WinnerId might change
+    public required SessionDuel[] Duels { get; init; }
+    public required ImmutableDictionary<int, (Duel duel, PlayerIndex idx, int duelId)> PlayerToDuel { get; init; }
+}
+
+public record struct SessionDuel(int Id, Duel Duel, int Player1Id, int Player2Id)
+{
+    public bool Ongoing { get; set; } = true;
+    public int? WinnerId { get; set; } = null;
 }

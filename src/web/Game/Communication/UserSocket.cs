@@ -9,15 +9,15 @@ namespace CardLab.Game.Communication;
 // gather the state again from scratch.
 public sealed class UserSocket
 {
-    private static readonly BoundedChannelOptions ChannelOptions = new(256)
+    private static readonly UnboundedChannelOptions ChannelOptions = new()
     {
-        FullMode = BoundedChannelFullMode.DropOldest
+        SingleReader = true
     };
 
     public readonly record struct Connection(Channel<LabMessage> SendChannel, int Id, CancellationToken StopToken);
     
     public Channel<LabMessage> SendChannel { get; set; }
-        = Channel.CreateBounded<LabMessage>(ChannelOptions);
+        = Channel.CreateUnbounded<LabMessage>(ChannelOptions);
     
     // Lock for connection/disconnection related stuff, very low contention anyway
     public object Lock { get; } = new();
@@ -25,6 +25,7 @@ public sealed class UserSocket
     public int ConnectionId { get; set; } = 0;
     public bool Connected { get; set; } = true;
     public bool Closed { get; set; } = false;
+    public DateTime? LastDisconnect { get; set; } = null; // UTC time
 
     // Used to notify that we're ending an ongoing connection, to end the websocket.
     public CancellationTokenSource CancelToken { get; set; } = new();
@@ -50,6 +51,7 @@ public sealed class UserSocket
             
             Connected = true;
             ConnectionId++;
+            LastDisconnect = null;
             
             var token = CancelToken.Token;
 
@@ -81,13 +83,14 @@ public sealed class UserSocket
             }
             
             Connected = false;
+            LastDisconnect = DateTime.UtcNow;
             
             CancelToken.Cancel();
             CancelToken = new CancellationTokenSource();
             
             // Discard all messages and notify that the connection is closed using the channel and the token.
             SendChannel.Writer.Complete();
-            SendChannel = Channel.CreateBounded<LabMessage>(ChannelOptions);
+            SendChannel = Channel.CreateUnbounded<LabMessage>(ChannelOptions);
             
             OnDisconnect?.Invoke();
         }

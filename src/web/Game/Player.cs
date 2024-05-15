@@ -37,6 +37,11 @@ public sealed class Player(GameSession session, int id, int cardCount)
         [..Enumerable.Range(0, cardCount).Select(_ => false)];
 
     public bool Kicked { get; set; } = false;
+
+    public int Score { get; set; } = 0; // Number of wins
+
+    // True if the player has quit the game.
+    public bool Gone { get; set; } = false;
     
     // -- Functions --
 

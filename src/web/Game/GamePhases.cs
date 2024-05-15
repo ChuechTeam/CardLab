@@ -91,7 +91,7 @@ public sealed record TutorialPhase(GameSession Session) : GamePhase(Session, Gam
 
             builder.Add(new QualCardRef(pack.Id, card.Id));
         }
-        
+
         builder.Add(new QualCardRef(pack.Id, MainPack.TutorialCard5Id));
         builder.Add(new QualCardRef(pack.Id, MainPack.TutorialCard4Id));
         builder.Add(new QualCardRef(pack.Id, MainPack.TutorialCard3Id));
@@ -115,8 +115,9 @@ public sealed record TutorialPhase(GameSession Session) : GamePhase(Session, Gam
         Session.BroadcastMessage(new TutorialStartedMessage());
 
         Session.StartDuels(false,
-            GameSessionRules.AssociatePlayersInAFairDuel(Session.Players, out _),
+            GameSessionRules.AssociatePlayersInAFairDuel(Session.GetPresentPlayers(), out _),
             decks,
+            false,
             startCards: 2,
             coreHealth: 15);
 
@@ -156,7 +157,7 @@ public sealed record CreatingCardsPhase(GameSession Session) : GamePhase(Session
             LowWeights = [..Session.Settings.CostLowWeights],
             HighWeights = [..Session.Settings.CostHighWeights]
         };
-        
+
         // The costs array is in the following format: [low, high, low, high, ...]
         // Since we usually have 2 cards per player, each player will have an equal amount of low/high cards.
         var costs = GameSessionRules.DistributeCardCosts(Session.Players.Count * cpp, in settings);
@@ -205,7 +206,6 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
 
     private readonly Dictionary<Player, Player> _opponentMap = new(); // Cache for state
     public (Player, Player)[] DuelPairs { get; private set; } = null!;
-    public ImmutableArray<QualCardRef>[]? DuelDecks { get; private set; } = null;
 
     public bool OpponentsRevealed { get; private set; } = false;
 
@@ -219,7 +219,7 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
         _finalDeadlineTimer = new Timer(p => ((PreparationPhase)p!).BeginCompilingGamePack(), this,
             Session.OngoingUploadDeadline * 1000, 0);
 
-        DuelPairs = GameSessionRules.AssociatePlayersInAFairDuel(Session.Players, out _);
+        DuelPairs = GameSessionRules.AssociatePlayersInAFairDuel(Session.GetPresentPlayers(), out _);
         foreach (var (p1, p2) in DuelPairs)
         {
             _opponentMap.Add(p1, p2);
@@ -247,7 +247,8 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
             _finalDeadlineTimer = null;
 
             // Gather all cards that are "ready"
-            Session.FinalCards = GameSessionRules.MakeFinalCardList(Session.Players.Values, Session.Settings.CardsPerPlayer);
+            Session.FinalCards =
+                GameSessionRules.MakeFinalCardList(Session.Players.Values, Session.Settings.CardsPerPlayer);
 
             // Prepare the cards for game packing.
             var n = Session.FinalCards.Count;
@@ -288,32 +289,6 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
                 var pack = packTask.Result;
                 sess.MakePackAvailable(pack);
 
-                var settings = new GameSessionRules.DeckSettings
-                {
-                    SpellProportion = sess.Settings.DeckSpellProportion,
-                    ArchetypeSequenceLength = (ushort)sess.Settings.DeckArchetypeSequenceLength,
-                    UserCardCopies = sess.Settings.DeckUserCardCopies,
-                    BiasMaxCost = 3,
-                    BiasGuaranteed = 2,
-                    BiasDeckTopSpan = 5
-                };
-                try
-                {
-                    me.DuelDecks = GameSessionRules.MakeNDecks(pack.Pack, sess.BasePack, sess.Players.Count,
-                        in settings);
-                }
-                catch (Exception e)
-                {
-                    sess.Logger.LogError(e, "Error while making decks, using fallback");
-                    var decks = new ImmutableArray<QualCardRef>[sess.Players.Count];
-                    for (var index = 0; index < sess.Players.Count; index++)
-                    {
-                        decks[index] = (MakeFallbackDeck(pack.Pack, sess.BasePack, 40));
-                    }
-
-                    me.DuelDecks = decks;
-                }
-
                 me._status = Status.Ready;
                 sess.SendPhaseUpdateMessages();
             }
@@ -352,28 +327,6 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
         }
     }
 
-    private static ImmutableArray<QualCardRef> MakeFallbackDeck(GamePack pack1, GamePack pack2, int n)
-    {
-        var builder = ImmutableArray.CreateBuilder<QualCardRef>();
-
-        var cards = new List<QualCardRef>();
-        foreach (var (id, _, _) in pack1.Cards)
-        {
-            cards.Add(new QualCardRef(pack1.Id, id));
-        }
-        foreach (var (id, _, _) in pack2.Cards)
-        {
-            cards.Add(new QualCardRef(pack2.Id, id));
-        }
-        
-        for (int i = 0; i < n; i++)
-        {
-            builder.Add(cards[Random.Shared.Next(cards.Count)]);
-        }
-
-        return builder.ToImmutable();
-    }
-    
     public enum Status
     {
         WaitingLastUploads,
@@ -382,19 +335,132 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
     }
 }
 
-public sealed record DuelsPhase(
-    GameSession Session,
-    (Player, Player)[] Pairs,
-    ImmutableArray<QualCardRef>[] Decks) : GamePhase(Session, GamePhaseName.Duels)
+public sealed record DuelsPhase(GameSession Session) : GamePhase(Session, GamePhaseName.Duels)
 {
     public override void PostStart()
     {
-        Session.StartDuels(true, Pairs, Decks);
     }
 
     public override void OnEnd()
     {
+        EndRound();
+    }
+
+    public bool StartRound((Player, Player)[]? pairs = null)
+    {
+        // Must be in a duel lock.
+        if (Session.DuelState != null)
+        {
+            return false;
+        }
+
+        pairs ??= GameSessionRules.AssociatePlayersInAFairDuel(Session.GetPresentPlayers(), out _);
+        var decks = MakeDecksForEveryone(Session, pairs.Length * 2);
+
+        Session.StartDuels(true, pairs, decks, true);
+        Session.SendPhaseUpdateMessages();
+        return true;
+    }
+
+    public bool EndRound()
+    {
+        // Must be in a duel lock.
+        if (Session.DuelState == null)
+        {
+            return false;
+        }
+
         Session.StopDuels();
+        Session.SendPhaseUpdateMessages();
+        return true;
+    }
+
+    public override PhaseStatePayload GetStateForHost()
+    {
+        ImmutableArray<DuelInfoPayload> duels = ImmutableArray<DuelInfoPayload>.Empty;
+        if (Session.DuelState is { } ds)
+        {
+            var builder = ImmutableArray.CreateBuilder<DuelInfoPayload>(ds.Duels.Length);
+            foreach (var d in ds.Duels)
+            {
+                builder.Add(new DuelInfoPayload(
+                    d.Id,
+                    Session.Players[d.Player1Id].Name,
+                    Session.Players[d.Player2Id].Name,
+                    d.Ongoing,
+                    d.WinnerId is null
+                        ? -1
+                        : (d.WinnerId == d.Player1Id ? 0 : 1)
+                ));
+            }
+            duels = builder.MoveToImmutable();
+        }
+        
+        var leaderboard = ImmutableArray.CreateBuilder<DuelsStatePayload.LeaderboardEntry>(Session.Players.Count);
+        foreach (var player in Session.Players.Values)
+        {
+            if (!player.Gone || player.Score > 0)
+            {
+                leaderboard.Add(new DuelsStatePayload.LeaderboardEntry(player.Id, player.Name, player.Score));
+            }
+        }
+        // Sort the leaderboard, reverse order.
+        leaderboard.Sort((a, b) => b.Score - a.Score);
+        
+        return new DuelsStatePayload(Session.DuelState != null, duels, leaderboard.ToImmutable());
+    }
+
+    private static ImmutableArray<QualCardRef>[] MakeDecksForEveryone(GameSession sess, int playerCount)
+    {
+        var pack = sess.Pack!.Value.Pack;
+        var settings = new GameSessionRules.DeckSettings
+        {
+            SpellProportion = sess.Settings.DeckSpellProportion,
+            ArchetypeSequenceLength = (ushort)sess.Settings.DeckArchetypeSequenceLength,
+            UserCardCopies = sess.Settings.DeckUserCardCopies,
+            BiasMaxCost = 3,
+            BiasGuaranteed = 2,
+            BiasDeckTopSpan = 5
+        };
+
+        try
+        {
+            return GameSessionRules.MakeNDecks(pack, sess.BasePack, playerCount, in settings);
+        }
+        catch (Exception e)
+        {
+            sess.Logger.LogError(e, "Error while making decks, using fallback");
+            var decks = new ImmutableArray<QualCardRef>[playerCount];
+            for (var index = 0; index < playerCount; index++)
+            {
+                decks[index] = MakeFallbackDeck(pack, sess.BasePack, 40);
+            }
+
+            return decks;
+        }
+
+        static ImmutableArray<QualCardRef> MakeFallbackDeck(GamePack pack1, GamePack pack2, int n)
+        {
+            var builder = ImmutableArray.CreateBuilder<QualCardRef>();
+
+            var cards = new List<QualCardRef>();
+            foreach (var (id, _, _) in pack1.Cards)
+            {
+                cards.Add(new QualCardRef(pack1.Id, id));
+            }
+
+            foreach (var (id, _, _) in pack2.Cards)
+            {
+                cards.Add(new QualCardRef(pack2.Id, id));
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                builder.Add(cards[Random.Shared.Next(cards.Count)]);
+            }
+
+            return builder.ToImmutable();
+        }
     }
 }
 

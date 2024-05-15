@@ -67,47 +67,14 @@ public class GameController(
         
         using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
         
-        var conn = userSocket.StartConnection();
-        if (conn is null)
+        var connection = session.BeginUserConnection(player);
+        if (connection is null)
         {
             HttpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
         }
-        var (send, id, connectionReplacedToken) = conn.Value;
+        var (send, id, connectionReplacedToken) = connection.Value;
         
-        // We have to do this very ugly stuff so we don't get locks locking for nothing when processing the duel msg.
-        int wId;
-        Guid wPermId;
-        PlayerPayload? wPlayer;
-        DownloadablePackPayload? wPack;
-        GamePhaseName wPhaseName;
-        PhaseStatePayload? wPhaseState;
-        bool wRequiresPack;
-        (Duel, PlayerIndex)? duelInfo;
-        lock (session.Lock)
-        {
-            wId = session.Id;
-            wPermId = session.PermanentId;
-            wPlayer = player is not null ? new PlayerPayload(player.Id, player.Name) : null;
-            wPack = session.Pack is { } p ? new DownloadablePackPayload(p.DefUrlFilePath, p.ResUrlFilePath) : null;
-            wRequiresPack = session.DuelState?.RequiresSessionPack ?? false;
-            wPhaseName = session.PhaseName;
-            wPhaseState = session.Phase.GetStateForUser(player);
-            duelInfo = player is null ? null : session.DuelState?.PlayerToDuel.GetValueOrDefault(player.Id);
-        }
-
-        DuelWelcomeMessage? wDuel = null;
-        if (duelInfo is var (duel, idx))
-        {
-            wDuel = duel.MakeWelcomeMessage(idx);
-        }
-
-        // Send the welcome message now
-        // Any message sent before this one should be queued by the client.
-        send.Writer.TryWrite(
-            new WelcomeMessage(wId, wPermId, wPlayer, wPack, wDuel, wRequiresPack, wPhaseName, wPhaseState)
-        );
-
         // Create a token that activates when either of these two tokens are cancelled:
         // - Application shutdown
         // - The user socket is replaced by another connection.

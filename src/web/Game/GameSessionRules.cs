@@ -347,31 +347,28 @@ public static class GameSessionRules
         return immut;
     }
 
-    public static (Player, Player)[] AssociatePlayersInAFairDuel(ImmutableDictionary<int, Player> players,
-        out Player? loner)
+    public static (Player, Player)[] AssociatePlayersInAFairDuel(Span<Player> players, out Player? loner)
     {
         // fairness? nope, it's just random
-        var numPlayers = players.Count;
+        var numPlayers = players.Length;
         var numPairs = numPlayers / 2;
         var pairs = new (Player, Player)[numPairs];
-        var playerPool =
+        var indicesPool =
             new Pool<int>(numPlayers <= StackAllocMaxNum ? stackalloc int[numPlayers] : new int[numPlayers], true);
-        int i = 0;
-        foreach (var key in players.Keys)
+        for (var i = 0; i < players.Length; i++)
         {
-            playerPool.Span[i] = key;
-            i++;
+            indicesPool.Span[i] = i;
         }
 
-        playerPool.Refilled();
+        indicesPool.Refilled();
 
         var random = new Random();
-        for (i = 0; i < numPairs; i++)
+        for (var i = 0; i < numPairs; i++)
         {
-            pairs[i] = (players[playerPool.Pick(random)], players[playerPool.Pick(random)]);
+            pairs[i] = (players[indicesPool.Pick(random)], players[indicesPool.Pick(random)]);
         }
 
-        loner = playerPool.Num == 0 ? null : players[playerPool.Span[0]];
+        loner = indicesPool.Num == 0 ? null : players[indicesPool.Span[0]];
         return pairs;
     }
 

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.Text.Json.Serialization;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CardLab.Game.Communication;
 
@@ -8,6 +9,7 @@ namespace CardLab.Game.Communication;
 [JsonDerivedType(typeof(CreatingCardsStatePayload), "creatingCards")]
 [JsonDerivedType(typeof(TutorialStatePayload), "tutorial")]
 [JsonDerivedType(typeof(PreparationStatePayload), "preparation")]
+[JsonDerivedType(typeof(DuelsStatePayload), "duels")]
 public abstract record PhaseStatePayload;
 
 public sealed record WaitingForPlayersStatePayload(string Code, ImmutableArray<PlayerPayload> Players) : PhaseStatePayload;
@@ -34,3 +36,14 @@ public sealed record CreatingCardsStatePayload : PhaseStatePayload
 
 public sealed record TutorialStatePayload(bool Started) : PhaseStatePayload;
 public sealed record PreparationStatePayload(PreparationPhase.Status Status, string? YourOpponent) : PhaseStatePayload;
+
+public readonly record struct DuelInfoPayload(int Id, string Player1, string Player2, bool Ongoing, int WhoWon);
+
+// For the host only!
+public sealed record DuelsStatePayload(bool RoundOngoing,
+    ImmutableArray<DuelInfoPayload> Duels, 
+    ImmutableArray<DuelsStatePayload.LeaderboardEntry> Leaderboard) : PhaseStatePayload
+{
+    // WhoWon is the index of the winner; negative if nobody won.
+    public readonly record struct LeaderboardEntry(int Id, string Player, int Score);
+}
