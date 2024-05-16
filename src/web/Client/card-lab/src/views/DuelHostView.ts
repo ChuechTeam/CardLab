@@ -4,22 +4,24 @@ import {gameApi} from "src/api.ts";
 
 const template = registerTemplate("duel-host-view-template", `
 <style>
-#root {
+:host {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
     top: 0;
     
-    display: flex;
-    justify-content: stretch;
+    display: flex !important;
+    flex-direction: column;
     align-items: center;
+    
+    padding: 16px 8px;
 }
-#root > div {
-    flex: 1;
+:host > * {
+    flex: 0 0 auto;
 }
 h1, button {
-text-align: center;
+    text-align: center;
 }
 h1 {
     margin: 0;
@@ -27,11 +29,19 @@ h1 {
 #duels {
     display: flex; 
     flex-wrap: wrap;
+    flex-direction: row;
     gap: 16px;
-    margin: 0 auto;
+    width: 100%;
+    
+    flex-grow: 40;
+    flex-basis: 0;
+    
+    align-items: center;
     justify-content: center;
     
     padding: 16px 32px;
+    
+    overflow: auto;
 }
 .duel-status {
     border: 2px solid black;
@@ -58,63 +68,76 @@ h1 {
     opacity: 0.5;
 }
 #leaderboard {
-    display: flex;
-    max-width: 768px;
-    margin: 0 auto;
-    flex-direction: column;
+    width: 80%;
     list-style: none;
     padding: 0;
-    
+   
     max-height: 40vh;
     overflow: scroll;
+        
+    flex-grow: 25;
+    flex-basis: 0;
+    
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    column-gap: 16px;
+    row-gap: 2px;
 }
 .leaderboard-entry {
     display: flex;
     font-family: "Chakra Petch", sans-serif;
-    font-size: 1.5em;
+    font-size: 1em;
     background-color: #f5f5f5;
     align-items: center;
-    padding: 4px 16px;
+    padding: 2px 16px;
     
-    --border-rad: 4px;
+    border-radius: 4px;
     
     border: 1px solid lightgray;
+    
+    min-width: 200px;
+}
+.leaderboard-entry:nth-child(-n+3) {
+    padding: 4px 16px;
 }
 .leaderboard-entry:nth-child(1) {
     background-color: #e4d321;
+    font-size: 2.0em;
 }
 .leaderboard-entry:nth-child(2) {
     background-color: #ababab;
+    font-size: 1.75em;
 }
 .leaderboard-entry:nth-child(3) {
     background-color: #c9830b;
-}
-.leaderboard-entry:not(:last-child) {
-    border-bottom: 2px solid rgba(0,0,0,0.4);
-}
-.leaderboard-entry:first-child {
-    border-top: 1px solid rgba(0,0,0,0.4);
-}
-.leaderboard-entry:first-child {
-    border-radius: var(--border-rad) var(--border-rad) 0 0;
-}
-.leaderboard-entry:last-child {
-    border-radius: 0 0 var(--border-rad)  var(--border-rad);
+    font-size: 1.5em;
 }
 .leaderboard-entry > .-player {
     flex-grow: 1;
    
     padding: 8px 2px;
+    margin-right: 16px;
+}
+.leaderboard-entry > .-score {
+    font-size: 1.2em;
+}
+
+#controls {
+    display: flex;
+    gap: 16px;
+    width: 85%;
+}
+#controls > button {
+    flex-grow: 1;
 }
 </style>
-<div id="root">
-    <div>
-        <h1>Battez-vous !</h1>
-        <div id="duels"></div>
-        <ul id="leaderboard"></ul>
-        <button id="start-round">Commencer un round</button>
-        <button id="end-round">Terminer le round</button>
-    </div>
+<h1 id="title">Battez-vous !</h1>
+<div id="duels"></div>
+<ul id="leaderboard"></ul>
+<div id="controls">
+<button id="start-round" class="cl-button">Commencer un round</button>
+<button id="end-round" class="cl-button">Terminer le round</button>
 </div>
 `)
 
@@ -142,6 +165,7 @@ export class DuelHostView extends LabElement {
 
     constructor(public cardLab: CardLab) {
         super();
+        this.importGlobalStyles = true;
     }
 
     render() {

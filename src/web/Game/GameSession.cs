@@ -154,6 +154,11 @@ public sealed class GameSession
 
             BroadcastMessage(new LobbyPlayerUpdatedMessage(id, player.Name, LobbyPlayerUpdateKind.Join));
 
+            if (Phase.Name == GamePhaseName.Duels)
+            {
+                SendPhaseUpdateMessages();
+            }
+
             return Result.Success(player);
         }
     }
