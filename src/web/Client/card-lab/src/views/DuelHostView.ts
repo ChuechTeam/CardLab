@@ -21,6 +21,9 @@ const template = registerTemplate("duel-host-view-template", `
 h1, button {
 text-align: center;
 }
+h1 {
+    margin: 0;
+}
 #duels {
     display: flex; 
     flex-wrap: wrap;
@@ -28,7 +31,7 @@ text-align: center;
     margin: 0 auto;
     justify-content: center;
     
-    padding: 8px 32px;
+    padding: 16px 32px;
 }
 .duel-status {
     border: 2px solid black;
@@ -47,15 +50,61 @@ text-align: center;
 .duel-status.-winner-left, .duel-status.-winner-right {
     background-color: #0b589f;
 }
-.duel-status.-winner-left > .-offset, .duel-status.-winner-right > .-offset {
-    transform: translateX(var(--offset));
-}
 .duel-status.-winner-left .-player2, .duel-status.-winner-right .-player1{
     opacity: 0.5;
     text-decoration: line-through;
 }
 .duel-status.-winner-right .-player1 {
     opacity: 0.5;
+}
+#leaderboard {
+    display: flex;
+    max-width: 768px;
+    margin: 0 auto;
+    flex-direction: column;
+    list-style: none;
+    padding: 0;
+    
+    max-height: 40vh;
+    overflow: scroll;
+}
+.leaderboard-entry {
+    display: flex;
+    font-family: "Chakra Petch", sans-serif;
+    font-size: 1.5em;
+    background-color: #f5f5f5;
+    align-items: center;
+    padding: 4px 16px;
+    
+    --border-rad: 4px;
+    
+    border: 1px solid lightgray;
+}
+.leaderboard-entry:nth-child(1) {
+    background-color: #e4d321;
+}
+.leaderboard-entry:nth-child(2) {
+    background-color: #ababab;
+}
+.leaderboard-entry:nth-child(3) {
+    background-color: #c9830b;
+}
+.leaderboard-entry:not(:last-child) {
+    border-bottom: 2px solid rgba(0,0,0,0.4);
+}
+.leaderboard-entry:first-child {
+    border-top: 1px solid rgba(0,0,0,0.4);
+}
+.leaderboard-entry:first-child {
+    border-radius: var(--border-rad) var(--border-rad) 0 0;
+}
+.leaderboard-entry:last-child {
+    border-radius: 0 0 var(--border-rad)  var(--border-rad);
+}
+.leaderboard-entry > .-player {
+    flex-grow: 1;
+   
+    padding: 8px 2px;
 }
 </style>
 <div id="root">
