@@ -34,10 +34,12 @@ display: none;
         <h1 class="title">À vous de jouer !</h1>
         <button id="next">Terminer le tutoriel</button>
     </div>
+    <code-display class="overlay" id="code-display"></code-display>
 </div>
 `)
 
 export class TutorialHostView extends LabElement {
+    @fromDom("code-display") codeDisplay: HTMLElement = null!;
     @fromDom("start") startBtn: HTMLButtonElement = null!;
     @fromDom("next") nextBtn: HTMLElement = null!;
     @fromDom("root") root: HTMLElement = null!;
@@ -78,6 +80,8 @@ export class TutorialHostView extends LabElement {
                 this.requestPending = false;
             }
         });
+        
+        this.codeDisplay.setAttribute("code", this.cardLab.code)
     }
 
     disconnected() {

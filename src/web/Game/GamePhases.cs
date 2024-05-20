@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using CardLab.Game.AssetPacking;
 using CardLab.Game.BasePacks;
 using CardLab.Game.Communication;
+using CardLab.Game.Duels;
 
 namespace CardLab.Game;
 
@@ -117,7 +118,7 @@ public sealed record TutorialPhase(GameSession Session) : GamePhase(Session, Gam
         Session.StartDuels(false,
             GameSessionRules.AssociatePlayersInAFairDuel(Session.GetPresentPlayers(), out _),
             decks,
-            false,
+            null,
             startCards: 2,
             coreHealth: 15);
 
@@ -337,6 +338,8 @@ public sealed record PreparationPhase(GameSession Session) : GamePhase(Session, 
 
 public sealed record DuelsPhase(GameSession Session) : GamePhase(Session, GamePhaseName.Duels)
 {
+    private int _round = 0;
+    
     public override void PostStart()
     {
     }
@@ -354,12 +357,22 @@ public sealed record DuelsPhase(GameSession Session) : GamePhase(Session, GamePh
             return false;
         }
 
+        _round++;
+
         pairs ??= GameSessionRules.AssociatePlayersInAFairDuel(Session.GetPresentPlayers(), out _);
         var decks = MakeDecksForEveryone(Session, pairs.Length * 2);
 
-        Session.StartDuels(true, pairs, decks, true);
+        var round = _round; // Capture the round number in case it changes
+        Session.StartDuels(true, pairs, decks, ScoringFunction);
         Session.SendPhaseUpdateMessages();
         return true;
+
+        int ScoringFunction(Duel duel, PlayerIndex winner)
+        {
+            var hp = duel.State.GetPlayer(winner).Attribs.GetCoreHealth();
+
+            return Math.Max(1, hp) * round;
+        }
     }
 
     public bool EndRound()

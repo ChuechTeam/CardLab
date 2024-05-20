@@ -307,7 +307,8 @@ declare type SwitchedPhaseMessage = {
 declare type WelcomeMessage = {
     type: "welcome",
     tempId: number,
-    permId: string
+    permId: string,
+    code: string,
     pack: DownloadablePack | null,
     duel: PartialDuelWelcome | null,
     duelId: number | null,

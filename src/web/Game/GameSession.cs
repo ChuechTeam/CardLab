@@ -488,7 +488,7 @@ public sealed class GameSession
     public void StartDuels(bool requireSessionPack,
         Span<(Player, Player)> pairs,
         Span<ImmutableArray<QualCardRef>> decks,
-        bool scoring,
+        Func<Duel, PlayerIndex, int>? scoring,
         int startCards = 5,
         int coreHealth = 40)
     {
@@ -561,7 +561,7 @@ public sealed class GameSession
             DuelState = new SessionDuelState
             {
                 RequiresSessionPack = requireSessionPack,
-                ScoringEnabled = scoring,
+                ScoringFunction = scoring,
                 Duels = duels,
                 PlayerToDuel = duelPerPlayer.ToImmutable(),
             };
@@ -628,9 +628,9 @@ public sealed class GameSession
                         PlayerIndex.P2 => d.Player2Id,
                         _ => null
                     };
-                    if (DuelState.ScoringEnabled && d.WinnerId is not null)
+                    if (DuelState.ScoringFunction is {} f && d.WinnerId is {} w)
                     {
-                        Players[d.WinnerId.Value].Score++;
+                        Players[w].Score += f(duel, whoWon!.Value);
                     }
 
                     SendPhaseUpdateMessages();
@@ -705,6 +705,7 @@ public sealed class GameSession
 
             var msg = new WelcomeMessage(Id,
                 PermanentId,
+                Code,
                 player is not null ? new PlayerPayload(player.Id, player.Name) : null,
                 Pack is { } p ? new DownloadablePackPayload(p.DefUrlFilePath, p.ResUrlFilePath) : null,
                 duelInfo?.welcome,
@@ -742,7 +743,8 @@ public readonly record struct SessionCardPackingInfo(string ImgFilePath, uint As
 public class SessionDuelState
 {
     public required bool RequiresSessionPack { get; init; }
-    public required bool ScoringEnabled { get; init; }
+    // Called inside a Duel and GameSession lock!
+    public required Func<Duel, PlayerIndex, int>? ScoringFunction { get; init; }
 
     // The array won't change size, neither will the duel itself. However, Ongoing and WinnerId might change
     public required SessionDuel[] Duels { get; init; }

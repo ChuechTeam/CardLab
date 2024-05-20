@@ -2,6 +2,7 @@
 import type {CardLab} from "../game.ts";
 import {redirectToQuitGame} from "src/api.ts";
 import {LobbyPlayer} from "src/components/LobbyPlayer.ts";
+import "src/components/CodeDisplay.ts";
 
 const template = registerTemplate('lobby-view-template',`
 <style>
@@ -12,54 +13,12 @@ const template = registerTemplate('lobby-view-template',`
     margin: 0 auto;
     box-sizing: border-box;
 }
-#code-display {
-    -webkit-user-select: text;
-    user-select: text;
-    font-size: calc(4em + 4.0vw);
-    text-align: center;
-    
-    font-family: "Chakra Petch", sans-serif;
-    
-    margin-top: 0.2em;
-}
 #players {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
     margin: 8px 0;
     grid-area: players;
-}
-.join-instructions {
-    position: relative;
-    border: 2px solid black;
-    border-bottom-width: 4px;
-    grid-area: join;
-    
-    font-weight: bold;
-}
-.join-url-box {
-    position: absolute;
-    left: 0;
-    right: 0;
-    display: flex;
-    justify-content: center;
-}
-.join-url-container {
-    display: flex;
-    align-items: center;
-    
-    border: 2px solid black;
-    border-bottom-width: 3px;
-    padding: 4px 16px;
-    --h: calc(2em + 2.0vw);
-    height: var(--h);
-    margin-top: calc(var(--h) / -2);
-    font-size: calc(var(--h) / 2.25);
-    box-sizing: border-box;
-    background-color: white;
-    
-    -webkit-user-select: text;
-    user-select: text;
 }
 #commands-slot {
     grid-area: commands;
@@ -111,14 +70,7 @@ justify-self: center;
 </style>
 <div class="grid">
     <img class="logo" src="logo.svg"/>
-    <div class="join-instructions">
-        <div class="join-url-box">
-            <div class="join-url-container">
-                <div id="join-url"></div>
-            </div>
-        </div>
-        <div id="code-display">Truc</div>
-    </div>
+    <code-display id="code-display"></code-display>
     <div id="players"></div>
     <div id="commands-slot"></div>
 </div>
@@ -172,8 +124,7 @@ export class LobbyView extends LabElement {
     }
     
     connected() {
-        this.joinUrl.textContent = window.location.host;
-        this.codeDisplay.textContent = this.phaseState.code
+        this.codeDisplay.setAttribute("code", this.phaseState.code);
         this.updatePlayers()
 
         if (this.startGameButton !== null) {

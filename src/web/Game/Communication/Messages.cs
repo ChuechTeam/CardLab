@@ -42,6 +42,7 @@ public sealed record SwitchedPhaseMessage(GamePhaseName Name, PhaseStatePayload?
 public sealed record WelcomeMessage(
     int TempId,
     Guid PermId,
+    string Code,
     PlayerPayload? Me,
     DownloadablePackPayload? Pack,
     DuelWelcomeMessage? Duel,

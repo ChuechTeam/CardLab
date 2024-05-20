@@ -35,6 +35,7 @@ export class CardLab extends EventTarget {
     player: Player | null
     tempId: number
     permId: string
+    code: string
     phase: PhaseName
     phaseState: PhaseState
     socket: WebSocket | null
@@ -80,6 +81,7 @@ export class CardLab extends EventTarget {
         this.socket = socket;
         this.tempId = helloResponse.tempId;
         this.permId = helloResponse.permId;
+        this.code = helloResponse.code;
         this.sessionPackUrl = helloResponse.pack;
 
         if (helloResponse.duel != null) {

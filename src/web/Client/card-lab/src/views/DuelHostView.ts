@@ -40,6 +40,7 @@ h1 {
     justify-content: center;
     
     padding: 16px 32px;
+    box-sizing: border-box;
     
     overflow: auto;
 }
@@ -73,7 +74,7 @@ h1 {
     padding: 0;
    
     max-height: 40vh;
-    overflow: scroll;
+    overflow: auto;
         
     flex-grow: 25;
     flex-basis: 0;
@@ -138,6 +139,7 @@ h1 {
 <div id="controls">
 <button id="start-round" class="cl-button">Commencer un round</button>
 <button id="end-round" class="cl-button">Terminer le round</button>
+<code-display class="overlay" id="code-display"></code-display>
 </div>
 `)
 
@@ -162,6 +164,7 @@ export class DuelHostView extends LabElement {
     @fromDom("end-round") endRound: HTMLButtonElement = null!;
     @fromDom("duels") duels: HTMLElement = null!;
     @fromDom("leaderboard") leaderboard: HTMLElement = null!;
+    @fromDom("code-display") codeDisplay: HTMLElement = null!;
 
     constructor(public cardLab: CardLab) {
         super();
@@ -180,6 +183,7 @@ export class DuelHostView extends LabElement {
         this.endRound.addEventListener("click", async () => {
             await gameApi.host.duelsEndRound();
         });
+        this.codeDisplay.setAttribute("code", this.cardLab.code);
         
         this.update(this.state);
     }
