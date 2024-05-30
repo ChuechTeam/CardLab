@@ -7,11 +7,18 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CardLab.API
 {
+    /// <summary>
+    /// Controller to manage various phases and actions within a game session.
+    /// </summary>
     [Route("api/game/[controller]")]
     [ApiController]
     [Authorize(Policy = "Host")]
     public class HostController : ControllerBase
     {
+        /// <summary>
+        /// Starts the game session.
+        /// </summary>
+        /// <returns>HTTP 200 OK if the game starts successfully; otherwise, HTTP 409 Conflict with an error message.</returns>
         [HttpPost("start-game")]
         public IActionResult StartGame()
         {
@@ -28,6 +35,10 @@ namespace CardLab.API
             }
         }
 
+        /// <summary>
+        /// Ends the card creation phase and switches to the preparation phase.
+        /// </summary>
+        /// <returns>HTTP 200 OK if the phase switches successfully; otherwise, HTTP 409 Conflict with an error message.</returns>
         [HttpPost("end-card-creation")]
         public IActionResult EndCardCreation()
         {
@@ -43,7 +54,11 @@ namespace CardLab.API
                 return Ok();
             }
         }
-        
+
+        /// <summary>
+        /// Starts the tutorial duels phase.
+        /// </summary>
+        /// <returns>HTTP 200 OK if the tutorial duels start successfully; otherwise, HTTP 409 Conflict with an error message.</returns>
         [HttpPost("start-tutorial-duels")]
         public IActionResult StartTutorialDuels()
         {
@@ -59,7 +74,11 @@ namespace CardLab.API
                 return Ok();
             }
         }
-        
+
+        /// <summary>
+        /// Ends the tutorial and switches to the card creation phase.
+        /// </summary>
+        /// <returns>HTTP 200 OK if the tutorial ends successfully; otherwise, HTTP 409 Conflict with an error message.</returns>
         [HttpPost("end-tutorial")]
         public IActionResult EndTutorial()
         {
@@ -76,6 +95,11 @@ namespace CardLab.API
             }
         }
 
+        /// <summary>
+        /// Kicks a player from the game session.
+        /// </summary>
+        /// <param name="id">The ID of the player to kick.</param>
+        /// <returns>HTTP 200 OK if the player is kicked successfully; otherwise, HTTP 409 Conflict with an error message.</returns>
         [HttpPost("kick-player")]
         public IActionResult KickPlayer([FromQuery] int id)
         {
@@ -91,7 +115,11 @@ namespace CardLab.API
                 return Ok();
             }
         }
-        
+
+        /// <summary>
+        /// Reveals the opponents during the preparation phase.
+        /// </summary>
+        /// <returns>HTTP 200 OK if opponents are revealed successfully; otherwise, HTTP 409 Conflict with an error message.</returns>
         [HttpPost("preparation-reveal-opponents")]
         public IActionResult PreparationRevealOpponents()
         {
@@ -107,7 +135,11 @@ namespace CardLab.API
                 return Ok();
             }
         }
-        
+
+        /// <summary>
+        /// Ends the preparation phase.
+        /// </summary>
+        /// <returns>HTTP 200 OK if the preparation phase ends successfully; otherwise, HTTP 409 Conflict with an error message.</returns>
         [HttpPost("end-preparation")]
         public IActionResult EndPreparation()
         {
@@ -123,7 +155,11 @@ namespace CardLab.API
                 return Ok();
             }
         }
-        
+
+        /// <summary>
+        /// Starts a new round of duels.
+        /// </summary>
+        /// <returns>HTTP 200 OK if the round starts successfully; otherwise, HTTP 409 Conflict with an error message.</returns>
         [HttpPost("duels-start-round")]
         public IActionResult DuelsStartRound()
         {
@@ -139,7 +175,11 @@ namespace CardLab.API
                 return Ok();
             }
         }
-        
+
+        /// <summary>
+        /// Ends the current round of duels.
+        /// </summary>
+        /// <returns>HTTP 200 OK if the round ends successfully; otherwise, HTTP 409 Conflict with an error message.</returns>
         [HttpPost("duels-end-round")]
         public IActionResult DuelsEndRound()
         {
