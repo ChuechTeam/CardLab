@@ -25,6 +25,9 @@
                 <input type="text" asp-for="PlayerName" id="name-input" maxlength="24" required/>
                 <button id="join-button" class="cl-button">Rejoindre</button>
             </form>
+            <form method="get" action="/create-game">
+                <button id="create-game-button" class="cl-button">Créer une partie</button>
+            </form>
         }
         else
         {
@@ -34,6 +37,9 @@
                     <button class="cl-button -negative" type="button" onclick="quitConfirm()">Quitter la partie</button>
                 </form>
             </div>
+            <form method="get" action="/create-game">
+                <button id="create-game-button" class="cl-button">Créer une partie</button>
+            </form>
         }
     </div>
 </div>
