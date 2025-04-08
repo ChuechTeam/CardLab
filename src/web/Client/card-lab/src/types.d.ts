@@ -287,6 +287,15 @@ declare type PhaseState =
     | DuelsPhaseState
     | null
 
+declare type GameSettings = {
+    cardsPerPlayer: number,
+    deckSpellProportion: number,
+    deckArchetypeSequenceLength: number,
+    deckUserCardCopies: number,
+    enforceCosts: boolean
+    enableBalance: boolean
+};
+
 /**
  * Messages
  */
@@ -315,7 +324,13 @@ declare type WelcomeMessage = {
     duelRequireSessionPack: boolean
     me: Player | null,
     phaseName: PhaseName,
-    phaseState: PhaseState
+    phaseState: PhaseState,
+    settings: GameSettings
+}
+
+declare type SettingsChangedMessage = {
+    type: "settingsChanged",
+    settings: GameSettings
 }
 
 declare type PackAvailableMessage = {
@@ -347,6 +362,7 @@ declare type LabMessage =
     | LobbyPlayerUpdatedMessage
     | SwitchedPhaseMessage
     | WelcomeMessage
+    | SettingsChangedMessage
     | PackAvailableMessage
     | SessionDuelStartedMessage
     | SessionDuelEndedMessage

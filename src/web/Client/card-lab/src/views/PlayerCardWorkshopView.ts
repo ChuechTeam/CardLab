@@ -102,7 +102,7 @@ export class PlayerCardWorkshopView extends LabElement {
     render() {
         this.dom.appendChild(template.content.cloneNode(true))
 
-        this.cardEditors = this.cards.map((card, i) => new CardEditor(card, i));
+        this.cardEditors = this.cards.map((card, i) => new CardEditor(this.cardLab, card, i));
         this.getElement("card-editors")!.replaceChildren(...this.cardEditors);
 
         this.setAttribute("data-wants-top-overlay", '1');

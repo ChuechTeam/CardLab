@@ -28,6 +28,7 @@ display: none;
 <div id="root">
     <div id="pre-start">
         <h1 class="title">Explication des règles</h1>
+        <p>Expliquez les règles du jeu à voix haute.</p>
         <button id="start">C'est parti !</button>
     </div>
     <div id="post-start">

@@ -38,6 +38,7 @@ export class CardLab extends EventTarget {
     code: string
     phase: PhaseName
     phaseState: PhaseState
+    settings: GameSettings
     socket: WebSocket | null
     view: HTMLElement | null = null
 
@@ -82,6 +83,7 @@ export class CardLab extends EventTarget {
         this.tempId = helloResponse.tempId;
         this.permId = helloResponse.permId;
         this.code = helloResponse.code;
+        this.settings = helloResponse.settings;
         this.sessionPackUrl = helloResponse.pack;
 
         if (helloResponse.duel != null) {
@@ -345,6 +347,8 @@ export class CardLab extends EventTarget {
             } else {
                 this.dismountDuel();
             }
+        } else if (message.type === "settingsChanged") {
+            this.settings = message.settings;
         } else if (message.type === "packAvailable") {
             this.sessionPackUrl = message.pack;
             if (!this.isHost) {

@@ -515,24 +515,6 @@ public static class GameSessionRules
 
         // High: [6, 10]
         public ImmutableArray<int> HighWeights { get; set; }
-
-        public static CostSettings Symmetric(params int[] low)
-        {
-            var lowBuilder = ImmutableArray.CreateBuilder<int>(low.Length);
-            var highBuilder = ImmutableArray.CreateBuilder<int>(low.Length);
-
-            for (int i = 0; i < low.Length; i++)
-            {
-                lowBuilder.Add(low[i]);
-                highBuilder.Add(low[low.Length - i - 1]);
-            }
-
-            return new CostSettings
-            {
-                LowWeights = lowBuilder.ToImmutable(),
-                HighWeights = highBuilder.ToImmutable()
-            };
-        }
     }
 
     private ref struct Pool<T>(Span<T> span, bool depleted)

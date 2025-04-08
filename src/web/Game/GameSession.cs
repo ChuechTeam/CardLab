@@ -144,11 +144,18 @@ public sealed class GameSession
             int id = _playerIdCounter;
             _playerIdCounter++;
 
-            var player = new Player(this, id, Settings.CardsPerPlayer)
+            var player = new Player(this, id)
             {
                 Name = sanitizedName,
                 LoginToken = UserToken.Generate()
             };
+            
+            // Make sure the card arrays are initialized after the game has started.
+            if (Phase.Name is not GamePhaseName.WaitingForPlayers)
+            {
+                player.PrepareCardArrays(Settings.CardsPerPlayer);
+            }
+
             Players = Players.Add(id, player);
             PlayersByToken = PlayersByToken.Add(player.LoginToken, player);
 
@@ -211,6 +218,23 @@ public sealed class GameSession
         }
     }
 
+    // Assumes that settings have been validated!
+    public Result<Unit> UpdateSettings(UserGameSessionSettings userSettings)
+    {
+        lock (Lock)
+        {
+            if (PhaseName != GamePhaseName.WaitingForPlayers)
+            {
+                return Result.Fail("Impossible de changer les paramètres en cours de partie.");
+            }
+            
+            Settings = userSettings.Apply(Settings);
+            BroadcastMessage(new SettingsChangedMessage(userSettings));
+
+            return Result.Success();
+        }
+    }
+
     public void SwitchPhase(GamePhase newPhase)
     {
         lock (Lock)
@@ -246,11 +270,15 @@ public sealed class GameSession
             {
                 return Result.Fail("La partie a déjà commencé");
             }
-
-            // Should later be 2
+            
             if (Players.Count < 2)
             {
                 return Result.Fail("Il n'y a pas assez de joueurs");
+            }
+            
+            foreach (var (_, player) in Players)
+            {
+                player.PrepareCardArrays(Settings.CardsPerPlayer);
             }
 
             SwitchPhase(new TutorialPhase(this));
@@ -712,7 +740,8 @@ public sealed class GameSession
                 duelInfo?.id,
                 DuelState?.RequiresSessionPack ?? false,
                 PhaseName,
-                Phase.GetStateForUser(player));
+                Phase.GetStateForUser(player),
+                UserGameSessionSettings.Convert(Settings));
             
             socket.SendMessage(msg);
             return connection;

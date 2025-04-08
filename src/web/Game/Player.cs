@@ -4,7 +4,7 @@ using CardLab.Game.Communication;
 
 namespace CardLab.Game;
 
-public sealed class Player(GameSession session, int id, int cardCount)
+public sealed class Player(GameSession session, int id)
 {
     // The id of the player in the current session.
     public int Id { get; } = id;
@@ -17,24 +17,13 @@ public sealed class Player(GameSession session, int id, int cardCount)
 
     // -- Mutable state --
 
-    public ImmutableArray<CardDefinition> Cards { get; set; } =
-        [..Enumerable.Range(0, cardCount).Select(_ => new CardDefinition())];
+    public ImmutableArray<CardDefinition> Cards { get; set; } = ImmutableArray<CardDefinition>.Empty;
 
-    public ImmutableArray<SessionCardPackingInfo> CardPackInfos { get; private set; } =
-    [
-        ..Enumerable.Range(0, cardCount).Select(i =>
-        {
-            var path = session.CardImageAssetPath(id, i);
-            var cid = GameSession.PackCardId(id, i);
-            return new SessionCardPackingInfo(path, cid);
-        })
-    ];
+    public ImmutableArray<SessionCardPackingInfo> CardPackInfos { get; private set; } = ImmutableArray<SessionCardPackingInfo>.Empty;
 
-    public ImmutableArray<bool> ReadyCards { get; private set; } =
-        [..Enumerable.Range(0, cardCount).Select(_ => false)];
+    public ImmutableArray<bool> ReadyCards { get; private set; } = ImmutableArray<bool>.Empty;
 
-    public ImmutableArray<bool> PendingCardUploads { get; private set; } =
-        [..Enumerable.Range(0, cardCount).Select(_ => false)];
+    public ImmutableArray<bool> PendingCardUploads { get; private set; } = ImmutableArray<bool>.Empty;
 
     public bool Kicked { get; set; } = false;
 
@@ -45,9 +34,22 @@ public sealed class Player(GameSession session, int id, int cardCount)
     
     // -- Functions --
 
+    public void PrepareCardArrays(int cardCount)
+    {
+        Cards = [..Enumerable.Range(0, cardCount).Select(_ => new CardDefinition())];
+        CardPackInfos = [..Enumerable.Range(0, cardCount).Select(i =>
+        {
+            var path = session.CardImageAssetPath(Id, i);
+            var cid = GameSession.PackCardId(Id, i);
+            return new SessionCardPackingInfo(path, cid);
+        })];
+        ReadyCards = [..Enumerable.Range(0, cardCount).Select(_ => false)];
+        PendingCardUploads = [..Enumerable.Range(0, cardCount).Select(_ => false)];
+    }
+
     public Result<Unit> UpdateCard(CardDefinition cardDefinition, int index)
     {
-        if (index > Cards.Length || index < 0)
+        if (index >= Cards.Length || index < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(index));
         }
@@ -71,7 +73,7 @@ public sealed class Player(GameSession session, int id, int cardCount)
 
     public Result<CancellationToken> BeginCardUpload(int cardIndex)
     {
-        if (cardIndex > Cards.Length || cardIndex < 0)
+        if (cardIndex >= Cards.Length || cardIndex < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(cardIndex));
         }
@@ -95,7 +97,7 @@ public sealed class Player(GameSession session, int id, int cardCount)
 
     public Result<Unit> EndCardUpload(int cardIndex)
     {
-        if (cardIndex > Cards.Length || cardIndex < 0)
+        if (cardIndex >= Cards.Length || cardIndex < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(cardIndex));
         }

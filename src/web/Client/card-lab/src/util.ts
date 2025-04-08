@@ -34,3 +34,11 @@ export function fitImageCover(aW: number, aH: number, tW: number, tH: number) {
 
     return artRect;
 }
+
+// Does the user agent signal a mobile device?
+export const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+// Is fullscreen *really* supported?
+export const isFullscreenSupported = "fullscreenElement" in document 
+    && "fullscreenEnabled" in document 
+    && document.fullscreenEnabled;

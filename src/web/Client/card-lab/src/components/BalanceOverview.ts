@@ -1,6 +1,7 @@
 ﻿import {fromDom, LabElement, registerTemplate} from "../dom.ts";
 import "./LabIcon.ts";
 import {LabIcon} from "src/components/LabIcon.ts";
+import {string} from "blockly/core/utils";
 
 const template = registerTemplate('balance-overview-template', `
 <style>
@@ -57,12 +58,12 @@ const template = registerTemplate('balance-overview-template', `
 </div>
 `);
 
-type CardData = { balance: CardBalanceSummary; validation: CardValidationSummary };
+type CardData = { balance: CardBalanceSummary | null; validation: CardValidationSummary };
 
 export class BalanceOverview extends LabElement {
     data: CardData | null = null;
     updatePending = false
-    @fromDom("title") titleHeader: HTMLElement = null!; 
+    @fromDom("title") titleHeader: HTMLElement = null!;
     @fromDom("box") box: HTMLElement = null!;
     @fromDom("list-container") listContainer: HTMLElement = null!
     @fromDom("points-display") pointsDisplay: HTMLElement = null!
@@ -81,29 +82,42 @@ export class BalanceOverview extends LabElement {
         this.updateData(this.data)
     }
 
+    static get observedAttributes() {
+        return ["nobalance"];
+    }
+    attributeChanged(name: string, oldValue: string | null, newValue: string | null) {
+        if (name === "nobalance" && this.pointsDisplay !== null) {
+            this.displayDefaultPointsText();
+        }
+    }
+
     updateData(newData: CardData | null) {
         this.data = newData
         if (this.data !== null) {
-            const { balance, validation } = this.data;
-            
-            this.pointsDisplay.textContent = `${balance.creditsUsed}/${balance.creditsAvailable}`
-            
+            const {balance, validation} = this.data;
+
+            if (balance != null) {
+                this.pointsDisplay.textContent = `${balance.creditsUsed}/${balance.creditsAvailable}`
+            } else {
+                this.displayDefaultPointsText();
+            }
+
             const defOk = validation.definitionValid;
-            const balOk = balance.balanced;
-            
+            const balOk = balance?.balanced ?? true; // Default to true if balance disabled.
+
             const issueNodes = [...validation.errors.map(issue => {
                 const li = document.createElement('li');
                 li.textContent = issue;
                 return li;
             })];
-            
+
             if (defOk && balOk) {
                 this.box.className = "state-valid";
                 this.titleHeader.textContent = "Carte validée !";
             } else {
                 this.box.className = "state-invalid";
-                
-                if (!balOk) {
+
+                if (!balOk && balance !== null) {
                     if (balance.creditsUsed > balance.creditsAvailable) {
                         this.titleHeader.textContent = "Carte trop forte !";
 
@@ -125,11 +139,19 @@ export class BalanceOverview extends LabElement {
                     this.titleHeader.textContent = "Carte invalide !";
                 }
             }
-            
+
             this.issuesList.replaceChildren(...issueNodes);
         }
-        
+
         this.clearUpdatePending();
+    }
+
+    displayDefaultPointsText() {
+        if (this.hasAttribute("nobalance")) {
+            this.pointsDisplay.textContent = "∞";
+        } else {
+            this.pointsDisplay.textContent = "?";
+        }
     }
 
     triggerUpdatePending() {
@@ -139,12 +161,12 @@ export class BalanceOverview extends LabElement {
         this.updatePending = true;
         this.box.setAttribute("update-pending", '1');
     }
-    
+
     clearUpdatePending() {
         this.updatePending = false;
         this.box.removeAttribute("update-pending");
     }
-    
+
     // renderList(): HTMLElement | null {
     //     if (this.data !== null) {
     //         return this.renderListForEntries(this.data.entries)

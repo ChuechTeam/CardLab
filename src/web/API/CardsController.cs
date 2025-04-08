@@ -4,6 +4,7 @@ using CardLab.Auth;
 using CardLab.Game;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CardLab.API
 {
@@ -24,6 +25,7 @@ namespace CardLab.API
         /// <param name="index">The index of the card.</param>
         /// <returns>HTTP 200 OK if the image is uploaded successfully; otherwise, an appropriate error response.</returns>
         [HttpPost("{index:int}/image")]
+        [EnableRateLimiting("CardUpload")]
         public async Task<IActionResult> PostCardImage([FromForm(Name = "image")] IFormFile file, int index)
         {
             if (file.ContentType != "image/png")
@@ -94,7 +96,7 @@ namespace CardLab.API
         /// <param name="Attack">The attack value of the card.</param>
         /// <param name="Health">The health value of the card.</param>
         /// <param name="Script">The script of the card (optional).</param>
-        public record CardInput(string Name, string Lore, string? Archetype, int Attack, int Health, CardScript? Script);
+        public record CardInput(string Name, string Lore, string? Archetype, int Attack, int Health, int Cost, CardScript? Script);
 
         /// <summary>
         /// Represents the result of posting a card.
@@ -136,10 +138,15 @@ namespace CardLab.API
             var sw = Stopwatch.StartNew();
 #endif
 
+            // Relevant settings
+            var balancingEnabled = session.Settings.EnableBalance;
+            var enforceCosts = session.Settings.EnforceCosts;
+            
             var archetype = !string.IsNullOrWhiteSpace(card.Archetype)
                 ? CardModule.CapitalizeArchetype(card.Archetype)
                 : null;
-            var definition = player.Cards[index] with
+            var prev = player.Cards[index];
+            var definition = prev with
             {
                 Name = CardModule.SanitizeString(card.Name),
                 Lore = CardModule.SanitizeString(card.Lore),
@@ -148,21 +155,24 @@ namespace CardLab.API
                 Author = player.Name,
                 Attack = card.Attack,
                 Health = card.Health,
-                Script = card.Script
+                Script = card.Script,
+                Cost = enforceCosts ? prev.Cost : Math.Clamp(card.Cost, 1, 10)
             };
 
             CardModule.UsageSummary? balance = null;
             var validation = CardModule.ValidateDefinition(definition, out var preventsBalanceCalc);
-            if (!preventsBalanceCalc)
+            
+            if (balancingEnabled && !preventsBalanceCalc)
             {
                 balance = CardModule.CalculateCardBalance(definition);
-                definition = definition with
-                {
-                    Description = CardModule.GenerateCardDescription(definition)
-                };
             }
-
-            if (validation.DefinitionValid && balance is { Balanced: true })
+            
+            definition = definition with
+            {
+                Description = CardModule.GenerateCardDescription(definition)
+            };
+            
+            if (validation.DefinitionValid && (!balancingEnabled || balance is { Balanced: true }))
             {
                 if (player.UpdateCard(definition, index).FailedWith(out var err))
                 {

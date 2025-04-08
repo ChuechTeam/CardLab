@@ -25,7 +25,8 @@
                 <input type="text" asp-for="PlayerName" id="name-input" maxlength="24" required/>
                 <button id="join-button" class="cl-button">Rejoindre</button>
             </form>
-            <form method="get" action="/create-game">
+            <hr id="auth-sep"/>
+            <form method="get" asp-page="CreateGame">
                 <button id="create-game-button" class="cl-button">Créer une partie</button>
             </form>
         }
@@ -37,9 +38,6 @@
                     <button class="cl-button -negative" type="button" onclick="quitConfirm()">Quitter la partie</button>
                 </form>
             </div>
-            <form method="get" action="/create-game">
-                <button id="create-game-button" class="cl-button">Créer une partie</button>
-            </form>
         }
     </div>
 </div>
@@ -53,4 +51,21 @@
             }
         }
     </script>
+}
+
+@{
+    string desc = "Créez vos cartes ; battez-vous avec. Jouez avec vos amis et affrontez-les avec un deck chaotique !";
+    string imgUrl = $"{Request.Scheme}://{Request.Host}/promo1.png";
+    string indexUrl =  $"{Request.Scheme}://{Request.Host}";
+}
+@section Meta {
+    
+    <meta property="og:title" content="CardLab">
+    <meta property="og:description" content="@desc">
+    <meta property="og:image" content="@imgUrl">
+    <meta property="og:url" content="@indexUrl">
+    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CardLab" />
+    <meta name="description" content="@desc"/>
 }

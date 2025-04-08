@@ -3,7 +3,7 @@ import {fitImageCover} from "src/util.ts";
 
 const style = new LabStyle(":host { aspect-ratio: 5/3; }");
 
-const MAX_UNDOS = 30;
+const MAX_UNDOS = 4;
 
 class Vec2 {
     constructor(public x: number = 0, public y: number = 0) {
@@ -290,6 +290,7 @@ export class DrawCanvas extends LabElement {
     pushToUndoStack() {
         if (this.undoStack.images.length >= MAX_UNDOS - 1) {
             this.undoStack.images.shift();
+            if (this.undoStack.displayedIdx != null) this.undoStack.displayedIdx--;
         }
         // If we're inside the undo stack, remove all the images from the end, until we come up to what's currently
         // displayed on screen.

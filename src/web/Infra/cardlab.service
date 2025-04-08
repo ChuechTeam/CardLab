@@ -10,7 +10,7 @@ Type=simple
 
 User=[[USER]]
 Environment=CL_APPSETTINGS=[[SETTINGS]]
-WorkingDirectory==[[DLL_DIR]]
+WorkingDirectory=[[DLL_DIR]]
 ExecStart=dotnet [[DLL]]
 
 Restart=on-failure

@@ -3,9 +3,11 @@ using CardLab.Game;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CardLab.Pages;
 
+[EnableRateLimiting("GameCreation")]
 public class CreateGame(ServerState state) : PageModel
 {
     public async Task<IActionResult> OnGet()

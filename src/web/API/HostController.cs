@@ -15,6 +15,26 @@ namespace CardLab.API
     [Authorize(Policy = "Host")]
     public class HostController : ControllerBase
     {
+        [HttpPost("update-settings")]
+        public IActionResult UpdateSettings([FromBody] UserGameSessionSettings settings)
+        {
+            if (!settings.Validate(out var errors))
+            {
+                var pb = ProblemDetailsFactory.CreateProblemDetails(
+                    HttpContext, statusCode: 400, title: "Validation error");
+                pb.Extensions.Add("extra", errors);
+                return BadRequest(pb);
+            }
+            
+            var user = (GameUserPrincipal)User;
+            if (user.GameSession.UpdateSettings(settings).FailedWith(out var err))
+            {
+                return Problem(statusCode: 409, detail: err);
+            }
+            
+            return Ok();
+        }
+        
         /// <summary>
         /// Starts the game session.
         /// </summary>

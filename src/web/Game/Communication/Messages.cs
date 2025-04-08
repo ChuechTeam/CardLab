@@ -8,6 +8,7 @@ namespace CardLab.Game.Communication;
 [JsonDerivedType(typeof(LobbyPlayerUpdatedMessage), "lobbyPlayerUpdated")]
 [JsonDerivedType(typeof(SwitchedPhaseMessage), "switchedPhase")]
 [JsonDerivedType(typeof(WelcomeMessage), "welcome")]
+[JsonDerivedType(typeof(SettingsChangedMessage), "settingsChanged")]
 [JsonDerivedType(typeof(PackAvailableMessage), "packAvailable")]
 [JsonDerivedType(typeof(SessionDuelStartedMessage), "sessionDuelStarted")]
 [JsonDerivedType(typeof(SessionDuelEndedMessage), "sessionDuelEnded")]
@@ -49,7 +50,10 @@ public sealed record WelcomeMessage(
     int? DuelId,
     bool DuelRequireSessionPack,
     GamePhaseName PhaseName,
-    PhaseStatePayload? PhaseState) : LabMessage;
+    PhaseStatePayload? PhaseState,
+    UserGameSessionSettings Settings) : LabMessage;
+
+public sealed record SettingsChangedMessage(UserGameSessionSettings Settings) : LabMessage;
 
 public sealed record PackAvailableMessage(DownloadablePackPayload Pack) : LabMessage;
 

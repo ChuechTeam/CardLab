@@ -14,6 +14,8 @@ import type {CardLab} from "src/game.ts";
 import {gameStorageStore, gameStorageLoad, gameSessionLocalInvalidated} from "src/localSave.ts"
 import {DrawCanvasControls} from "src/components/DrawCanvasControls.ts";
 import "src/components/DrawCanvasControls.ts";
+import {isFullscreenSupported, isMobileDevice} from "src/util.ts";
+import {Card} from "src/duel/game/Card.ts";
 
 const template = registerTemplate('card-editor-template', `<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
     <symbol viewBox="0 0 104.85 144.56" id="card-svg-bg">
@@ -411,7 +413,7 @@ const template = registerTemplate('card-editor-template', `<svg xmlns="http://ww
         </div>
         <div class="stats-inputs">
             <span>Coût</span>
-            <card-stat-input id="cost-input" value="8" immutable></card-stat-input>
+            <card-stat-input id="cost-input" value="8"></card-stat-input>
 
             <span>Attaque</span>
             <card-stat-input id="attack-input" value="7"></card-stat-input>
@@ -498,7 +500,7 @@ export class CardEditor extends LabElement {
     archetypeDirty = false
     nameDirty = false
 
-    constructor(public card: CardDefinition, public cardIndex: number) {
+    constructor(public cardLab: CardLab, public card: CardDefinition, public cardIndex: number) {
         super();
         this.importGlobalStyles = true
         this.localScriptSaveKey = `card-script-${cardIndex}`;
@@ -511,6 +513,10 @@ export class CardEditor extends LabElement {
 
     connected() {
         this.updateDefinitionDom()
+        
+        if (this.cardLab.settings.enforceCosts) {
+            this.costInput.setAttribute("immutable", "1");
+        }
 
         for (const input of [this.costInput, this.attackInput, this.healthInput]) {
             input.addEventListener('decrement', () => this.addToStat(input, -1))
@@ -566,7 +572,10 @@ export class CardEditor extends LabElement {
             this.cardImageSlot.appendChild(this.cardCanvas);
             this.cardCanvas.enabled = false;
             
-            this.delayedImgUpload.run(true);
+            // Only upload if edits have been made
+            if (this.delayedImgUpload.handle !== null) {
+                this.delayedImgUpload.run(true);
+            }
         })
         this.drawUploadButton.addEventListener("click", () => {
             this.drawUploadInput.click();
@@ -580,6 +589,7 @@ export class CardEditor extends LabElement {
                 img.onload = () => {
                     try {
                         this.cardCanvas.load(img, true);
+                        this.delayedImgUpload.run();
                     } finally {
                         URL.revokeObjectURL(url)
                     }
@@ -588,7 +598,13 @@ export class CardEditor extends LabElement {
             }
         });
         this.cardCanvas.enabled = false;
-        
+
+        if (!this.cardLab.settings.enableBalance) {
+            this.scriptCreditVal.textContent = "∞";
+            this.scriptCredit.className = "state-valid";
+            this.balanceOverview.setAttribute("nobalance", "1");
+        }
+
         // Click-to-edit-events
         this.cardImageSlot.addEventListener("click", this.showDrawDialog.bind(this));
         this.nameTxt.addEventListener("click", () => this.nameInput.focus());
@@ -621,7 +637,7 @@ export class CardEditor extends LabElement {
     }
 
     showDrawDialog() {
-        this.showFullscreen(() =>{
+        this.showFullscreenOnMobile(() =>{
             this.drawDialog.showModal();
             this.drawDialogContents.prepend(this.cardCanvas);
             this.cardCanvas.enabled = true;
@@ -629,21 +645,22 @@ export class CardEditor extends LabElement {
     }
     
     showScriptDialog() {
-        this.showFullscreen(() => {
+        this.showFullscreenOnMobile(() => {
             this.scriptDialog.show();
             this.scriptEditor.updateBlocklyDivPosition();
             this.scriptEditor.updateBlocklyDivSize();
         });
     }
     
-    showFullscreen(thenShow: () => any) {
-        // If fullscreen is not supported, just show the dialog
-        // (i'm doing a demi ton of checks just in case iOS safari does wild stuff)
-        if (!("fullscreenElement" in document) || 
-            !("fullscreenEnabled" in document) || !document.fullscreenEnabled) {
+    showFullscreenOnMobile(thenShow: () => any) {
+        // If fullscreen is not supported, or if we're on a PC, just show the dialog
+        if (!isMobileDevice || !isFullscreenSupported) {
             thenShow();
+            return;
         }
         
+        // Can be configured to use a different container. body just works.
+        // Make absolutely sure that we at least display the element even if fullscreen fails.
         const container = document.body;
         if (container === null || document.fullscreenElement !== null) {
             thenShow();
@@ -657,7 +674,9 @@ export class CardEditor extends LabElement {
             this.updateDefinitionDom()
         }
         this.balanceOverview.triggerUpdatePending();
-        this.scriptCredit.setAttribute("updating", "1");
+        if (this.cardLab.settings.enableBalance) {
+            this.scriptCredit.setAttribute("updating", "1");
+        }
         this.delayedDefUpdate.run()
     }
 
@@ -685,8 +704,10 @@ export class CardEditor extends LabElement {
         const result = await gameApi.cards.update(this.cardIndex, this.card)
         console.log(`Uploaded card definition ${this.cardIndex}, we got: `, result)
 
-        this.balanceOverview.updateData({ ...result })
-        this.updateScriptDialog(result.balance);
+        this.balanceOverview.updateData(result)
+        if (result.balance !== null) {
+            this.updateScriptDialog(result.balance);
+        }
         this.card.description = result.description
         this.card.archetype = result.archetype
         this.updateDefinitionDom()

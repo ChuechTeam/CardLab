@@ -22,6 +22,7 @@ export type ApiErrorResponse = {
     status: number,
     detail?: string,
     title?: string
+    [k: string]: any
     // and others but we don't care
 }
 
@@ -59,6 +60,9 @@ export const gameApi = {
     // },
 
     host: {
+        async updateSettings(settings: GameSettings) {
+            await clFetch(apiUrl("api/game/host/update-settings"), jsonPost(settings));
+        },
         async startGame() {
             await clFetch(apiUrl("api/game/host/start-game"), {method: 'POST'});
         },
@@ -112,7 +116,7 @@ export function redirectToQuitGame() {
 
 export interface CardUpdateResult {
     validation: CardValidationSummary,
-    balance: CardBalanceSummary,
+    balance: CardBalanceSummary | null,
     description: string
     archetype: string | null
 }
