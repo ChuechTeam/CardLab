@@ -3,7 +3,7 @@
 A party game where players can create their own cards and play with them!
 
 ## Requirements
-- .NET 8.0 SDK
+- .NET 9.0 SDK
 - Node.js
 - Python 3.10+ (for deployment only)
 
